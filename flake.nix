@@ -27,7 +27,7 @@
       in
       {
         devShells.default = pkgs.mkShell {
-          packages = [ python pkgs.curl pkgs.jq pkgs.just ];
+          packages = [ python pkgs.curl pkgs.jq pkgs.just pkgs.nodejs_22 ];
         };
       });
 }

@@ -2,7 +2,8 @@
 
 The **reference** is the fastest a train could possibly run a given stop pattern. Code:
 `train_fusion/stages/reference/` (`stage.py`, with `physics.py`, `track.py` and
-`timetable_fit.py`; the timetable comes from `train_fusion/stages/timetable/`).
+`timetable_fit.py`; the timetable comes from `train_fusion/stages/timetable/`); pictures:
+the explorer (`just explore`).
 
 How each choice below was arrived at, and the alternatives that were measured and
 dropped (schedule-derived curves, constant dwells, other fits and evaluations), is on the
