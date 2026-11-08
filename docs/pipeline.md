@@ -13,6 +13,9 @@ the `schemas.py` of the stage that writes it.
   (`schemas.py`, plain Python, via `train_fusion/common/schema_dsl.py`), which give the polars
   schemas used when writing (cast strictly, fail loudly). Shared code is in
   `train_fusion/common/` (paths, the schema language, time helpers).
+- **Python computes; the browser draws.** The explorer only reads files the pipeline
+  wrote; its TypeScript types are generated from the stages' schemas (`just types`, into
+  `web/packages/types/tables.ts`, not checked in; `just explore` regenerates them).
 - All times are epoch seconds; units are column-name suffixes.
 
 ## Stages
@@ -51,3 +54,14 @@ below for exactly those service dates (`train_fusion/build.py`, run with `python
 default, each anchored to stations (offsets in m, positive towards SF). Taken once from
 OpenStreetMap; edit by hand. `train_fusion.stages.reference.track.on_shape()` turns it into a
 piecewise-constant limit along any shape.
+
+## Explorer
+
+`just explore` → http://127.0.0.1:3030 (Observable Framework, `web/explorer/`), over
+whatever `just build` last wrote. One parameterized data loader,
+`web/explorer/src/data/[table].parquet.py`, serves every `data/<table>.parquet` from
+`train_fusion.explorer_data.TABLES` (plus `meta.json.py`); adding a table for a page is one
+entry there. Pages:
+
+- **Static feed**: what the static stage made of the GTFS feed (counts, trips by route and
+  direction, a map of shapes and stations, the trip patterns).

@@ -1,7 +1,10 @@
 """A tiny schema language for the pipeline's tables.
 
-Each table is declared once (see schemas.py) as a `Table` of `col`s, which gives the
-polars schema used when a stage writes the table (`Table.conform`, `Table.write`).
+Each table is declared once (in its stage's schemas.py) as a `Table` of `col`s. From that
+one declaration we derive:
+
+- the polars schema used when a stage writes the table (`Table.conform`, `Table.write`),
+- TypeScript interfaces for the explorer (`typescript`).
 
 Column types: "str", "i64", "f64", "bool", "enum" (with `values`). A trailing "?"
 marks the column nullable ("f64?"). Units go in the column name suffix (_s, _m, _epoch)
@@ -16,6 +19,7 @@ import polars as pl
 
 _POLARS = {"str": pl.String, "i64": pl.Int64, "f64": pl.Float64, "bool": pl.Boolean,
            "enum": pl.String}
+_TS = {"str": "string", "i64": "number", "f64": "number", "bool": "boolean"}
 
 
 @dataclass(frozen=True)
@@ -92,3 +96,24 @@ class Table:
 
     def read(self, path: Path) -> pl.DataFrame:
         return self.conform(pl.read_parquet(path))
+
+
+def _ts_name(table: str) -> str:
+    return "".join(p.capitalize() for p in table.split("_"))
+
+
+def typescript(tables: list[Table]) -> str:
+    out = ["// Generated from train_fusion/stages/*/schemas.py by `just types`. Do not edit.", ""]
+    for t in tables:
+        out.append(f"/** {t.desc} */")
+        out.append(f"export interface {_ts_name(t.name)} {{")
+        for c in t.cols:
+            ts = " | ".join(f'"{v}"' for v in c.values) if c.values else _TS[c.base]
+            if c.nullable:
+                ts += " | null"
+            unit = f" [{c.unit}]" if c.unit else ""
+            out.append(f"  /** {c.desc}{unit} */")
+            out.append(f"  {c.name}: {ts};")
+        out.append("}")
+        out.append("")
+    return "\n".join(out)

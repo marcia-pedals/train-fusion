@@ -14,6 +14,7 @@ scipy, …), just and node, puts `bin/` on PATH, and loads `.env.local` (which m
 just fetch                 # archive the feeds into data/ (runs forever)
 just build 2026-11-07 2026-11-08   # derive everything (incl. the reference) for exactly these dates
 just build --last-week             # ... for every archived date among the last 7 days
+just explore                       # explorer at http://127.0.0.1:3030
 just test
 ```
 
