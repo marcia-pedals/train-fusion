@@ -30,7 +30,7 @@ const ROUTE_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"];
 ```
 
 <div class="grid grid-cols-4">
-  <div class="card"><h2>Trips</h2><span class="big">${trips.length}</span><br><span class="small muted">${tripStops.length} served stops</span></div>
+  <div class="card"><h2>Trips in the feed</h2><span class="big">${trips.length}</span><br><span class="small muted">all service days; ${tripStops.length} served stops</span></div>
   <div class="card"><h2>Trip patterns</h2><span class="big">${new Set(trips.map((t) => t.pattern_id)).size}</span><br><span class="small muted">same stations and relative static times</span></div>
   <div class="card"><h2>Stations served</h2><span class="big">${servedStations.size}</span><br><span class="small muted">of ${stations.length} in the feed</span></div>
   <div class="card"><h2>Shapes</h2><span class="big">${new Set(shapes.map((s) => s.shape_id)).size}</span><br><span class="small muted">${shapes.length} points</span></div>
@@ -86,7 +86,8 @@ display(Plot.plot({
 ## Trip patterns
 
 Trips with the same direction, served stations and static times relative to their first
-departure.
+departure. Trip counts are over the whole feed, all service days (e.g. the weekday Locals
+appear twice: the regular weekday service and a modified one for four special days).
 
 ```js
 const stopsOf = d3.group(tripStops, (r) => r.trip_id);
