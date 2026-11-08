@@ -66,25 +66,23 @@ class TimetableMismatch(ValueError):
 
 
 def build(static: Static, days: list[str]) -> pl.DataFrame:
-    parts = [tu_schedule(d, static).with_columns(pl.lit(d).alias("date")) for d in days]
+    parts = [tu_schedule(d, static) for d in days]
     tu = pl.concat(parts) if parts else pl.DataFrame(schema={"trip_id": pl.String, "stop_id": pl.String,
-                                                              "tu_s": pl.Float64, "date": pl.String})
+                                                              "tu_s": pl.Float64})
     return combine(static.trip_stops, tu)
 
 
 def combine(trip_stops: pl.DataFrame, tu: pl.DataFrame) -> pl.DataFrame:
     """The timetable from static trip_stops and the pre-departure trip-update values
-    (trip_id, stop_id, tu_s, date); raises TimetableMismatch unless they agree exactly."""
-    agg = tu.group_by("trip_id", "stop_id").agg(pl.col("tu_s").unique().sort().alias("values"),
-                                                pl.col("date").n_unique().alias("n_tu_dates"))
+    (trip_id, stop_id, tu_s); raises TimetableMismatch unless they agree exactly."""
+    agg = tu.group_by("trip_id", "stop_id").agg(pl.col("tu_s").unique().sort().alias("values"))
     if len(bad := agg.filter(pl.col("values").list.len() > 1)):
         r = bad.row(0, named=True)
         raise TimetableMismatch(f"trip {r['trip_id']} stop {r['stop_id']}: trip updates give different "
                                 f"scheduled times {r['values']} s ({len(bad)} such stops)")
     out = (trip_stops.select("trip_id", "stop_idx", "stop_id", "station_id", "sched_s")
-           .join(agg.select("trip_id", "stop_id", pl.col("values").list.first().alias("tu_s"), "n_tu_dates"),
-                 on=["trip_id", "stop_id"], how="left")
-           .with_columns(pl.col("n_tu_dates").fill_null(0).cast(pl.Int64)))
+           .join(agg.select("trip_id", "stop_id", pl.col("values").list.first().alias("tu_s")),
+                 on=["trip_id", "stop_id"], how="left"))
     truncated = (pl.col("tu_s") // 60 * 60).cast(pl.Int64)
     if len(bad := out.filter(pl.col("tu_s").is_not_null() & (truncated != pl.col("sched_s")))):
         r = bad.row(0, named=True)

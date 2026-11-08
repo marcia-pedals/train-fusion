@@ -10,5 +10,4 @@ TIMETABLE = Table("timetable", "Scheduled departure of one served stop of a trip
     col("dep_lo_s", "f64", "earliest the true scheduled departure can be, after the service-day origin", "s"),
     col("dep_hi_s", "f64", "latest the true scheduled departure can be, after the service-day origin", "s"),
     col("source", "enum", "static GTFS only, or 511's trip updates", values=["static", "tu"]),
-    col("n_tu_dates", "i64", "archive dates with pre-departure trip updates for this stop"),
 ])
