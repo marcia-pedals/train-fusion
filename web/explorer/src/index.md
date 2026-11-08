@@ -63,6 +63,43 @@ display(Plot.plot({
 }));
 ```
 
+## Time-distance diagram of the trip patterns
+
+Each pattern once (its first trip's static times), from its first departure. Distance is
+along the line from San Francisco (positions from the longest San Francisco ↔ Tamien
+shape); dots are the pattern's served stops. Static times are whole minutes with arrival
+= departure, so dwells don't show.
+
+```js
+// common distance axis: station positions on the shape that has the most stations and runs SF <-> Tamien
+const byShape = d3.group(shapeStations, (r) => r.shape_id);
+const refShape = d3.greatest([...byShape.entries()].filter(([, rs]) =>
+  rs.some((r) => r.station_id === "san_francisco") && rs.some((r) => r.station_id === "tamien")), ([, rs]) => rs.length)[1];
+const sfS = refShape.find((r) => r.station_id === "san_francisco").s_m;
+const kmFromSF = new Map(refShape.map((r) => [r.station_id, Math.abs(r.s_m - sfS) / 1000]));
+const patternLines = d3.groups(trips, (t) => t.pattern_id).flatMap(([pattern, ts]) => {
+  const stops = d3.sort(stopsOf.get(ts[0].trip_id), (r) => r.stop_idx);
+  return stops.map((r) => ({pattern, route: ts[0].route_id, direction: dirName(ts[0].direction_id), trips: ts.length,
+    station: stationName.get(r.station_id), min: (r.sched_s - stops[0].sched_s) / 60, km: kmFromSF.get(r.station_id)}));
+});
+const axisStations = d3.sort(refShape.filter((r) => servedStations.has(r.station_id)), (r) => kmFromSF.get(r.station_id));
+display(Plot.plot({
+  width, height: 640, marginRight: 130,
+  x: {label: "minutes since the pattern's first departure", grid: true},
+  y: {reverse: true, label: "km from San Francisco", grid: false},
+  color: {domain: ROUTES, range: ROUTE_COLORS, legend: true},
+  marks: [
+    Plot.ruleY(axisStations, {y: (r) => kmFromSF.get(r.station_id), stroke: "currentColor", strokeOpacity: 0.08}),
+    Plot.axisY({anchor: "left", label: "km from San Francisco"}),
+    Plot.axisY(axisStations.map((r) => kmFromSF.get(r.station_id)), {anchor: "right", label: null, tickSize: 0, fontSize: 10,
+      tickFormat: (km) => stationName.get(axisStations.find((r) => kmFromSF.get(r.station_id) === km).station_id)}),
+    Plot.line(patternLines, {x: "min", y: "km", z: "pattern", stroke: "route", strokeWidth: 1.5, strokeOpacity: 0.8}),
+    Plot.dot(patternLines, {x: "min", y: "km", fill: "route", r: 2.5,
+      channels: {pattern: "pattern", trips: "trips", station: "station", direction: "direction"}, tip: true}),
+  ],
+}));
+```
+
 ## Shapes and stations
 
 Every shape's polyline, and the stations within 100 m of a shape (filled: served by some

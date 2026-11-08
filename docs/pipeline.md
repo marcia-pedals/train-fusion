@@ -64,5 +64,5 @@ whatever `just build` last wrote. One parameterized data loader,
 entry there. Pages:
 
 - **Static feed**: what the static stage made of the GTFS feed (counts, the trips running
-  on each built date by route and direction, a map of shapes and stations, the trip
-  patterns).
+  on each built date by route and direction, a time-distance diagram of the trip patterns,
+  a map of shapes and stations, the trip patterns).
