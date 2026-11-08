@@ -41,8 +41,10 @@ truncated: [S, S + 60]. 511's trip updates published before a trip starts repeat
 timetable on a 6 s grid: [t, t + 6]. (Of 1486 such values none was a full minute after
 its static time; rounding to the nearest 6 s or up would have produced ~74 / ~149. So 511
 truncates or is exact; this assumes static and 511 come from the same timetable.) The
-interval is their intersection. 511 never lists a trip's final stop, and trips not seen
-running yet keep the static interval.
+interval is [t, t + 6] where 511 gives t, else [S, S + 60]: 511 never lists a trip's final
+stop, and trips not seen running yet only have static times. The build checks that the
+two describe the same timetable exactly: every trip update gives the same t for a stop,
+and S is t truncated to the minute; otherwise it stops.
 
 **Trip patterns.** Trips with the same direction, served stations and static times
 relative to their first departure form a pattern (`trips.pattern_id`): at the static

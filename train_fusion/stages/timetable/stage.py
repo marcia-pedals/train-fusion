@@ -2,18 +2,18 @@
 [dep_lo_s, dep_hi_s] that contains the true timetable time, in seconds after the GTFS
 service-day origin (like trip_stops.sched_s).
 
-Sources, each an interval; the result is their intersection:
-- static GTFS time S: [S, S + 60]. Static times are whole minutes, and every 511 time
-  we've seen is 0-54 s *after* static, never before, so static is truncated.
-- 511 trip updates published before the trip starts just repeat the timetable, on a 6 s
-  grid (0.1 min). A value t gives [t, t + 6]: of 1486 values (2026-11-07/08), none was a
-  full minute or more after its static time, though rounding to the nearest 6 s would
-  give that ~74 times and rounding up ~149 times. So 511 truncates, or its values are the
+- Static GTFS times S are whole minutes, truncated: [S, S + 60].
+- 511 trip updates published before the trip starts repeat the timetable on a 6 s grid
+  (0.1 min). A value t gives [t, t + 6]: of 1486 values (2026-11-07/08), none was a full
+  minute or more after its static time, though rounding to the nearest 6 s would give
+  that ~74 times and rounding up ~149 times. So 511 truncates, or its values are the
   timetable's own (exact): either way the true time is in [t, t + 6]. Assumes static and
-  511 both derive from the same timetable (not static from 511's values). Every
-  pre-departure snapshot on every archived date adds one interval.
-If the intervals don't intersect (e.g. the timetable changed), the static interval is kept
-and the row is flagged `conflict`.
+  511 both derive from the same timetable (not static from 511's values).
+
+Both are expected to describe exactly the same timetable, and that's checked: every
+pre-departure trip update (every snapshot, every date) must give the same t for a stop,
+and the static time must be t truncated to the minute. Anything else is a
+TimetableMismatch (e.g. the timetable changed between the dates being built).
 
 Written per static feed version (data/derived/static/<version>/timetable.parquet), using
 the trip updates of the dates being built that use that version.
@@ -61,26 +61,40 @@ def tu_schedule(day: str, static: Static) -> pl.DataFrame:
             .select("trip_id", "stop_id", "tu_s").unique())
 
 
+class TimetableMismatch(ValueError):
+    """Static GTFS and 511's trip updates don't describe the same timetable."""
+
+
 def build(static: Static, days: list[str]) -> pl.DataFrame:
     parts = [tu_schedule(d, static).with_columns(pl.lit(d).alias("date")) for d in days]
     tu = pl.concat(parts) if parts else pl.DataFrame(schema={"trip_id": pl.String, "stop_id": pl.String,
                                                               "tu_s": pl.Float64, "date": pl.String})
-    agg = tu.group_by("trip_id", "stop_id").agg(
-        pl.col("tu_s").max().alias("tu_lo"), (pl.col("tu_s").min() + TU_WIDTH_S).alias("tu_hi"),
-        pl.col("date").n_unique().alias("n_tu_dates"))
-    out = (static.trip_stops.select("trip_id", "stop_idx", "stop_id", "station_id", "sched_s")
-           .join(agg, on=["trip_id", "stop_id"], how="left")
-           .with_columns(pl.col("sched_s").cast(pl.Float64).alias("st_lo"),
-                         (pl.col("sched_s") + STATIC_WIDTH_S).alias("st_hi"),
-                         pl.col("n_tu_dates").fill_null(0).cast(pl.Int64)))
-    lo = pl.max_horizontal("st_lo", "tu_lo")
-    hi = pl.min_horizontal("st_hi", "tu_hi")
-    has_tu = pl.col("n_tu_dates") > 0
-    conflict = has_tu & (lo > hi)
-    return (out.with_columns(conflict.alias("conflict"))
-            .with_columns(pl.when(has_tu & ~pl.col("conflict")).then(lo).otherwise("st_lo").alias("dep_lo_s"),
-                          pl.when(has_tu & ~pl.col("conflict")).then(hi).otherwise("st_hi").alias("dep_hi_s"),
-                          pl.when(has_tu & ~pl.col("conflict")).then(pl.lit("tu")).otherwise(pl.lit("static")).alias("source"))
+    return combine(static.trip_stops, tu)
+
+
+def combine(trip_stops: pl.DataFrame, tu: pl.DataFrame) -> pl.DataFrame:
+    """The timetable from static trip_stops and the pre-departure trip-update values
+    (trip_id, stop_id, tu_s, date); raises TimetableMismatch unless they agree exactly."""
+    agg = tu.group_by("trip_id", "stop_id").agg(pl.col("tu_s").unique().sort().alias("values"),
+                                                pl.col("date").n_unique().alias("n_tu_dates"))
+    if len(bad := agg.filter(pl.col("values").list.len() > 1)):
+        r = bad.row(0, named=True)
+        raise TimetableMismatch(f"trip {r['trip_id']} stop {r['stop_id']}: trip updates give different "
+                                f"scheduled times {r['values']} s ({len(bad)} such stops)")
+    out = (trip_stops.select("trip_id", "stop_idx", "stop_id", "station_id", "sched_s")
+           .join(agg.select("trip_id", "stop_id", pl.col("values").list.first().alias("tu_s"), "n_tu_dates"),
+                 on=["trip_id", "stop_id"], how="left")
+           .with_columns(pl.col("n_tu_dates").fill_null(0).cast(pl.Int64)))
+    truncated = (pl.col("tu_s") // 60 * 60).cast(pl.Int64)
+    if len(bad := out.filter(pl.col("tu_s").is_not_null() & (truncated != pl.col("sched_s")))):
+        r = bad.row(0, named=True)
+        raise TimetableMismatch(f"trip {r['trip_id']} stop {r['stop_id']}: static time {r['sched_s']} s isn't the "
+                                f"trip updates' {r['tu_s']:.0f} s truncated to the minute ({len(bad)} such stops)")
+    has_tu = pl.col("tu_s").is_not_null()
+    return (out.with_columns(pl.when(has_tu).then("tu_s").otherwise(pl.col("sched_s").cast(pl.Float64)).alias("dep_lo_s"),
+                             pl.when(has_tu).then(pl.col("tu_s") + TU_WIDTH_S)
+                             .otherwise(pl.col("sched_s") + STATIC_WIDTH_S).cast(pl.Float64).alias("dep_hi_s"),
+                             pl.when(has_tu).then(pl.lit("tu")).otherwise(pl.lit("static")).alias("source"))
             .rename({"sched_s": "static_s"})
             .select([c.name for c in TIMETABLE.cols])
             .sort("trip_id", "stop_idx"))
@@ -101,7 +115,5 @@ def run(days: list[str]) -> dict:
         static = Static(vdays[-1])
         tt = build(static, vdays)
         TIMETABLE.write(tt, paths.static_dir(version) / "timetable.parquet")
-        info[version] = {"rows": len(tt), "from_tu": int((tt["source"] == "tu").sum()),
-                         "conflicts": int(tt["conflict"].sum()),
-                         "median_width_s": float((tt["dep_hi_s"] - tt["dep_lo_s"]).median())}
+        info[version] = {"rows": len(tt), "from_tu": int((tt["source"] == "tu").sum())}
     return info

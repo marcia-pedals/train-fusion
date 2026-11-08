@@ -40,9 +40,9 @@ below for exactly those service dates (`train_fusion/build.py`, run with `python
 - **linearize**: each VP fix is projected onto its trip's shape (UTM 10N), giving s (m
   along the shape, matching the stops' `shape_dist_traveled`) and its distance from it.
 - **timetable**: every scheduled departure as an interval [`dep_lo_s`, `dep_hi_s`]
-  holding the true timetable time: static [S, S + 60] ∩ 511's pre-departure trip updates
-  [t, t + 6]. Uses the trip updates of the dates being built. Disagreements are flagged `conflict`
-  (static kept).
+  holding the true timetable time: [t, t + 6] from 511's pre-departure trip updates, else
+  [S, S + 60] from static GTFS. Uses the trip updates of the dates being built, and stops
+  the build unless they all give the same t for a stop and S is t truncated to the minute.
 - **reference**: see [reference.md](reference.md).
 
 ## Hand-maintained input
