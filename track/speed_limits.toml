@@ -1,0 +1,78 @@
+# Track speed limits, San Francisco <-> Tamien (Caltrain Peninsula Subdivision).
+# Taken from OpenStreetMap `maxspeed` tags on 2026-11-08 by
+# experiments/osm_speed_limits.py; crowd-edited, not an official Caltrain source. Where
+# parallel tracks differ, the main line's (highest) limit is used. Hand edits are fine.
+#
+# Everything not listed below is `default_mph`. Each restriction runs between two
+# points, each given as a station plus an offset in metres along the line, positive
+# towards San Francisco (north). Restrictions are listed south to north and apply in
+# both directions.
+
+default_mph = 79
+
+[[restriction]]
+mph = 35
+from = { station = "tamien", offset_m = -130 }
+to = { station = "sj_diridon", offset_m = -450 }
+# 2500 m
+
+[[restriction]]
+mph = 15
+from = { station = "sj_diridon", offset_m = -450 }
+to = { station = "sj_diridon", offset_m = 340 }
+# 790 m
+
+[[restriction]]
+mph = 40
+from = { station = "sj_diridon", offset_m = 340 }
+to = { station = "college_park", offset_m = 50 }
+# 1670 m
+
+[[restriction]]
+mph = 75
+from = { station = "place_MLBR", offset_m = -1010 }
+to = { station = "place_MLBR", offset_m = -90 }
+# 920 m
+
+[[restriction]]
+mph = 65
+from = { station = "san_bruno", offset_m = 120 }
+to = { station = "san_bruno", offset_m = 490 }
+# 370 m
+
+[[restriction]]
+mph = 70
+from = { station = "south_sf", offset_m = 2040 }
+to = { station = "south_sf", offset_m = 2940 }
+# 900 m
+
+[[restriction]]
+mph = 65
+from = { station = "bayshore", offset_m = 120 }
+to = { station = "bayshore", offset_m = 470 }
+# 350 m
+
+[[restriction]]
+mph = 75
+from = { station = "22nd_street", offset_m = -800 }
+to = { station = "22nd_street", offset_m = 730 }
+# 1530 m
+
+[[restriction]]
+mph = 40
+from = { station = "22nd_street", offset_m = 730 }
+to = { station = "san_francisco", offset_m = -840 }
+# 1030 m
+
+[[restriction]]
+mph = 25
+from = { station = "san_francisco", offset_m = -840 }
+to = { station = "san_francisco", offset_m = -590 }
+# 250 m
+
+[[restriction]]
+mph = 15
+from = { station = "san_francisco", offset_m = -590 }
+to = { station = "san_francisco", offset_m = 0 }
+# 590 m
+

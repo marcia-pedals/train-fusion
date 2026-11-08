@@ -1,7 +1,7 @@
 .env.local
 
 .direnv/
-data/
+/data/
 __pycache__/
 .pytest_cache/
 .DS_Store
