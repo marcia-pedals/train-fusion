@@ -18,7 +18,8 @@ from pyproj import Transformer
 
 from train_fusion.common.paths import GTFS, static_dir
 from train_fusion.common.timeutil import gtfs_seconds
-from train_fusion.stages.static.schemas import SHAPES, SHAPE_STATIONS, STATIONS, TRIPS, TRIP_STOPS
+from train_fusion.stages.static.schemas import (CALENDAR, CALENDAR_DATES, PLATFORMS, SHAPES, SHAPE_STATIONS,
+                                               STATIONS, TRIPS, TRIP_STOPS)
 
 STATION_ON_SHAPE_M = 100.0
 # Out of scope for the whole project (corridor is San Francisco <-> Tamien): dropped here,
@@ -143,8 +144,17 @@ def build(zip_path: Path) -> dict[str, pl.DataFrame]:
     shape_stations = pl.DataFrame(ss_rows).sort("shape_id", "s_m")
 
     trips = trips.join(trip_patterns(trips, trip_stops), on="trip_id")
+    platforms = pl.DataFrame([{"stop_id": r["stop_id"], "station_id": r["parent_station"], "lat": float(r["stop_lat"]),
+                               "lon": float(r["stop_lon"])} for r in stops.values() if r.get("parent_station")])
+    iso = lambda ymd: f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:]}"
+    calendar = pl.DataFrame([{"service_id": r["service_id"], **{d: r[d] == "1" for d in DAYS},
+                              "start_date": iso(r["start_date"]), "end_date": iso(r["end_date"])}
+                             for r in _read(z, "calendar.txt")], schema=CALENDAR.polars_schema())
+    calendar_dates = pl.DataFrame([{"service_id": r["service_id"], "date": iso(r["date"]), "added": r["exception_type"] == "1"}
+                                   for r in _read(z, "calendar_dates.txt")], schema=CALENDAR_DATES.polars_schema())
     return {"trips": trips, "trip_stops": trip_stops, "shapes": shapes, "stations": stations,
-            "shape_stations": shape_stations}
+            "shape_stations": shape_stations, "platforms": platforms, "calendar": calendar,
+            "calendar_dates": calendar_dates}
 
 
 def trip_patterns(trips: pl.DataFrame, trip_stops: pl.DataFrame) -> pl.DataFrame:
@@ -165,7 +175,9 @@ def trip_patterns(trips: pl.DataFrame, trip_stops: pl.DataFrame) -> pl.DataFrame
 
 
 TABLES = {"trips": TRIPS, "trip_stops": TRIP_STOPS, "shapes": SHAPES, "stations": STATIONS,
-          "shape_stations": SHAPE_STATIONS}
+          "shape_stations": SHAPE_STATIONS, "platforms": PLATFORMS, "calendar": CALENDAR,
+          "calendar_dates": CALENDAR_DATES}
+DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
 
 def run(zip_path: Path) -> str:
@@ -207,15 +219,11 @@ class Static:
 
     @cached_property
     def active_trip_ids(self) -> set[str]:
-        z = zipfile.ZipFile(self.zip_path)
-        d = Date.fromisoformat(self.day)
-        ymd = d.strftime("%Y%m%d")
-        dow = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"][d.weekday()]
-        active = {r["service_id"] for r in _read(z, "calendar.txt")
-                  if r[dow] == "1" and r["start_date"] <= ymd <= r["end_date"]}
-        for r in _read(z, "calendar_dates.txt"):
-            if r["date"] == ymd:
-                (active.add if r["exception_type"] == "1" else active.discard)(r["service_id"])
+        day, dow = self.day, DAYS[Date.fromisoformat(self.day).weekday()]
+        active = set(self.calendar.filter(pl.col(dow) & (pl.col("start_date") <= day) & (day <= pl.col("end_date")))
+                     ["service_id"])
+        for sid, added in self.calendar_dates.filter(pl.col("date") == day).select("service_id", "added").iter_rows():
+            (active.add if added else active.discard)(sid)
         return set(self.trips.filter(pl.col("service_id").is_in(list(active)))["trip_id"])
 
     def stops_of(self, trip_id: str) -> pl.DataFrame:

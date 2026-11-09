@@ -26,7 +26,7 @@ below for exactly those service dates (`train_fusion/build.py`, run with `python
 
 | Stage | Command | Writes |
 |---|---|---|
-| static | `just build` | `data/derived/static/<feed_version>/`: trips, trip_stops, shapes, stations, shape_stations |
+| static | `just build` | `data/derived/static/<feed_version>/`: trips, trip_stops, shapes, stations, shape_stations, platforms, calendar, calendar_dates |
 | decode | `just build` | `data/derived/<date>/`: vp, tu |
 | linearize | `just build` | `data/derived/<date>/vp_lin.parquet` |
 | timetable | `just build` | `data/derived/static/<feed_version>/timetable.parquet` |

@@ -46,3 +46,30 @@ SHAPE_STATIONS = Table("shape_stations", "A station projected onto a shape (only
     col("offset_m", "f64", "distance from the station point to the shape", "m"),
     col("served_by_any", "bool", "some trip on this shape stops here"),
 ])
+
+
+PLATFORMS = Table("platforms", "A platform: a stop with a parent station (stops.txt).", [
+    col("stop_id", "str", "platform stop_id"),
+    col("station_id", "str", "parent station id"),
+    col("lat", "f64", "latitude", "deg"),
+    col("lon", "f64", "longitude", "deg"),
+])
+
+CALENDAR = Table("calendar", "A service's regular weekly days and date range (calendar.txt).", [
+    col("service_id", "str", "GTFS service_id"),
+    col("monday", "bool", "runs on Mondays"),
+    col("tuesday", "bool", "runs on Tuesdays"),
+    col("wednesday", "bool", "runs on Wednesdays"),
+    col("thursday", "bool", "runs on Thursdays"),
+    col("friday", "bool", "runs on Fridays"),
+    col("saturday", "bool", "runs on Saturdays"),
+    col("sunday", "bool", "runs on Sundays"),
+    col("start_date", "str", "first date, YYYY-MM-DD"),
+    col("end_date", "str", "last date, YYYY-MM-DD"),
+])
+
+CALENDAR_DATES = Table("calendar_dates", "A date a service is added on or removed from (calendar_dates.txt).", [
+    col("service_id", "str", "GTFS service_id"),
+    col("date", "str", "YYYY-MM-DD"),
+    col("added", "bool", "the service runs this date (else it doesn't)"),
+])

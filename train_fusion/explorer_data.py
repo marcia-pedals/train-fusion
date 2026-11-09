@@ -3,15 +3,12 @@ data/derived. web/explorer/src/data/[table].parquet.py serves TABLES[<table>]() 
 data/<table>.parquet; web/explorer/src/data/meta.json.py serves meta()."""
 from __future__ import annotations
 
-import csv
-import io
-import zipfile
 from datetime import date
 
 import polars as pl
 
 from train_fusion.common import paths
-from train_fusion.stages.static.stage import Static
+from train_fusion.stages.static.stage import DAYS, Static
 
 
 def _static() -> Static:
@@ -33,32 +30,28 @@ def date_trips() -> pl.DataFrame:
     return pl.DataFrame(rows, schema={"date": pl.String, "trip_id": pl.String})
 
 
-_DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-
-
-def _dates_text(ymds: list[str]) -> str:
-    """'20261127', ... -> 'Nov 27, Dec 24, Jan 27 2027' (year only when not the first's)."""
-    ds = sorted(date(int(d[:4]), int(d[4:6]), int(d[6:])) for d in ymds)
+def _dates_text(isos: list[str]) -> str:
+    """'2026-11-27', ... -> 'Nov 27, Dec 24, Jan 27 2027' (year only when not the first's)."""
+    ds = sorted(date.fromisoformat(d) for d in isos)
     return ", ".join(d.strftime("%b %-d") + ("" if d.year == ds[0].year else f" {d.year}") for d in ds)
 
 
 def _days_text(row: dict) -> str:
-    """calendar.txt weekday flags -> 'Mon–Fri', 'Sat–Sun', 'Mon, Wed', ..."""
-    on = [i for i, d in enumerate(_DAYS) if row[d] == "1"]
+    """calendar weekday flags -> 'Mon–Fri', 'Sat–Sun', 'Mon, Wed', ..."""
+    on = [i for i, d in enumerate(DAYS) if row[d]]
     if len(on) >= 2 and on == list(range(on[0], on[-1] + 1)):
-        return f"{_DAYS[on[0]][:3].title()}–{_DAYS[on[-1]][:3].title()}"
-    return ", ".join(_DAYS[i][:3].title() for i in on)
+        return f"{DAYS[on[0]][:3].title()}–{DAYS[on[-1]][:3].title()}"
+    return ", ".join(DAYS[i][:3].title() for i in on)
 
 
 def services() -> pl.DataFrame:
-    """(service_id, runs): when each service of the static feed runs, in words, from
-    calendar.txt (weekdays) and calendar_dates.txt (added / removed dates)."""
-    z = zipfile.ZipFile(_static().zip_path)
-    read = lambda name: list(csv.DictReader(io.TextIOWrapper(z.open(name), "utf-8-sig"))) if name in z.namelist() else []
-    cal = {r["service_id"]: r for r in read("calendar.txt")}
+    """(service_id, runs): when each service of the static feed runs, in words, from the
+    static stage's calendar (weekdays) and calendar_dates (added / removed dates)."""
+    st = _static()
+    cal = {r["service_id"]: r for r in st.calendar.iter_rows(named=True)}
     added, removed = {}, {}
-    for r in read("calendar_dates.txt"):
-        (added if r["exception_type"] == "1" else removed).setdefault(r["service_id"], []).append(r["date"])
+    for sid, d, add in st.calendar_dates.select("service_id", "date", "added").iter_rows():
+        (added if add else removed).setdefault(sid, []).append(d)
     rows = []
     for sid in sorted(set(cal) | set(added) | set(removed)):
         parts = [_days_text(cal[sid])] if sid in cal else []
@@ -67,16 +60,6 @@ def services() -> pl.DataFrame:
         if sid in removed:
             parts.append("except " + _dates_text(removed[sid]))
         rows.append({"service_id": sid, "runs": ", ".join(parts)})
-    return pl.DataFrame(rows)
-
-
-def platforms() -> pl.DataFrame:
-    """(stop_id, station_id, lat, lon): every platform (stop with a parent station) in the
-    static feed's stops.txt."""
-    z = zipfile.ZipFile(_static().zip_path)
-    rows = [{"stop_id": r["stop_id"], "station_id": r["parent_station"], "lat": float(r["stop_lat"]),
-             "lon": float(r["stop_lon"])}
-            for r in csv.DictReader(io.TextIOWrapper(z.open("stops.txt"), "utf-8-sig")) if r.get("parent_station")]
     return pl.DataFrame(rows)
 
 
@@ -89,5 +72,5 @@ TABLES = {
     "shape_stations": lambda: _static().shape_stations,
     "date_trips": date_trips,
     "services": services,
-    "platforms": platforms,
+    "platforms": lambda: _static().platforms,
 }
