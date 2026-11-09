@@ -36,6 +36,8 @@ const dirName = (d) => (d === 0 ? "northbound" : "southbound");
 // routes in a fixed order, each with a fixed colour (validated categorical palette, slots 1-4)
 const ROUTES = ["Local Weekday", "Local Weekend", "Limited", "Express"];
 const ROUTE_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"];
+// for "<route> (special)" in the per-route chart: the palette's next slots (5-8), in route order
+const SPECIAL_COLORS = ["#e87ba4", "#008300", "#6250d6", "#e34948"];
 ```
 
 <div class="grid grid-cols-4">
@@ -48,17 +50,25 @@ const ROUTE_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"];
 ## Distinct trips per route and direction
 
 Over the whole feed (all service days); trips with the same first-departure and
-last-arrival times count once.
+last-arrival times count once. Trips whose id starts with 9 (one-off event extras) are
+counted under a separate "(special)" route.
 
 ```js
-const perRoute = d3.rollups(trips, distinctTrips, (t) => t.route_id, (t) => t.direction_id)
+// trips whose id starts with 9 (e.g. 901-905, the Mountain View event extras) count under a
+// synthetic "<route> (special)" route
+const SPECIAL_ROUTES = ROUTES.map((r) => `${r} (special)`);
+const routeOfTrip = (t) => (t.trip_id.startsWith("9") ? `${t.route_id} (special)` : t.route_id);
+const perRoute = d3.rollups(trips, distinctTrips, routeOfTrip, (t) => t.direction_id)
   .flatMap(([route, ds]) => ds.map(([dir, n]) => ({route, direction: dirName(dir), n})));
+// each route, then its special version if there is one; special routes get the next palette slots
+const chartRoutes = ROUTES.flatMap((r) => [r, `${r} (special)`]).filter((r) => perRoute.some((p) => p.route === r));
+const chartColors = chartRoutes.map((r) => ROUTES.includes(r) ? ROUTE_COLORS[ROUTES.indexOf(r)] : SPECIAL_COLORS[SPECIAL_ROUTES.indexOf(r)]);
 display(Plot.plot({
-  width: Math.min(width, 720), height: 220, marginLeft: 100, marginRight: 90,
+  width: Math.min(width, 720), height: 60 + 22 * chartRoutes.length * 2, marginLeft: 170, marginRight: 90,
   x: {label: "distinct trips", grid: true},
-  y: {domain: ROUTES, label: null},
+  y: {domain: chartRoutes, label: null},
   fy: {domain: ["northbound", "southbound"], label: null},
-  color: {domain: ROUTES, range: ROUTE_COLORS},
+  color: {domain: chartRoutes, range: chartColors},
   marks: [
     Plot.barX(perRoute, {y: "route", x: "n", fy: "direction", fill: "route", inset: 0.5, tip: true}),
     Plot.text(perRoute, {y: "route", x: "n", fy: "direction", text: "n", dx: 4, textAnchor: "start", fill: "currentColor"}),
