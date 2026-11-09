@@ -50,18 +50,22 @@ const serviceCounts = byService.flatMap(([sid, ts]) =>
   d3.rollups(ts, distinctTrips, (t) => t.route_id, (t) => t.direction_id)
     .flatMap(([route, ds]) => ds.map(([dir, n]) => ({service: serviceLabel.get(sid), runs: services.get(sid) ?? sid,
       route, direction: dirName(dir), n}))));
-display(Plot.plot({
-  width: Math.min(width, 1000), height: 50 + 24 * byService.length, marginLeft: 250,
+// the route legend, vertical, to the right of the chart
+const routeLegend = html`<div style="display: flex; flex-direction: column; gap: 0.3rem; font: 12px var(--sans-serif); padding-top: 1.5rem;">
+  ${ROUTES.map((r, i) => html`<div style="display: flex; align-items: center; gap: 0.4rem;">
+    <span style="width: 12px; height: 12px; background: ${ROUTE_COLORS[i]}; border-radius: 2px;"></span>${r}</div>`)}</div>`;
+display(html`<div style="display: flex; gap: 1.5rem; align-items: flex-start;">${Plot.plot({
+  width: Math.min(width, 1100) - 140, height: 50 + 24 * byService.length, marginLeft: 250,
   x: {label: "trips", grid: true},
   y: {domain: byService.map(([sid]) => serviceLabel.get(sid)), label: null},
   fx: {domain: ["northbound", "southbound"], label: null},
-  color: {domain: ROUTES, range: ROUTE_COLORS, legend: true},
+  color: {domain: ROUTES, range: ROUTE_COLORS},
   marks: [
     Plot.barX(serviceCounts, {x: "n", y: "service", fx: "direction", fill: "route", order: ROUTES, inset: 0.5,
       title: (d) => `${d.runs}\n${d.route} ${d.direction}: ${d.n} trip${d.n === 1 ? "" : "s"}`, tip: true}),
     Plot.ruleX([0]),
   ],
-}));
+})}${routeLegend}</div>`);
 ```
 
 ## Time-distance diagram of the trip patterns
