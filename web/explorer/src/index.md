@@ -11,6 +11,7 @@ County trips are dropped.
 ```js
 import {rows} from "./components/arrow.js";
 import {groupedCheckbox} from "./components/patternpicker.js";
+import {stationCode} from "./components/stations.js";
 const meta = await FileAttachment("data/meta.json").json();
 const trips = rows(await FileAttachment("data/trips.parquet").parquet());
 const tripStops = rows(await FileAttachment("data/trip_stops.parquet").parquet());
@@ -86,7 +87,7 @@ const patternLines = d3.groups(trips, (t) => t.pattern_id).flatMap(([pattern, ts
   const zeroStation = ts[0].direction_id === 0 ? "sj_diridon" : "san_francisco";
   const zero = stops.find((r) => r.station_id === zeroStation) ?? stops[0];
   return stops.map((r) => ({pattern, route: ts[0].route_id, direction: dirName(ts[0].direction_id), trips: ts.length,
-    station: stationName.get(r.station_id), aligned: `${stationName.get(zero.station_id)} = 0`,
+    station: stationName.get(r.station_id), code: stationCode(r.station_id), aligned: `${stationName.get(zero.station_id)} = 0`,
     min: (r.sched_s - zero.sched_s) / 60, km: kmFromSF.get(r.station_id)}));
 });
 const axisStations = d3.sort(refShape.filter((r) => servedStations.has(r.station_id)), (r) => kmFromSF.get(r.station_id));
@@ -94,7 +95,7 @@ const axisStations = d3.sort(refShape.filter((r) => servedStations.has(r.station
 
 ```js
 const patternInfo = d3.sort(d3.rollups(patternLines, (v) => v, (l) => l.pattern), ([p]) => p).map(([pattern, v]) => ({pattern,
-  route: v[0].route, label: `${pattern} · ${v[0].direction === "northbound" ? "N" : "S"} · ${v[0].station} → ${v.at(-1).station} (${v[0].trips})`}));
+  route: v[0].route, label: `${pattern} · ${v[0].direction === "northbound" ? "N" : "S"} · ${v[0].code} → ${v.at(-1).code} (${v[0].trips})`}));
 const picker = groupedCheckbox(ROUTES.filter((r) => patternInfo.some((p) => p.route === r)).map((r) => ({
   label: r, color: ROUTE_COLORS[ROUTES.indexOf(r)],
   items: patternInfo.filter((p) => p.route === r).map((p) => ({key: p.pattern, label: p.label}))})),
@@ -123,7 +124,7 @@ function patternDiagram(width, shownLines) {
 }
 ```
 
-<div style="display: grid; grid-template-columns: 330px 1fr; gap: 1rem; align-items: start;">
+<div style="display: grid; grid-template-columns: 220px 1fr; gap: 1rem; align-items: start;">
   <div>${picker}</div>
   <div>${resize((width) => patternDiagram(width, patternLines.filter((l) => shownPatterns.includes(l.pattern))))}</div>
 </div>
