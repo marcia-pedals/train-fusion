@@ -66,10 +66,12 @@ display(Plot.plot({
 
 ## Time-distance diagram of the trip patterns
 
-Each pattern once (its first trip's static times), from its first departure. Distance is
-along the line from San Francisco (positions from the longest San Francisco ↔ Tamien
-shape); dots are the pattern's served stops. Static times are whole minutes with arrival
-= departure, so dwells don't show.
+Each pattern once (its first trip's static times). Time is aligned on San Francisco for
+southbound patterns and on San Jose Diridon for northbound ones (so Tamien is negative);
+a pattern that doesn't stop at either is aligned on its first stop (p07, the Mountain View
+extras). Distance is along the line from San Francisco (positions from the longest San
+Francisco ↔ Tamien shape); dots are the pattern's served stops. Static times are whole
+minutes with arrival = departure, so dwells don't show.
 
 ```js
 // common distance axis: station positions on the shape that has the most stations and runs SF <-> Tamien
@@ -80,8 +82,12 @@ const sfS = refShape.find((r) => r.station_id === "san_francisco").s_m;
 const kmFromSF = new Map(refShape.map((r) => [r.station_id, Math.abs(r.s_m - sfS) / 1000]));
 const patternLines = d3.groups(trips, (t) => t.pattern_id).flatMap(([pattern, ts]) => {
   const stops = d3.sort(stopsOf.get(ts[0].trip_id), (r) => r.stop_idx);
+  // time zero: San Francisco southbound, San Jose Diridon northbound, else the first stop
+  const zeroStation = ts[0].direction_id === 0 ? "sj_diridon" : "san_francisco";
+  const zero = stops.find((r) => r.station_id === zeroStation) ?? stops[0];
   return stops.map((r) => ({pattern, route: ts[0].route_id, direction: dirName(ts[0].direction_id), trips: ts.length,
-    station: stationName.get(r.station_id), min: (r.sched_s - stops[0].sched_s) / 60, km: kmFromSF.get(r.station_id)}));
+    station: stationName.get(r.station_id), aligned: `${stationName.get(zero.station_id)} = 0`,
+    min: (r.sched_s - zero.sched_s) / 60, km: kmFromSF.get(r.station_id)}));
 });
 const axisStations = d3.sort(refShape.filter((r) => servedStations.has(r.station_id)), (r) => kmFromSF.get(r.station_id));
 ```
@@ -99,7 +105,8 @@ const shownPatterns = view(groupedCheckbox(ROUTES.filter((r) => patternInfo.some
 const shownLines = patternLines.filter((l) => shownPatterns.includes(l.pattern));
 display(Plot.plot({
   width, height: 640, marginRight: 130,
-  x: {label: "minutes since the pattern's first departure", grid: true, domain: [0, d3.max(patternLines, (l) => l.min)]},
+  x: {label: "minutes since San Francisco (southbound) / San Jose Diridon (northbound)", grid: true,
+      domain: d3.extent(patternLines, (l) => l.min)},
   y: {reverse: true, label: "km from San Francisco", grid: false},
   color: {domain: ROUTES, range: ROUTE_COLORS},  // the route checkboxes above are the legend
   marks: [
@@ -109,7 +116,7 @@ display(Plot.plot({
       tickFormat: (km) => stationName.get(axisStations.find((r) => kmFromSF.get(r.station_id) === km).station_id)}),
     Plot.line(shownLines, {x: "min", y: "km", z: "pattern", stroke: "route", strokeWidth: 1.5, strokeOpacity: 0.8}),
     Plot.dot(shownLines, {x: "min", y: "km", fill: "route", r: 2.5,
-      channels: {pattern: "pattern", trips: "trips", station: "station", direction: "direction"}, tip: true}),
+      channels: {pattern: "pattern", trips: "trips", station: "station", direction: "direction", aligned: "aligned"}, tip: true}),
   ],
 }));
 ```
