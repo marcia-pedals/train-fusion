@@ -5,11 +5,14 @@ export default {
   title: "train-fusion explorer",
   root: "src",
   pages: [
-    {name: "Static feed", path: "/"}
+    {name: "Static feed", path: "/", pages: [
+      {name: "Trip patterns", path: "/patterns"}
+    ]}
   ],
   theme: ["air", "near-midnight"],
   // Python loaders need the project's environment (nix shell, or $PYTHON if set)
   interpreters: {".py": [process.env.PYTHON ?? "python3"]},
   footer: "",
+  pager: false,  // no "next / previous page" boxes
   toc: false
 };
