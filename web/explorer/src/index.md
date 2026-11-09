@@ -32,7 +32,7 @@ const onLine = stations.filter((s) => shapeStations.some((r) => r.station_id ===
 ## Trips per service
 
 ```js
-// one group of rows per service (largest first, labelled by when it runs and its trip total),
+// one group of rows per service (largest first, labelled by when it runs),
 // one row per route the service has; northbound above southbound, on the same rows
 const byService = d3.sort(d3.groups(trips, (t) => t.service_id), ([, ts]) => -ts.length);
 // cut a run-days list at the last whole item (", "-separated) that fits in n characters
@@ -44,7 +44,7 @@ const shorten = (text, n = 32) => {
 const serviceRows = byService.flatMap(([sid, ts]) => {
   const routes = ROUTES.filter((r) => ts.some((t) => t.route_id === r));
   return routes.map((route, i) => ({sid, route, row: `${sid}|${route}`, first: i === 0, last: i === routes.length - 1,
-    service: `${shorten(services.get(sid) ?? sid)} · ${distinctTrips(ts)}`}));
+    service: shorten(services.get(sid) ?? sid)}));
 });
 const serviceCounts = byService.flatMap(([sid, ts]) =>
   d3.rollups(ts, distinctTrips, (t) => t.route_id, (t) => t.direction_id)
