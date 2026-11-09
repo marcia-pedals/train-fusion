@@ -58,7 +58,7 @@ function serviceChart(ts) {
   });
 }
 display(html`<div class="grid grid-cols-3" style="align-items: start; grid-auto-rows: auto;">${byService.map(([sid, ts]) => html`<div class="card">
-  <h2>${sid} · ${distinctTrips(ts)} distinct trips</h2>
+  <h2>${sid} · ${distinctTrips(ts)} trips</h2>
   <div class="small muted" style="margin-bottom: 0.4rem;">${services.get(sid) ?? ""}</div>
   ${serviceChart(ts)}</div>`)}</div>`);
 ```
