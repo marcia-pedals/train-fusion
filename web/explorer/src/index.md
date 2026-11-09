@@ -10,6 +10,7 @@ County trips are dropped.
 
 ```js
 import {rows} from "./components/arrow.js";
+import {groupedCheckbox} from "./components/patternpicker.js";
 const meta = await FileAttachment("data/meta.json").json();
 const trips = rows(await FileAttachment("data/trips.parquet").parquet());
 const tripStops = rows(await FileAttachment("data/trip_stops.parquet").parquet());
@@ -86,17 +87,21 @@ const axisStations = d3.sort(refShape.filter((r) => servedStations.has(r.station
 ```
 
 ```js
-const shownRoutes = view(Inputs.checkbox(ROUTES.filter((r) => patternLines.some((l) => l.route === r)),
-  {label: "Routes", value: ROUTES, format: (r) => html`<span style="border-bottom: 3px solid ${ROUTE_COLORS[ROUTES.indexOf(r)]}">${r}</span>`}));
+const patternInfo = d3.sort(d3.rollups(patternLines, (v) => v, (l) => l.pattern), ([p]) => p).map(([pattern, v]) => ({pattern,
+  route: v[0].route, label: `${pattern} · ${v[0].direction === "northbound" ? "N" : "S"} · ${v[0].station} → ${v.at(-1).station} · ${v[0].trips} trips`}));
+const shownPatterns = view(groupedCheckbox(ROUTES.filter((r) => patternInfo.some((p) => p.route === r)).map((r) => ({
+  label: r, color: ROUTE_COLORS[ROUTES.indexOf(r)],
+  items: patternInfo.filter((p) => p.route === r).map((p) => ({key: p.pattern, label: p.label}))})),
+  {label: "Routes and patterns"}));
 ```
 
 ```js
-const shownLines = patternLines.filter((l) => shownRoutes.includes(l.route));
+const shownLines = patternLines.filter((l) => shownPatterns.includes(l.pattern));
 display(Plot.plot({
   width, height: 640, marginRight: 130,
   x: {label: "minutes since the pattern's first departure", grid: true, domain: [0, d3.max(patternLines, (l) => l.min)]},
   y: {reverse: true, label: "km from San Francisco", grid: false},
-  color: {domain: ROUTES, range: ROUTE_COLORS},  // the checkboxes above are the legend
+  color: {domain: ROUTES, range: ROUTE_COLORS},  // the route checkboxes above are the legend
   marks: [
     Plot.ruleY(axisStations, {y: (r) => kmFromSF.get(r.station_id), stroke: "currentColor", strokeOpacity: 0.08}),
     Plot.axisY({anchor: "left", label: "km from San Francisco"}),
