@@ -2,7 +2,7 @@
 title: Static feed
 ---
 
-# Static feed ${meta.static_version}
+# Static feed
 
 ```js
 import {rows} from "./components/arrow.js";
@@ -30,6 +30,7 @@ const onLine = stations.filter((s) => shapeStations.some((r) => r.station_id ===
 ```
 
 <div class="grid grid-cols-4">
+  <div class="card"><h2>Feed version</h2><span class="big">${meta.static_version}</span></div>
   <div class="card"><h2>Trip patterns</h2><span class="big">${new Set(trips.map((t) => t.pattern_id)).size}</span></div>
 </div>
 
