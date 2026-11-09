@@ -87,7 +87,7 @@ const patternLines = d3.groups(trips, (t) => t.pattern_id).flatMap(([pattern, ts
   const zeroStation = ts[0].direction_id === 0 ? "sj_diridon" : "san_francisco";
   const zero = stops.find((r) => r.station_id === zeroStation) ?? stops[0];
   return stops.map((r) => ({pattern, route: ts[0].route_id, direction: dirName(ts[0].direction_id), trips: ts.length,
-    station: stationName.get(r.station_id), code: stationCode(r.station_id), aligned: `${stationName.get(zero.station_id)} = 0`,
+    station: stationName.get(r.station_id), code: stationCode(r.station_id),
     min: (r.sched_s - zero.sched_s) / 60, km: kmFromSF.get(r.station_id)}));
 });
 const axisStations = d3.sort(refShape.filter((r) => servedStations.has(r.station_id)), (r) => kmFromSF.get(r.station_id));
@@ -101,6 +101,7 @@ const picker = groupedCheckbox(ROUTES.filter((r) => patternInfo.some((p) => p.ro
   items: patternInfo.filter((p) => p.route === r).map((p) => ({key: p.pattern, label: p.label}))})),
   {label: "Routes and patterns (trips)", vertical: true});
 const shownPatterns = Generators.input(picker);
+const patternLabel = new Map(patternInfo.map((p) => [p.pattern, p.label]));
 ```
 
 ```js
@@ -117,8 +118,7 @@ function patternDiagram(width, shownLines) {
       Plot.axisY(axisStations.map((r) => kmFromSF.get(r.station_id)), {anchor: "right", label: null, tickSize: 0, fontSize: 10,
         tickFormat: (km) => stationName.get(axisStations.find((r) => kmFromSF.get(r.station_id) === km).station_id)}),
       Plot.line(shownLines, {x: "min", y: "km", z: "pattern", stroke: "route", strokeWidth: 1.5, strokeOpacity: 0.8}),
-      Plot.dot(shownLines, {x: "min", y: "km", fill: "route", r: 2.5,
-        channels: {pattern: "pattern", trips: "trips", station: "station", direction: "direction", aligned: "aligned"}, tip: true}),
+      Plot.dot(shownLines, {x: "min", y: "km", fill: "route", r: 2.5, title: (l) => patternLabel.get(l.pattern), tip: true}),
     ],
   });
 }
