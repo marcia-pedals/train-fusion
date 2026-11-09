@@ -29,6 +29,10 @@ const {refShape, kmFromSF} = routeKm(shapeStations);
 const onLine = stations.filter((s) => shapeStations.some((r) => r.station_id === s.station_id));  // within 100 m of a shape
 ```
 
+<div class="grid grid-cols-4">
+  <div class="card"><h2>Trip patterns</h2><span class="big">${new Set(trips.map((t) => t.pattern_id)).size}</span></div>
+</div>
+
 ## Trips per service
 
 ```js

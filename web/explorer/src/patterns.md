@@ -25,10 +25,6 @@ const servedStations = new Set(tripStops.map((r) => r.station_id));
 const {refShape, kmFromSF} = routeKm(shapeStations);
 ```
 
-<div class="grid grid-cols-4">
-  <div class="card"><h2>Trip patterns</h2><span class="big">${new Set(trips.map((t) => t.pattern_id)).size}</span></div>
-</div>
-
 ```js
 const patternLines = d3.groups(trips, (t) => t.pattern_id).flatMap(([pattern, ts]) => {
   const stops = d3.sort(stopsOf.get(ts[0].trip_id), (r) => r.stop_idx);
