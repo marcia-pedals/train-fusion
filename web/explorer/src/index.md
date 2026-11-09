@@ -19,6 +19,7 @@ const shapes = rows(await FileAttachment("data/shapes.parquet").parquet());
 const stations = rows(await FileAttachment("data/stations.parquet").parquet());
 const shapeStations = rows(await FileAttachment("data/shape_stations.parquet").parquet());
 const dateTrips = rows(await FileAttachment("data/date_trips.parquet").parquet());
+const services = new Map(rows(await FileAttachment("data/services.parquet").parquet()).map((s) => [s.service_id, s.runs]));
 ```
 
 ```js
@@ -101,12 +102,15 @@ const picker = groupedCheckbox(ROUTES.filter((r) => patternInfo.some((p) => p.ro
   items: patternInfo.filter((p) => p.route === r).map((p) => ({key: p.pattern, label: p.label}))})),
   {label: "Routes and patterns (trips)", vertical: true});
 const shownPatterns = Generators.input(picker);
+// the pattern pinned by clicking a dot on the diagram (kept while toggling the picker or resizing)
+const pinned = Mutable(null);
+const pin = (pattern) => (pinned.value = pattern);
 const patternLabel = new Map(patternInfo.map((p) => [p.pattern, p.label]));
 ```
 
 ```js
 function patternDiagram(width, shownLines) {
-  return Plot.plot({
+  const plot = Plot.plot({
     width, height: 600, marginRight: 130,
     x: {label: "minutes since San Francisco (southbound) / San Jose Diridon (northbound)", grid: true,
         domain: d3.extent(patternLines, (l) => l.min)},
@@ -121,6 +125,9 @@ function patternDiagram(width, shownLines) {
       Plot.dot(shownLines, {x: "min", y: "km", fill: "route", r: 2.5, title: (l) => patternLabel.get(l.pattern), tip: true}),
     ],
   });
+  // clicking pins the tooltip; plot.value is then the dot under it
+  plot.addEventListener("click", () => { if (plot.value) pin(plot.value.pattern); });
+  return plot;
 }
 ```
 
@@ -128,6 +135,25 @@ function patternDiagram(width, shownLines) {
   <div>${picker}</div>
   <div>${resize((width) => patternDiagram(width, patternLines.filter((l) => shownPatterns.includes(l.pattern))))}</div>
 </div>
+
+```js
+const hhmmss = (s) => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}`;
+const builtDatesOf = d3.rollup(dateTrips, (v) => v.map((r) => r.date).join(", "), (r) => r.trip_id);
+const pinnedTrips = pinned == null ? [] : d3.sort(trips.filter((t) => t.pattern_id === pinned).map((t) => {
+  const st = d3.sort(stopsOf.get(t.trip_id), (r) => r.stop_idx);
+  return {trip: t.trip_id, departs: `${hhmmss(st[0].sched_s)} ${stationCode(st[0].station_id)}`,
+    arrives: `${hhmmss(st.at(-1).sched_s)} ${stationCode(st.at(-1).station_id)}`, dep_s: st[0].sched_s,
+    service: t.service_id, runs: services.get(t.service_id) ?? "", "ran on built dates": builtDatesOf.get(t.trip_id) ?? ""};
+}), (r) => r.dep_s);
+```
+
+```js
+display(pinned == null
+  ? html`<p class="muted">Click a dot on the diagram to list that pattern's trips.</p>`
+  : html`<h3>Trips of ${patternLabel.get(pinned)}</h3>${Inputs.table(pinnedTrips, {
+      columns: ["trip", "departs", "arrives", "service", "runs", "ran on built dates"],
+      width: {trip: 60, departs: 80, arrives: 80, service: 60, "ran on built dates": 170}, rows: 20})}`);
+```
 
 ## Shapes and stations
 
