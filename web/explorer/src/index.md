@@ -100,16 +100,25 @@ const patternInfo = d3.sort(d3.rollups(patternLines, (v) => v, (l) => l.pattern)
 const picker = groupedCheckbox(ROUTES.filter((r) => patternInfo.some((p) => p.route === r)).map((r) => ({
   label: r, color: ROUTE_COLORS[ROUTES.indexOf(r)],
   items: patternInfo.filter((p) => p.route === r).map((p) => ({key: p.pattern, label: p.label}))})),
-  {label: "Routes and patterns (trips)", vertical: true});
+  {label: "Routes and patterns (trips)", hint: "☑ show · click a name to list its trips", vertical: true,
+   onSelect: (key) => { picker.show(key); pinned.value = pinned.value === key ? null : key; }});
 const shownPatterns = Generators.input(picker);
-// the pattern pinned by clicking a dot on the diagram (kept while toggling the picker or resizing)
+// the selected pattern: picked by clicking its name in the picker (again to clear) or a dot on
+// the diagram; kept while toggling the picker or resizing
 const pinned = Mutable(null);
 const pin = (pattern) => (pinned.value = pattern);
 const patternLabel = new Map(patternInfo.map((p) => [p.pattern, p.label]));
 ```
 
 ```js
-function patternDiagram(width, shownLines) {
+picker.setSelected(pinned);  // keep the picker's highlight in step with the selection
+```
+
+```js
+function patternDiagram(width, shownLines, selected) {
+  // with a selection, every pattern is dimmed and the selected one is drawn again on top, thicker
+  const dim = selected == null ? 0.8 : 0.2;
+  const sel = shownLines.filter((l) => l.pattern === selected);
   const plot = Plot.plot({
     width, height: 600, marginRight: 130,
     x: {label: "minutes since San Francisco (southbound) / San Jose Diridon (northbound)", grid: true,
@@ -121,8 +130,10 @@ function patternDiagram(width, shownLines) {
       Plot.axisY({anchor: "left", label: "km from San Francisco"}),
       Plot.axisY(axisStations.map((r) => kmFromSF.get(r.station_id)), {anchor: "right", label: null, tickSize: 0, fontSize: 10,
         tickFormat: (km) => stationName.get(axisStations.find((r) => kmFromSF.get(r.station_id) === km).station_id)}),
-      Plot.line(shownLines, {x: "min", y: "km", z: "pattern", stroke: "route", strokeWidth: 1.5, strokeOpacity: 0.8}),
-      Plot.dot(shownLines, {x: "min", y: "km", fill: "route", r: 2.5, title: (l) => `${l.route}\n${patternLabel.get(l.pattern)}`, tip: true}),
+      Plot.line(shownLines, {x: "min", y: "km", z: "pattern", stroke: "route", strokeWidth: 1.5, strokeOpacity: dim}),
+      Plot.line(sel, {x: "min", y: "km", stroke: "route", strokeWidth: 3}),
+      Plot.dot(sel, {x: "min", y: "km", fill: "route", r: 3.5}),
+      Plot.dot(shownLines, {x: "min", y: "km", fill: "route", fillOpacity: selected == null ? 1 : 0.35, r: 2.5, title: (l) => `${l.route}\n${patternLabel.get(l.pattern)}`, tip: true}),
     ],
   });
   // clicking pins the tooltip; plot.value is then the dot under it
@@ -133,7 +144,7 @@ function patternDiagram(width, shownLines) {
 
 <div style="display: grid; grid-template-columns: 220px 1fr; gap: 1rem; align-items: start;">
   <div>${picker}</div>
-  <div>${resize((width) => patternDiagram(width, patternLines.filter((l) => shownPatterns.includes(l.pattern))))}</div>
+  <div>${resize((width) => patternDiagram(width, patternLines.filter((l) => shownPatterns.includes(l.pattern)), pinned))}</div>
 </div>
 
 ```js
@@ -149,7 +160,7 @@ const pinnedTrips = pinned == null ? [] : d3.sort(trips.filter((t) => t.pattern_
 
 ```js
 display(pinned == null
-  ? html`<p class="muted">Click a dot on the diagram to list that pattern's trips.</p>`
+  ? html`<p class="muted">Click a pattern's name on the left, or a dot on the diagram, to list its trips.</p>`
   : html`<h3>Trips of ${patternLabel.get(pinned)}</h3>${Inputs.table(pinnedTrips, {
       columns: ["trip", "departs", "arrives", "service", "runs", "ran on built dates"],
       width: {trip: 60, departs: 80, arrives: 80, service: 60, "ran on built dates": 170}, rows: 20})}`);
