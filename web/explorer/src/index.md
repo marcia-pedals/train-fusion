@@ -39,28 +39,23 @@ const ROUTE_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"];
   <div class="card"><h2>Shapes</h2><span class="big">${new Set(shapes.map((s) => s.shape_id)).size}</span><br><span class="small muted">${shapes.length} points</span></div>
 </div>
 
-## Trips per built date
+## Distinct trips per route and direction
 
-The trips that run on each built date (by the static feed's calendar), by route and
-direction.
+Over the whole feed (all service days); trips with the same first-departure and
+last-arrival times count once.
 
 ```js
-const routeOf = new Map(trips.map((t) => [t.trip_id, t]));
-const dayName = (d) => new Date(`${d}T12:00:00`).toLocaleDateString("en-US", {weekday: "short"});
-const perDate = d3.rollups(dateTrips, (v) => v.length, (r) => r.date, (r) => routeOf.get(r.trip_id).route_id,
-    (r) => routeOf.get(r.trip_id).direction_id)
-  .flatMap(([date, rs]) => rs.flatMap(([route, ds]) => ds.map(([dir, n]) => ({date: `${date} ${dayName(date)}`, route, direction: dirName(dir), n}))));
-const totals = d3.rollups(perDate, (v) => d3.sum(v, (r) => r.n), (r) => r.date, (r) => r.direction)
-  .flatMap(([date, ds]) => ds.map(([direction, n]) => ({date, direction, n})));
+const perRoute = d3.rollups(trips, distinctTrips, (t) => t.route_id, (t) => t.direction_id)
+  .flatMap(([route, ds]) => ds.map(([dir, n]) => ({route, direction: dirName(dir), n})));
 display(Plot.plot({
-  width: Math.min(width, 720), height: 70 * new Set(perDate.map((r) => r.date)).size + 80, marginLeft: 110, marginRight: 90,
-  x: {label: "trips", grid: true},
-  y: {label: null},
+  width: Math.min(width, 720), height: 220, marginLeft: 100, marginRight: 90,
+  x: {label: "distinct trips", grid: true},
+  y: {domain: ROUTES, label: null},
   fy: {domain: ["northbound", "southbound"], label: null},
-  color: {domain: ROUTES, range: ROUTE_COLORS, legend: true},
+  color: {domain: ROUTES, range: ROUTE_COLORS},
   marks: [
-    Plot.barX(perDate, {y: "date", x: "n", fy: "direction", fill: "route", inset: 0.5, tip: true}),
-    Plot.text(totals, {y: "date", x: "n", fy: "direction", text: "n", dx: 4, textAnchor: "start", fill: "currentColor"}),
+    Plot.barX(perRoute, {y: "route", x: "n", fy: "direction", fill: "route", inset: 0.5, tip: true}),
+    Plot.text(perRoute, {y: "route", x: "n", fy: "direction", text: "n", dx: 4, textAnchor: "start", fill: "currentColor"}),
     Plot.ruleX([0]),
   ],
 }));

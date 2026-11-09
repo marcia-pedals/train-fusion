@@ -63,8 +63,8 @@ whatever `just build` last wrote. One parameterized data loader,
 `train_fusion.explorer_data.TABLES` (plus `meta.json.py`); adding a table for a page is one
 entry there. Pages:
 
-- **Static feed**: what the static stage made of the GTFS feed (counts, the trips running
-  on each built date by route and direction, a time-distance diagram of the trip patterns
+- **Static feed**: what the static stage made of the GTFS feed (counts, distinct trips
+  per route and direction, a time-distance diagram of the trip patterns
   (select a pattern by its name in the picker or a dot on the diagram to list its trips and
   when each runs), a map of shapes and stations,
   the trip patterns).
