@@ -43,9 +43,11 @@ const serviceRows = (ts) => d3.rollups(ts, distinctTrips, (t) => t.route_id, (t)
   .flatMap(([route, ds]) => ds.map(([dir, n]) => ({route, row: `${route} ${dir === 0 ? "N" : "S"}`, dir, n})));
 // one scale for every panel, so bar lengths compare across services
 const maxServiceCount = d3.max(byService, ([, ts]) => d3.max(serviceRows(ts), (r) => r.n));
+// the same rows in every panel (every route in the feed, both directions), so panels line up
+const serviceRowOrder = ROUTES.filter((r) => trips.some((t) => t.route_id === r)).flatMap((r) => [`${r} N`, `${r} S`]);
 function serviceChart(ts) {
   const rows = serviceRows(ts);
-  const order = d3.sort(rows, (r) => ROUTES.indexOf(r.route), (r) => r.dir).map((r) => r.row);
+  const order = serviceRowOrder;
   return Plot.plot({
     width: 300, height: 30 + 20 * order.length, marginLeft: 120, marginRight: 30,
     x: {axis: null, domain: [0, maxServiceCount]}, y: {domain: order, label: null},
@@ -57,8 +59,8 @@ function serviceChart(ts) {
     ],
   });
 }
-display(html`<div class="grid grid-cols-3" style="align-items: start; grid-auto-rows: auto;">${byService.map(([sid, ts]) => html`<div class="card">
-  <h2>${services.get(sid) ?? sid}</h2>
+display(html`<div class="grid grid-cols-3">${byService.map(([sid, ts]) => html`<div class="card">
+  <h2 style="min-height: 3.9em;">${services.get(sid) ?? sid}</h2>
   <div class="small muted" style="margin-bottom: 0.4rem;">${distinctTrips(ts)} trip${distinctTrips(ts) === 1 ? "" : "s"}</div>
   ${serviceChart(ts)}</div>`)}</div>`);
 ```
