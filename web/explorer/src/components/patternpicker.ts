@@ -5,9 +5,11 @@
 export interface PickerItem { key: string; label: string }
 export interface PickerGroup { label: string; color?: string; items: PickerItem[] }
 
-export function groupedCheckbox(groups: PickerGroup[], {label = ""}: {label?: string} = {}) {
+export function groupedCheckbox(groups: PickerGroup[], {label = "", vertical = false}: {label?: string; vertical?: boolean} = {}) {
   const root = document.createElement("form");
-  root.style.cssText = "display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; font: 13px var(--sans-serif); margin: 0.5rem 0 1rem;";
+  root.style.cssText = vertical
+    ? "display: flex; flex-direction: column; gap: 0.6rem; font: 12px var(--sans-serif); margin: 0;"
+    : "display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; font: 13px var(--sans-serif); margin: 0.5rem 0 1rem;";
   if (label) {
     const l = document.createElement("div");
     l.textContent = label;

@@ -94,32 +94,39 @@ const axisStations = d3.sort(refShape.filter((r) => servedStations.has(r.station
 
 ```js
 const patternInfo = d3.sort(d3.rollups(patternLines, (v) => v, (l) => l.pattern), ([p]) => p).map(([pattern, v]) => ({pattern,
-  route: v[0].route, label: `${pattern} · ${v[0].direction === "northbound" ? "N" : "S"} · ${v[0].station} → ${v.at(-1).station} · ${v[0].trips} trips`}));
-const shownPatterns = view(groupedCheckbox(ROUTES.filter((r) => patternInfo.some((p) => p.route === r)).map((r) => ({
+  route: v[0].route, label: `${pattern} · ${v[0].direction === "northbound" ? "N" : "S"} · ${v[0].station} → ${v.at(-1).station} (${v[0].trips})`}));
+const picker = groupedCheckbox(ROUTES.filter((r) => patternInfo.some((p) => p.route === r)).map((r) => ({
   label: r, color: ROUTE_COLORS[ROUTES.indexOf(r)],
   items: patternInfo.filter((p) => p.route === r).map((p) => ({key: p.pattern, label: p.label}))})),
-  {label: "Routes and patterns"}));
+  {label: "Routes and patterns (trips)", vertical: true});
+const shownPatterns = Generators.input(picker);
 ```
 
 ```js
-const shownLines = patternLines.filter((l) => shownPatterns.includes(l.pattern));
-display(Plot.plot({
-  width, height: 640, marginRight: 130,
-  x: {label: "minutes since San Francisco (southbound) / San Jose Diridon (northbound)", grid: true,
-      domain: d3.extent(patternLines, (l) => l.min)},
-  y: {reverse: true, label: "km from San Francisco", grid: false},
-  color: {domain: ROUTES, range: ROUTE_COLORS},  // the route checkboxes above are the legend
-  marks: [
-    Plot.ruleY(axisStations, {y: (r) => kmFromSF.get(r.station_id), stroke: "currentColor", strokeOpacity: 0.08}),
-    Plot.axisY({anchor: "left", label: "km from San Francisco"}),
-    Plot.axisY(axisStations.map((r) => kmFromSF.get(r.station_id)), {anchor: "right", label: null, tickSize: 0, fontSize: 10,
-      tickFormat: (km) => stationName.get(axisStations.find((r) => kmFromSF.get(r.station_id) === km).station_id)}),
-    Plot.line(shownLines, {x: "min", y: "km", z: "pattern", stroke: "route", strokeWidth: 1.5, strokeOpacity: 0.8}),
-    Plot.dot(shownLines, {x: "min", y: "km", fill: "route", r: 2.5,
-      channels: {pattern: "pattern", trips: "trips", station: "station", direction: "direction", aligned: "aligned"}, tip: true}),
-  ],
-}));
+function patternDiagram(width, shownLines) {
+  return Plot.plot({
+    width, height: 600, marginRight: 130,
+    x: {label: "minutes since San Francisco (southbound) / San Jose Diridon (northbound)", grid: true,
+        domain: d3.extent(patternLines, (l) => l.min)},
+    y: {reverse: true, label: "km from San Francisco", grid: false},
+    color: {domain: ROUTES, range: ROUTE_COLORS},  // the route checkboxes on the left are the legend
+    marks: [
+      Plot.ruleY(axisStations, {y: (r) => kmFromSF.get(r.station_id), stroke: "currentColor", strokeOpacity: 0.08}),
+      Plot.axisY({anchor: "left", label: "km from San Francisco"}),
+      Plot.axisY(axisStations.map((r) => kmFromSF.get(r.station_id)), {anchor: "right", label: null, tickSize: 0, fontSize: 10,
+        tickFormat: (km) => stationName.get(axisStations.find((r) => kmFromSF.get(r.station_id) === km).station_id)}),
+      Plot.line(shownLines, {x: "min", y: "km", z: "pattern", stroke: "route", strokeWidth: 1.5, strokeOpacity: 0.8}),
+      Plot.dot(shownLines, {x: "min", y: "km", fill: "route", r: 2.5,
+        channels: {pattern: "pattern", trips: "trips", station: "station", direction: "direction", aligned: "aligned"}, tip: true}),
+    ],
+  });
+}
 ```
+
+<div style="display: grid; grid-template-columns: 330px 1fr; gap: 1rem; align-items: start;">
+  <div>${picker}</div>
+  <div>${resize((width) => patternDiagram(width, patternLines.filter((l) => shownPatterns.includes(l.pattern))))}</div>
+</div>
 
 ## Shapes and stations
 
