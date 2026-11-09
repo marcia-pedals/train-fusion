@@ -87,7 +87,7 @@ const patternLines = d3.groups(trips, (t) => t.pattern_id).flatMap(([pattern, ts
   // time zero: San Francisco southbound, San Jose Diridon northbound, else the first stop
   const zeroStation = ts[0].direction_id === 0 ? "sj_diridon" : "san_francisco";
   const zero = stops.find((r) => r.station_id === zeroStation) ?? stops[0];
-  return stops.map((r) => ({pattern, route: ts[0].route_id, direction: dirName(ts[0].direction_id), trips: ts.length,
+  return stops.map((r) => ({pattern, route: ts[0].route_id, direction: dirName(ts[0].direction_id), trips: distinctTrips(ts),
     station: stationName.get(r.station_id), code: stationCode(r.station_id),
     min: (r.sched_s - zero.sched_s) / 60, km: kmFromSF.get(r.station_id)}));
 });
@@ -100,7 +100,7 @@ const patternInfo = d3.sort(d3.rollups(patternLines, (v) => v, (l) => l.pattern)
 const picker = groupedCheckbox(ROUTES.filter((r) => patternInfo.some((p) => p.route === r)).map((r) => ({
   label: r, color: ROUTE_COLORS[ROUTES.indexOf(r)],
   items: patternInfo.filter((p) => p.route === r).map((p) => ({key: p.pattern, label: p.label}))})),
-  {label: "Routes and patterns (trips)", hint: "☑ show · click a name to list its trips", vertical: true,
+  {label: "Routes and patterns (distinct trips)", hint: "☑ show · click a name to list its trips", vertical: true,
    onSelect: (key) => { picker.show(key); pinned.value = pinned.value === key ? null : key; }});
 const shownPatterns = Generators.input(picker);
 // the selected pattern: picked by clicking its name in the picker or a dot on the diagram
@@ -119,8 +119,7 @@ function patternDiagram(width, shownLines, selected) {
   // with a selection, every pattern is dimmed and the selected one is drawn again on top, thicker
   const dim = selected == null ? 0.8 : 0.2;
   const sel = shownLines.filter((l) => l.pattern === selected);
-  const signed = (m) => (m > 0 ? `+${m}` : `${m}`);
-  const tipText = (l) => `${l.route}\n${patternLabel.get(l.pattern)}\n${l.station} / ${signed(Math.round(l.min))} min / ${Math.round(l.km)} km`;
+  const tipText = (l) => `${l.route}\n${patternLabel.get(l.pattern)}\n${l.station} / ${Math.round(l.min)} min / ${Math.round(l.km)} km`;
   const plot = Plot.plot({
     width, height: 600, marginRight: 130,
     x: {label: "minutes since San Francisco (southbound) / San Jose Diridon (northbound)", grid: true,
@@ -193,18 +192,24 @@ display(Plot.plot({
 ## Trip patterns
 
 Trips with the same direction, served stations and static times relative to their first
-departure. Trip counts are over the whole feed, all service days (e.g. the weekday Locals
-appear twice: the regular weekday service and a modified one for four special days).
+departure. Counts are distinct trips over the whole feed: trips with the same departure
+and arrival times count once (e.g. the weekday Locals are listed twice in the feed, as the
+regular weekday service and a modified one for four special days).
 
 ```js
 const stopsOf = d3.group(tripStops, (r) => r.trip_id);
+// trips with the same first-departure and last-arrival times count once
+const distinctTrips = (ts) => new Set(ts.map((t) => {
+  const st = stopsOf.get(t.trip_id);
+  return `${d3.min(st, (r) => r.sched_s)}-${d3.max(st, (r) => r.sched_s)}`;
+})).size;
 const patterns = d3.rollups(trips, (v) => {
   const first = d3.sort(stopsOf.get(v[0].trip_id), (r) => r.stop_idx);
   const deps = v.map((t) => d3.min(stopsOf.get(t.trip_id), (r) => r.sched_s));
   const hhmm = (s) => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}`;
   return {route: v[0].route_id, direction: dirName(v[0].direction_id),
     from: stationName.get(first[0].station_id), to: stationName.get(first.at(-1).station_id), stops: first.length,
-    trips: v.length, "first departure": hhmm(d3.min(deps)), "last departure": hhmm(d3.max(deps)),
+    "distinct trips": distinctTrips(v), "first departure": hhmm(d3.min(deps)), "last departure": hhmm(d3.max(deps)),
     "run time (min)": Math.round((first.at(-1).sched_s - first[0].sched_s) / 60)};
 }, (t) => t.pattern_id).map(([pattern, r]) => ({pattern, ...r}));
 display(Inputs.table(d3.sort(patterns, (p) => p.pattern), {rows: 20}));
