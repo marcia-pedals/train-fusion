@@ -32,34 +32,35 @@ const dirName = (d) => (d === 0 ? "northbound" : "southbound");
 // routes in a fixed order, each with a fixed colour (validated categorical palette, slots 1-4)
 const ROUTES = ["Local Weekday", "Local Weekend", "Limited", "Express"];
 const ROUTE_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"];
-// for "<route> (special)" in the per-route chart: the palette's next slots (5-8), in route order
-const SPECIAL_COLORS = ["#e87ba4", "#008300", "#6250d6", "#e34948"];
 ```
 
-## Distinct trips per route and direction
+## Trips per service
 
 ```js
-// trips whose id starts with 9 (e.g. 901-905, the Mountain View event extras) count under a
-// synthetic "<route> (special)" route
-const SPECIAL_ROUTES = ROUTES.map((r) => `${r} (special)`);
-const routeOfTrip = (t) => (t.trip_id.startsWith("9") ? `${t.route_id} (special)` : t.route_id);
-const perRoute = d3.rollups(trips, distinctTrips, routeOfTrip, (t) => t.direction_id)
-  .flatMap(([route, ds]) => ds.map(([dir, n]) => ({route, direction: dirName(dir), n})));
-// each route, then its special version if there is one; special routes get the next palette slots
-const chartRoutes = ROUTES.flatMap((r) => [r, `${r} (special)`]).filter((r) => perRoute.some((p) => p.route === r));
-const chartColors = chartRoutes.map((r) => ROUTES.includes(r) ? ROUTE_COLORS[ROUTES.indexOf(r)] : SPECIAL_COLORS[SPECIAL_ROUTES.indexOf(r)]);
-display(Plot.plot({
-  width: Math.min(width, 720), height: 60 + 22 * chartRoutes.length * 2, marginLeft: 170, marginRight: 90,
-  x: {label: "distinct trips", grid: true},
-  y: {domain: chartRoutes, label: null},
-  fy: {domain: ["northbound", "southbound"], label: null},
-  color: {domain: chartRoutes, range: chartColors},
-  marks: [
-    Plot.barX(perRoute, {y: "route", x: "n", fy: "direction", fill: "route", inset: 0.5, tip: true}),
-    Plot.text(perRoute, {y: "route", x: "n", fy: "direction", text: "n", dx: 4, textAnchor: "start", fill: "currentColor"}),
-    Plot.ruleX([0]),
-  ],
-}));
+// one panel per service, largest first: when it runs, and its trips by route and direction
+const byService = d3.sort(d3.groups(trips, (t) => t.service_id), ([, ts]) => -ts.length);
+const serviceRows = (ts) => d3.rollups(ts, distinctTrips, (t) => t.route_id, (t) => t.direction_id)
+  .flatMap(([route, ds]) => ds.map(([dir, n]) => ({route, row: `${route} ${dir === 0 ? "N" : "S"}`, dir, n})));
+// one scale for every panel, so bar lengths compare across services
+const maxServiceCount = d3.max(byService, ([, ts]) => d3.max(serviceRows(ts), (r) => r.n));
+function serviceChart(ts) {
+  const rows = serviceRows(ts);
+  const order = d3.sort(rows, (r) => ROUTES.indexOf(r.route), (r) => r.dir).map((r) => r.row);
+  return Plot.plot({
+    width: 300, height: 30 + 20 * order.length, marginLeft: 120, marginRight: 30,
+    x: {axis: null, domain: [0, maxServiceCount]}, y: {domain: order, label: null},
+    color: {domain: ROUTES, range: ROUTE_COLORS},
+    marks: [
+      Plot.barX(rows, {y: "row", x: "n", fill: "route", inset: 0.5}),
+      Plot.text(rows, {y: "row", x: "n", text: "n", dx: 4, textAnchor: "start", fill: "currentColor"}),
+      Plot.ruleX([0]),
+    ],
+  });
+}
+display(html`<div class="grid grid-cols-3" style="align-items: start; grid-auto-rows: auto;">${byService.map(([sid, ts]) => html`<div class="card">
+  <h2>${sid} · ${distinctTrips(ts)} distinct trips</h2>
+  <div class="small muted" style="margin-bottom: 0.4rem;">${services.get(sid) ?? ""}</div>
+  ${serviceChart(ts)}</div>`)}</div>`);
 ```
 
 ## Time-distance diagram of the trip patterns
