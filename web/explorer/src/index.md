@@ -122,7 +122,7 @@ function patternDiagram(width, shownLines) {
       Plot.axisY(axisStations.map((r) => kmFromSF.get(r.station_id)), {anchor: "right", label: null, tickSize: 0, fontSize: 10,
         tickFormat: (km) => stationName.get(axisStations.find((r) => kmFromSF.get(r.station_id) === km).station_id)}),
       Plot.line(shownLines, {x: "min", y: "km", z: "pattern", stroke: "route", strokeWidth: 1.5, strokeOpacity: 0.8}),
-      Plot.dot(shownLines, {x: "min", y: "km", fill: "route", r: 2.5, title: (l) => patternLabel.get(l.pattern), tip: true}),
+      Plot.dot(shownLines, {x: "min", y: "km", fill: "route", r: 2.5, title: (l) => `${l.route}\n${patternLabel.get(l.pattern)}`, tip: true}),
     ],
   });
   // clicking pins the tooltip; plot.value is then the dot under it
