@@ -24,6 +24,12 @@ const services = new Map(rows(await FileAttachment("data/services.parquet").parq
 
 ```js
 const stationName = new Map(stations.map((s) => [s.station_id, s.name.replace(/ Caltrain( Station)?$/, "").replace(/ Station$/, "")]));
+const stopsOf = d3.group(tripStops, (r) => r.trip_id);
+// trips with the same first-departure and last-arrival times count once
+const distinctTrips = (ts) => new Set(ts.map((t) => {
+  const st = stopsOf.get(t.trip_id);
+  return `${d3.min(st, (r) => r.sched_s)}-${d3.max(st, (r) => r.sched_s)}`;
+})).size;
 const servedStations = new Set(tripStops.map((r) => r.station_id));
 const onLine = stations.filter((s) => shapeStations.some((r) => r.station_id === s.station_id));  // within 100 m of a shape
 const dirName = (d) => (d === 0 ? "northbound" : "southbound");
@@ -182,30 +188,4 @@ display(Plot.plot({
     Plot.text(onLine, {x: "lon", y: "lat", text: (s) => stationName.get(s.station_id), dx: 8, textAnchor: "start", fontSize: 10, fill: "currentColor"}),
   ],
 }));
-```
-
-## Trip patterns
-
-Trips with the same direction, served stations and static times relative to their first
-departure. Counts are distinct trips over the whole feed: trips with the same departure
-and arrival times count once (e.g. the weekday Locals are listed twice in the feed, as the
-regular weekday service and a modified one for four special days).
-
-```js
-const stopsOf = d3.group(tripStops, (r) => r.trip_id);
-// trips with the same first-departure and last-arrival times count once
-const distinctTrips = (ts) => new Set(ts.map((t) => {
-  const st = stopsOf.get(t.trip_id);
-  return `${d3.min(st, (r) => r.sched_s)}-${d3.max(st, (r) => r.sched_s)}`;
-})).size;
-const patterns = d3.rollups(trips, (v) => {
-  const first = d3.sort(stopsOf.get(v[0].trip_id), (r) => r.stop_idx);
-  const deps = v.map((t) => d3.min(stopsOf.get(t.trip_id), (r) => r.sched_s));
-  const hhmm = (s) => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}`;
-  return {route: v[0].route_id, direction: dirName(v[0].direction_id),
-    from: stationName.get(first[0].station_id), to: stationName.get(first.at(-1).station_id), stops: first.length,
-    "distinct trips": distinctTrips(v), "first departure": hhmm(d3.min(deps)), "last departure": hhmm(d3.max(deps)),
-    "run time (min)": Math.round((first.at(-1).sched_s - first[0].sched_s) / 60)};
-}, (t) => t.pattern_id).map(([pattern, r]) => ({pattern, ...r}));
-display(Inputs.table(d3.sort(patterns, (p) => p.pattern), {rows: 20}));
 ```
