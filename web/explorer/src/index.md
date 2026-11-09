@@ -2,11 +2,7 @@
 title: Static feed
 ---
 
-# Static feed
-
-What the `static` stage made of Caltrain's static GTFS feed **${meta.static_version}**
-(the one used by the newest built date; built dates: ${meta.dates.join(", ")}). South
-County trips are dropped.
+# Static feed ${meta.static_version}
 
 ```js
 import {rows} from "./components/arrow.js";
@@ -49,10 +45,6 @@ const SPECIAL_COLORS = ["#e87ba4", "#008300", "#6250d6", "#e34948"];
 
 ## Distinct trips per route and direction
 
-Over the whole feed (all service days); trips with the same first-departure and
-last-arrival times count once. Trips whose id starts with 9 (one-off event extras) are
-counted under a separate "(special)" route.
-
 ```js
 // trips whose id starts with 9 (e.g. 901-905, the Mountain View event extras) count under a
 // synthetic "<route> (special)" route
@@ -78,13 +70,6 @@ display(Plot.plot({
 ```
 
 ## Time-distance diagram of the trip patterns
-
-Each pattern once (its first trip's static times). Time is aligned on San Francisco for
-southbound patterns and on San Jose Diridon for northbound ones (so Tamien is negative);
-a pattern that doesn't stop at either is aligned on its first stop (p07, the Mountain View
-extras). Distance is along the line from San Francisco (positions from the longest San
-Francisco ↔ Tamien shape); dots are the pattern's served stops. Static times are whole
-minutes with arrival = departure, so dwells don't show.
 
 ```js
 // common distance axis: station positions on the shape that has the most stations and runs SF <-> Tamien
@@ -181,9 +166,6 @@ display(pinned == null
 ```
 
 ## Shapes and stations
-
-Every shape's polyline, and the stations within 100 m of a shape (filled: served by some
-trip; hollow: on the line but not served).
 
 ```js
 display(Plot.plot({
