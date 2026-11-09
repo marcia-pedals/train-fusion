@@ -37,32 +37,31 @@ const ROUTE_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"];
 ## Trips per service
 
 ```js
-// one panel per service, largest first: when it runs, and its trips by route and direction
+// one line per service (largest first), labelled by when it runs; a bar per direction, split by route
 const byService = d3.sort(d3.groups(trips, (t) => t.service_id), ([, ts]) => -ts.length);
-const serviceRows = (ts) => d3.rollups(ts, distinctTrips, (t) => t.route_id, (t) => t.direction_id)
-  .flatMap(([route, ds]) => ds.map(([dir, n]) => ({route, row: `${route} ${dir === 0 ? "N" : "S"}`, dir, n})));
-// one scale for every panel, so bar lengths compare across services
-const maxServiceCount = d3.max(byService, ([, ts]) => d3.max(serviceRows(ts), (r) => r.n));
-// the same rows in every panel (every route in the feed, both directions), so panels line up
-const serviceRowOrder = ROUTES.filter((r) => trips.some((t) => t.route_id === r)).flatMap((r) => [`${r} N`, `${r} S`]);
-function serviceChart(ts) {
-  const rows = serviceRows(ts);
-  const order = serviceRowOrder;
-  return Plot.plot({
-    width: 300, height: 30 + 20 * order.length, marginLeft: 120, marginRight: 30,
-    x: {axis: null, domain: [0, maxServiceCount]}, y: {domain: order, label: null},
-    color: {domain: ROUTES, range: ROUTE_COLORS},
-    marks: [
-      Plot.barX(rows, {y: "row", x: "n", fill: "route", inset: 0.5}),
-      Plot.text(rows, {y: "row", x: "n", text: "n", dx: 4, textAnchor: "start", fill: "currentColor"}),
-      Plot.ruleX([0]),
-    ],
-  });
-}
-display(html`<div class="grid grid-cols-3">${byService.map(([sid, ts]) => html`<div class="card">
-  <h2 style="min-height: 3.9em;">${services.get(sid) ?? sid}</h2>
-  <div class="small muted" style="margin-bottom: 0.4rem;">${distinctTrips(ts)} trip${distinctTrips(ts) === 1 ? "" : "s"}</div>
-  ${serviceChart(ts)}</div>`)}</div>`);
+// cut a run-days list at the last whole item (", "-separated) that fits in n characters
+const shorten = (text, n = 32) => {
+  if (text.length <= n) return text;
+  const cut = text.lastIndexOf(", ", n - 2);
+  return `${cut > 0 ? text.slice(0, cut) : text.slice(0, n - 1)}, …`;
+};
+const serviceLabel = new Map(byService.map(([sid, ts]) => [sid, `${shorten(services.get(sid) ?? sid)} · ${distinctTrips(ts)}`]));
+const serviceCounts = byService.flatMap(([sid, ts]) =>
+  d3.rollups(ts, distinctTrips, (t) => t.route_id, (t) => t.direction_id)
+    .flatMap(([route, ds]) => ds.map(([dir, n]) => ({service: serviceLabel.get(sid), runs: services.get(sid) ?? sid,
+      route, direction: dirName(dir), n}))));
+display(Plot.plot({
+  width: Math.min(width, 1000), height: 50 + 24 * byService.length, marginLeft: 250,
+  x: {label: "trips", grid: true},
+  y: {domain: byService.map(([sid]) => serviceLabel.get(sid)), label: null},
+  fx: {domain: ["northbound", "southbound"], label: null},
+  color: {domain: ROUTES, range: ROUTE_COLORS, legend: true},
+  marks: [
+    Plot.barX(serviceCounts, {x: "n", y: "service", fx: "direction", fill: "route", order: ROUTES, inset: 0.5,
+      title: (d) => `${d.runs}\n${d.route} ${d.direction}: ${d.n} trip${d.n === 1 ? "" : "s"}`, tip: true}),
+    Plot.ruleX([0]),
+  ],
+}));
 ```
 
 ## Time-distance diagram of the trip patterns
