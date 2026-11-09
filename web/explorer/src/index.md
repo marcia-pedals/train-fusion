@@ -36,13 +36,6 @@ const ROUTE_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"];
 const SPECIAL_COLORS = ["#e87ba4", "#008300", "#6250d6", "#e34948"];
 ```
 
-<div class="grid grid-cols-4">
-  <div class="card"><h2>Trips in the feed</h2><span class="big">${trips.length}</span><br><span class="small muted">all service days; ${tripStops.length} served stops</span></div>
-  <div class="card"><h2>Trip patterns</h2><span class="big">${new Set(trips.map((t) => t.pattern_id)).size}</span><br><span class="small muted">same stations and relative static times</span></div>
-  <div class="card"><h2>Stations served</h2><span class="big">${servedStations.size}</span><br><span class="small muted">of ${stations.length} in the feed</span></div>
-  <div class="card"><h2>Shapes</h2><span class="big">${new Set(shapes.map((s) => s.shape_id)).size}</span><br><span class="small muted">${shapes.length} points</span></div>
-</div>
-
 ## Distinct trips per route and direction
 
 ```js
@@ -96,7 +89,7 @@ const patternInfo = d3.sort(d3.rollups(patternLines, (v) => v, (l) => l.pattern)
 const picker = groupedCheckbox(ROUTES.filter((r) => patternInfo.some((p) => p.route === r)).map((r) => ({
   label: r, color: ROUTE_COLORS[ROUTES.indexOf(r)],
   items: patternInfo.filter((p) => p.route === r).map((p) => ({key: p.pattern, label: p.label}))})),
-  {label: "Routes and patterns (distinct trips)", hint: "☑ show · click a name to list its trips", vertical: true,
+  {label: "Routes and patterns (distinct trips)", vertical: true,
    onSelect: (key) => { picker.show(key); pinned.value = pinned.value === key ? null : key; }});
 const shownPatterns = Generators.input(picker);
 // the selected pattern: picked by clicking its name in the picker or a dot on the diagram
