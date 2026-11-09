@@ -119,6 +119,8 @@ function patternDiagram(width, shownLines, selected) {
   // with a selection, every pattern is dimmed and the selected one is drawn again on top, thicker
   const dim = selected == null ? 0.8 : 0.2;
   const sel = shownLines.filter((l) => l.pattern === selected);
+  const signed = (m) => (m > 0 ? `+${m}` : `${m}`);
+  const tipText = (l) => `${l.route}\n${patternLabel.get(l.pattern)}\n${l.station} / ${signed(Math.round(l.min))} min / ${Math.round(l.km)} km`;
   const plot = Plot.plot({
     width, height: 600, marginRight: 130,
     x: {label: "minutes since San Francisco (southbound) / San Jose Diridon (northbound)", grid: true,
@@ -132,8 +134,10 @@ function patternDiagram(width, shownLines, selected) {
         tickFormat: (km) => stationName.get(axisStations.find((r) => kmFromSF.get(r.station_id) === km).station_id)}),
       Plot.line(shownLines, {x: "min", y: "km", z: "pattern", stroke: "route", strokeWidth: 1.5, strokeOpacity: dim}),
       Plot.line(sel, {x: "min", y: "km", stroke: "route", strokeWidth: 3}),
-      Plot.dot(sel, {x: "min", y: "km", fill: "route", r: 3.5}),
-      Plot.dot(shownLines, {x: "min", y: "km", fill: "route", fillOpacity: selected == null ? 1 : 0.35, r: 2.5, title: (l) => `${l.route}\n${patternLabel.get(l.pattern)}`, tip: true}),
+      // tooltips only on the dots you can pick: all of them, or only the selected pattern's
+      Plot.dot(shownLines, {x: "min", y: "km", fill: "route", fillOpacity: selected == null ? 1 : 0.35, r: 2.5,
+        ...(selected == null ? {title: tipText, tip: true} : {})}),
+      Plot.dot(sel, {x: "min", y: "km", fill: "route", r: 3.5, ...(selected == null ? {} : {title: tipText, tip: true})}),
     ],
   });
   // clicking a dot selects its pattern, or clears the selection if it's already selected
