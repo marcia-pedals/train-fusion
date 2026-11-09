@@ -103,8 +103,8 @@ const picker = groupedCheckbox(ROUTES.filter((r) => patternInfo.some((p) => p.ro
   {label: "Routes and patterns (trips)", hint: "☑ show · click a name to list its trips", vertical: true,
    onSelect: (key) => { picker.show(key); pinned.value = pinned.value === key ? null : key; }});
 const shownPatterns = Generators.input(picker);
-// the selected pattern: picked by clicking its name in the picker (again to clear) or a dot on
-// the diagram; kept while toggling the picker or resizing
+// the selected pattern: picked by clicking its name in the picker or a dot on the diagram
+// (either again to clear); kept while toggling the picker or resizing
 const pinned = Mutable(null);
 const pin = (pattern) => (pinned.value = pattern);
 const patternLabel = new Map(patternInfo.map((p) => [p.pattern, p.label]));
@@ -136,8 +136,8 @@ function patternDiagram(width, shownLines, selected) {
       Plot.dot(shownLines, {x: "min", y: "km", fill: "route", fillOpacity: selected == null ? 1 : 0.35, r: 2.5, title: (l) => `${l.route}\n${patternLabel.get(l.pattern)}`, tip: true}),
     ],
   });
-  // clicking pins the tooltip; plot.value is then the dot under it
-  plot.addEventListener("click", () => { if (plot.value) pin(plot.value.pattern); });
+  // clicking a dot selects its pattern, or clears the selection if it's already selected
+  plot.addEventListener("click", () => { if (plot.value) pin(plot.value.pattern === selected ? null : plot.value.pattern); });
   return plot;
 }
 ```

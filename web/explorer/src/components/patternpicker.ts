@@ -20,9 +20,10 @@ export function groupedCheckbox(groups: PickerGroup[], {label = "", hint = "", v
   const root = document.createElement("form") as HTMLFormElement & {
     value: string[]; setSelected: (key: string | null) => void; show: (key: string) => void;
   };
-  root.style.cssText = vertical
+  root.style.cssText = (vertical
     ? "display: flex; flex-direction: column; gap: 0.6rem; font: 12px var(--sans-serif); margin: 0;"
-    : "display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; font: 13px var(--sans-serif); margin: 0.5rem 0 1rem;";
+    : "display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; font: 13px var(--sans-serif); margin: 0.5rem 0 1rem;")
+    + " user-select: none; -webkit-user-select: none;";  // clicking names shouldn't highlight text
   const style = document.createElement("style");
   style.textContent = STYLE;
   root.append(style);
