@@ -66,4 +66,5 @@ entry there. Pages:
 - **Static feed**: what the static stage made of the GTFS feed (one panel per
   service: when it runs and its trips by route and direction; a time-distance diagram of the trip patterns
   (select a pattern by its name in the picker or a dot on the diagram to list its trips and
-  when each runs), a map of shapes and stations).
+  when each runs), a map of shapes, stations and platforms, rotated so the line runs left to
+  right, with a route-km axis).

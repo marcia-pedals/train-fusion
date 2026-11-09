@@ -70,6 +70,16 @@ def services() -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
+def platforms() -> pl.DataFrame:
+    """(stop_id, station_id, lat, lon): every platform (stop with a parent station) in the
+    static feed's stops.txt."""
+    z = zipfile.ZipFile(_static().zip_path)
+    rows = [{"stop_id": r["stop_id"], "station_id": r["parent_station"], "lat": float(r["stop_lat"]),
+             "lon": float(r["stop_lon"])}
+            for r in csv.DictReader(io.TextIOWrapper(z.open("stops.txt"), "utf-8-sig")) if r.get("parent_station")]
+    return pl.DataFrame(rows)
+
+
 # what web/explorer/src/data/[table].parquet.py serves, as data/<name>.parquet
 TABLES = {
     "trips": lambda: _static().trips,
@@ -79,4 +89,5 @@ TABLES = {
     "shape_stations": lambda: _static().shape_stations,
     "date_trips": date_trips,
     "services": services,
+    "platforms": platforms,
 }
