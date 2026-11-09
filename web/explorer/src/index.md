@@ -32,7 +32,8 @@ const onLine = stations.filter((s) => shapeStations.some((r) => r.station_id ===
 ## Trips per service
 
 ```js
-// one line per service (largest first), labelled by when it runs; a bar per direction, split by route
+// one group of rows per service (largest first, labelled by when it runs and its trip total),
+// one row per route the service has; northbound above southbound, on the same rows
 const byService = d3.sort(d3.groups(trips, (t) => t.service_id), ([, ts]) => -ts.length);
 // cut a run-days list at the last whole item (", "-separated) that fits in n characters
 const shorten = (text, n = 32) => {
@@ -40,27 +41,33 @@ const shorten = (text, n = 32) => {
   const cut = text.lastIndexOf(", ", n - 2);
   return `${cut > 0 ? text.slice(0, cut) : text.slice(0, n - 1)}, …`;
 };
-const serviceLabel = new Map(byService.map(([sid, ts]) => [sid, `${shorten(services.get(sid) ?? sid)} · ${distinctTrips(ts)}`]));
+const serviceRows = byService.flatMap(([sid, ts]) => {
+  const routes = ROUTES.filter((r) => ts.some((t) => t.route_id === r));
+  return routes.map((route, i) => ({sid, route, row: `${sid}|${route}`, first: i === 0, last: i === routes.length - 1,
+    service: `${shorten(services.get(sid) ?? sid)} · ${distinctTrips(ts)}`}));
+});
 const serviceCounts = byService.flatMap(([sid, ts]) =>
   d3.rollups(ts, distinctTrips, (t) => t.route_id, (t) => t.direction_id)
-    .flatMap(([route, ds]) => ds.map(([dir, n]) => ({service: serviceLabel.get(sid), runs: services.get(sid) ?? sid,
+    .flatMap(([route, ds]) => ds.map(([dir, n]) => ({row: `${sid}|${route}`, runs: services.get(sid) ?? sid,
       route, direction: dirName(dir), n}))));
-// the route legend, vertical, to the right of the chart
-const routeLegend = html`<div style="display: flex; flex-direction: column; gap: 0.3rem; font: 12px var(--sans-serif); padding-top: 1.5rem;">
-  ${ROUTES.map((r, i) => html`<div style="display: flex; align-items: center; gap: 0.4rem;">
-    <span style="width: 12px; height: 12px; background: ${ROUTE_COLORS[i]}; border-radius: 2px;"></span>${r}</div>`)}</div>`;
-display(html`<div style="display: flex; gap: 1.5rem; align-items: flex-start;">${Plot.plot({
-  width: Math.min(width, 1100) - 140, height: 50 + 24 * byService.length, marginLeft: 250,
-  x: {label: "trips", grid: true},
-  y: {domain: byService.map(([sid]) => serviceLabel.get(sid)), label: null},
-  fx: {domain: ["northbound", "southbound"], label: null},
+const rowRoute = new Map(serviceRows.map((r) => [r.row, r.route]));
+display(Plot.plot({
+  width: Math.min(width, 900), height: 70 + 2 * 18 * serviceRows.length, marginLeft: 330, marginRight: 90,
+  x: {label: "trips", grid: true, domain: [0, 1.1 * d3.max(serviceCounts, (d) => d.n)]},  // room for the counts
+  y: {domain: serviceRows.map((r) => r.row), label: null, tickFormat: (row) => rowRoute.get(row), tickSize: 0},
+  fy: {domain: ["northbound", "southbound"], label: null},
   color: {domain: ROUTES, range: ROUTE_COLORS},
   marks: [
-    Plot.barX(serviceCounts, {x: "n", y: "service", fx: "direction", fill: "route", order: ROUTES, inset: 0.5,
+    // the service label once per group, left of its route labels; a faint line between groups
+    Plot.text(serviceRows.filter((r) => r.first), {y: "row", text: "service", frameAnchor: "left", dx: -105,
+      textAnchor: "end", fill: "currentColor", fontWeight: 600}),
+    Plot.ruleY(serviceRows.filter((r) => r.last), {y: "row", dy: 9, stroke: "currentColor", strokeOpacity: 0.12, insetLeft: -320}),
+    Plot.barX(serviceCounts, {x: "n", y: "row", fy: "direction", fill: "route", inset: 0.5,
       title: (d) => `${d.runs}\n${d.route} ${d.direction}: ${d.n} trip${d.n === 1 ? "" : "s"}`, tip: true}),
+    Plot.text(serviceCounts, {x: "n", y: "row", fy: "direction", text: "n", dx: 4, textAnchor: "start", fill: "currentColor"}),
     Plot.ruleX([0]),
   ],
-})}${routeLegend}</div>`);
+}));
 ```
 
 ## Shapes and stations
