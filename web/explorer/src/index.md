@@ -83,18 +83,27 @@ const patternLines = d3.groups(trips, (t) => t.pattern_id).flatMap(([pattern, ts
     station: stationName.get(r.station_id), min: (r.sched_s - stops[0].sched_s) / 60, km: kmFromSF.get(r.station_id)}));
 });
 const axisStations = d3.sort(refShape.filter((r) => servedStations.has(r.station_id)), (r) => kmFromSF.get(r.station_id));
+```
+
+```js
+const shownRoutes = view(Inputs.checkbox(ROUTES.filter((r) => patternLines.some((l) => l.route === r)),
+  {label: "Routes", value: ROUTES, format: (r) => html`<span style="border-bottom: 3px solid ${ROUTE_COLORS[ROUTES.indexOf(r)]}">${r}</span>`}));
+```
+
+```js
+const shownLines = patternLines.filter((l) => shownRoutes.includes(l.route));
 display(Plot.plot({
   width, height: 640, marginRight: 130,
-  x: {label: "minutes since the pattern's first departure", grid: true},
+  x: {label: "minutes since the pattern's first departure", grid: true, domain: [0, d3.max(patternLines, (l) => l.min)]},
   y: {reverse: true, label: "km from San Francisco", grid: false},
-  color: {domain: ROUTES, range: ROUTE_COLORS, legend: true},
+  color: {domain: ROUTES, range: ROUTE_COLORS},  // the checkboxes above are the legend
   marks: [
     Plot.ruleY(axisStations, {y: (r) => kmFromSF.get(r.station_id), stroke: "currentColor", strokeOpacity: 0.08}),
     Plot.axisY({anchor: "left", label: "km from San Francisco"}),
     Plot.axisY(axisStations.map((r) => kmFromSF.get(r.station_id)), {anchor: "right", label: null, tickSize: 0, fontSize: 10,
       tickFormat: (km) => stationName.get(axisStations.find((r) => kmFromSF.get(r.station_id) === km).station_id)}),
-    Plot.line(patternLines, {x: "min", y: "km", z: "pattern", stroke: "route", strokeWidth: 1.5, strokeOpacity: 0.8}),
-    Plot.dot(patternLines, {x: "min", y: "km", fill: "route", r: 2.5,
+    Plot.line(shownLines, {x: "min", y: "km", z: "pattern", stroke: "route", strokeWidth: 1.5, strokeOpacity: 0.8}),
+    Plot.dot(shownLines, {x: "min", y: "km", fill: "route", r: 2.5,
       channels: {pattern: "pattern", trips: "trips", station: "station", direction: "direction"}, tip: true}),
   ],
 }));
