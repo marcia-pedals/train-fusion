@@ -46,10 +46,12 @@ const serviceRows = byService.flatMap(([sid, ts]) => {
   return routes.map((route, i) => ({sid, route, row: `${sid}|${route}`, first: i === 0, last: i === routes.length - 1,
     service: shorten(services.get(sid) ?? sid)}));
 });
-const serviceCounts = byService.flatMap(([sid, ts]) =>
+// every row in both directions, 0 where the service has no trips that way (so it shows a "0")
+const countOf = new Map(byService.flatMap(([sid, ts]) =>
   d3.rollups(ts, distinctTrips, (t) => t.route_id, (t) => t.direction_id)
-    .flatMap(([route, ds]) => ds.map(([dir, n]) => ({row: `${sid}|${route}`, runs: services.get(sid) ?? sid,
-      route, direction: dirName(dir), n}))));
+    .flatMap(([route, ds]) => ds.map(([dir, n]) => [`${sid}|${route}|${dir}`, n]))));
+const serviceCounts = serviceRows.flatMap((r) => [0, 1].map((dir) => ({row: r.row, runs: services.get(r.sid) ?? r.sid,
+  route: r.route, direction: dirName(dir), n: countOf.get(`${r.row}|${dir}`) ?? 0})));
 const rowRoute = new Map(serviceRows.map((r) => [r.row, r.route]));
 display(Plot.plot({
   width: Math.min(width, 900), height: 70 + 2 * 18 * serviceRows.length, marginLeft: 330, marginRight: 90,
