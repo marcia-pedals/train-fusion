@@ -25,3 +25,19 @@ TU = Table("tu", "One stop_time_update of a trip-update entity (deduplicated by 
     col("dep_epoch", "i64?", "predicted departure", "s"),
     col("file", "str", "raw snapshot file"),
 ])
+
+
+FETCHES = Table("fetches", "One logged request to an RT feed (or an unlogged .pb file).", [
+    col("feed", "enum", "which feed", values=["tripupdates", "vehiclepositions"]),
+    col("request_epoch", "f64", "when the request was sent", "s"),
+    col("status", "i64?", "HTTP status (null: network error / timeout)"),
+    col("role", "str", "normal, parity_probe or unknown"),
+    col("file", "str?", "raw snapshot file"),
+    col("ok", "bool", "HTTP 200 and the body parsed"),
+    col("stamp_epoch", "i64?", "entity timestamp", "s"),
+    col("content_sha256", "str?", "digest of the content with timestamps stripped"),
+    col("n_entities", "i64", "entities in the snapshot"),
+    col("content_epoch", "f64?", "content time", "s"),
+    col("content_exact", "bool", "content_epoch is the exact content time"),
+    col("duplicate", "bool", "content repeats an earlier fetch of the same feed (dropped)"),
+])

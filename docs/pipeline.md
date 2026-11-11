@@ -29,7 +29,7 @@ below for exactly those service dates (`train_fusion/build.py`, run with `python
 | Stage | Command | Writes |
 |---|---|---|
 | static | `just build` | `data/derived/static/<feed_version>/`: trips, trip_stops, shapes, stations, shape_stations, platforms, calendar, calendar_dates |
-| decode | `just build` | `data/derived/<date>/`: vp, tu |
+| decode | `just build` | `data/derived/<date>/`: fetches, vp, tu |
 | linearize | `just build` | `data/derived/<date>/vp_lin.parquet` |
 | timetable | `just build` | `data/derived/static/<feed_version>/timetable.parquet` |
 | reference | `just build` | `data/derived/reference/`: ref_segments, ref_knots, ref_limits, ref_cruise, ref_fit, reference.json; `<date>/`: ref_trips, ref_fixes, ref_pairs |
@@ -41,7 +41,8 @@ below for exactly those service dates (`train_fusion/build.py`, run with `python
 - **decode**: each snapshot is timed by when its content first appeared (511 re-stamps
   every ~15 s but changes content every ~30 s; see [fetcher.md](fetcher.md)).
   `content_exact = false` means the time may be up to 15 s late. Snapshots repeating
-  earlier content are dropped.
+  earlier content are dropped. `fetches` keeps every request (status, content time,
+  exactness, whether it was a duplicate) for the Pipeline health page.
 - **linearize**: each VP fix is projected onto its trip's shape (UTM 10N), giving s (m
   along the shape, matching the stops' `shape_dist_traveled`) and its distance from it.
 - **timetable**: every scheduled departure as an interval [`dep_lo_s`, `dep_hi_s`]
@@ -75,3 +76,14 @@ entry there. Pages:
   row per station and, per trip, its static GTFS time and its GTFS-RT time from 511's
   pre-departure trip updates (stage `timetable`), with the time since the previous stop in
   a slim row between stations (`explorer_data.timetable`).
+- **Pipeline health**: decode and linearize for one built date. First a waterfall per feed
+  (`explorer_data.funnel`, `funnel_pieces`), two bars on a time axis of elapsed service time
+  (union of scheduled runs, up to the build): fetch results in time order (success / empty /
+  failed / no fetch), and below it a row per route and direction with each trip spanning its
+  scheduled run, coloured by the share of its fetched run it was seen in (red: never; dashed:
+  no success or empty fetch during its run). Then:
+  when each feed was fetched
+  (exact / inexact content time, empty, failed, gaps); which scheduled trips showed up in VP
+  and TU and when (against their scheduled runs); how complete those trips are (share of the
+  route VP fixes span, share of stops TU predicts, longest gaps); and the VP fixes' distance
+  from their shape. A table lists every trip's numbers (`explorer_data.rt_trips`).

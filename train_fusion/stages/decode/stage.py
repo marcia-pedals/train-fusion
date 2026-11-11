@@ -1,4 +1,4 @@
-"""Stage `decode`: one service date's raw snapshots -> vp, tu.
+"""Stage `decode`: one service date's raw snapshots -> fetches, vp, tu.
 
 Observations are timed by *content time* (when their content first appeared), from, in
 order of preference: parity_check events, the fetcher's logged content_ets, else the raw
@@ -15,7 +15,7 @@ import polars as pl
 from google.transit import gtfs_realtime_pb2 as g
 
 from train_fusion.common.paths import ROOT, RT, day_dir
-from train_fusion.stages.decode.schemas import TU, VP
+from train_fusion.stages.decode.schemas import FETCHES, TU, VP
 
 sys.path.insert(0, str(ROOT))
 from fetchers.archive import read_log  # noqa: E402
@@ -158,6 +158,7 @@ def run(day: str) -> dict[str, pl.DataFrame]:
               if tu_rows else TU.empty(),
     }
     d = day_dir(day)
+    FETCHES.write(out["fetches"], d / "fetches.parquet")
     VP.write(out["vp"].sort("trip_id", "t_epoch"), d / "vp.parquet")
     TU.write(out["tu"].sort("trip_id", "t_epoch", "stu_idx"), d / "tu.parquet")
     return out
