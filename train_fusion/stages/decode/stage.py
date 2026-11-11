@@ -7,7 +7,6 @@ the same feed are dropped. See docs/pipeline.md 3.2.
 """
 from __future__ import annotations
 
-import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,7 +18,7 @@ from train_fusion.common.paths import ROOT, RT, day_dir
 from train_fusion.stages.decode.schemas import TU, VP
 
 sys.path.insert(0, str(ROOT))
-from fetch import STAMP_S, parse_feed  # noqa: E402  (same digest as the fetcher logs)
+from fetch import STAMP_S, parse_feed, read_log  # noqa: E402  (same digest as the fetcher logs)
 
 FEEDS = ("tripupdates", "vehiclepositions")
 
@@ -36,14 +35,7 @@ def _resolve(file: str | None) -> Path | None:
 
 def _read_log(day: str) -> tuple[list[dict], list[dict]]:
     reqs, events = [], []
-    path = RT / day / "fetch_log.jsonl"
-    if not path.exists():
-        return reqs, events
-    for line in path.read_text().splitlines():
-        try:
-            r = json.loads(line)
-        except ValueError:
-            continue
+    for r in read_log(RT / day):  # every fetcher's log segments (and the legacy file)
         if r.get("event") == "parity_check":
             events.append(r)
         elif r.get("feed") in FEEDS and "request_utc" in r:

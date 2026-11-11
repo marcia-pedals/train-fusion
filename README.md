@@ -7,19 +7,23 @@ time. So far: the archiver, and the reference trajectory that delays are measure
 ## Setup
 
 Nix flake + direnv: `direnv allow` gives you Python 3.12 (polars, shapely, pyproj,
-scipy, …), just and node, puts `bin/` on PATH, and loads `.env.local` (which must define
-`API_KEY_511_1` and `API_KEY_511_2`).
+scipy, …), just, node, gcloud and terraform, puts `bin/` on PATH, and loads `.env.local` (which must define
+`API_KEY_511_1` and `API_KEY_511_2`; `just pull-secrets` writes them from Secret Manager).
 
 ```sh
-just fetch                 # archive the feeds into data/ (runs forever)
-just build 2026-11-07 2026-11-08   # derive everything (incl. the reference) for exactly these dates
+just sync                          # download what's new from the GCS archive into data/
+just build 2026-11-07 2026-11-08   # sync, then derive everything (incl. the reference) for these dates
 just build --last-week             # ... for every archived date among the last 7 days
 just explore                       # explorer at http://127.0.0.1:3030
 just test
+just fetch                         # run the archiver locally (the real one runs on GCP)
 ```
+
+`just sync` needs `gcloud auth application-default login` once.
 
 ## Docs
 
 - [docs/fetcher.md](docs/fetcher.md): the archiver, data layout, and what we learned about the 511 feeds
+- [docs/deploy.md](docs/deploy.md): the GCP deployment (terraform), the bucket, secrets, alerts
 - [docs/pipeline.md](docs/pipeline.md): stages, tables, commands
 - [docs/reference.md](docs/reference.md): the reference, how it's fitted and evaluated

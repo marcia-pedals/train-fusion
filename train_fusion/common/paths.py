@@ -9,6 +9,8 @@ GTFS = DATA / "gtfs"
 DERIVED = DATA / "derived"
 REFERENCE = DERIVED / "reference"
 SPEED_LIMITS = ROOT / "track" / "speed_limits.toml"
+# The raw archive in GCS (infra/); data/rt and data/gtfs are a local cache of it (`just sync`).
+ARCHIVE_BUCKET = os.environ.get("ARCHIVE_BUCKET", "train-fusion-archive")
 
 
 def archived_dates() -> list[str]:

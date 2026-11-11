@@ -13,8 +13,11 @@ usage: python experiments/content_parity.py [SERVICE_DATE]   (default: latest)
 import datetime as dt
 import glob
 import hashlib
-import json
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from fetch import read_log  # noqa: E402
 from google.transit import gtfs_realtime_pb2 as g
 
 def info(path):
@@ -28,7 +31,7 @@ def info(path):
 
 
 day = sys.argv[1] if len(sys.argv) > 1 else sorted(glob.glob("data/rt/*"))[-1].split("/")[-1]
-L = [json.loads(l) for l in open(f"data/rt/{day}/fetch_log.jsonl")]
+L = read_log(Path(f"data/rt/{day}"))
 hm = lambda s: dt.datetime.fromtimestamp(s).strftime('%H:%M')
 for feed in ('vehiclepositions', 'tripupdates'):
     anchors = {}

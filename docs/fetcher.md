@@ -1,12 +1,15 @@
 # Fetcher (archiver)
 
 `fetch.py` archives Caltrain's two 511.org GTFS-RT feeds and the daily static GTFS,
-byte-for-byte, so everything downstream can be rebuilt from the archive.
+byte-for-byte, so everything downstream can be rebuilt from the archive. The deployed one
+runs on a GCP VM and uploads to a bucket ([deploy.md](deploy.md)); `just sync` brings the
+archive into the local `data/`.
 
 ## Usage
 
 ```sh
 python fetch.py            # runs forever; -v prints scheduler state
+                           # (--bucket B --metrics: the deployed mode, see deploy.md)
 pbcat data/rt/<day>/vehiclepositions/<stamp>.pb      # read a snapshot (--json for jq)
 python inspect_rt.py data/rt/<day>                   # freshness/cadence summary
 ```
@@ -15,11 +18,18 @@ Everything lands under `data/` (gitignored):
 
 ```
 data/rt/<service_date>/<feed>/<utc_stamp>.pb    raw response body, unmodified
-data/rt/<service_date>/fetch_log.jsonl          per request: timing, status, sha256,
+data/rt/<service_date>/fetch_log/<utc_minute>_<instance>.jsonl
+                                                per request: timing, status, sha256,
                                                 entity_ts, age_at_request_s, rate-limit headers
 data/gtfs/<local_date>/GTFSTransitData_CT_<utc_stamp>.zip   static GTFS, daily
-data/gtfs/fetch_log.jsonl
+data/gtfs/fetch_log/<utc_minute>_<instance>.jsonl
 ```
+
+Files are never changed once finished: the log starts a new file every minute, named by
+the process (`<host>-<random>`), so archives from any number of fetchers merge by union.
+Archives from before 2026-11-11 have one `fetch_log.jsonl` per directory instead.
+`fetch.read_log(dir)` reads both. If either feed's thread crashes, the process exits
+nonzero (for systemd to restart it) rather than carrying on with one feed.
 
 `service_date` = local time minus 3 h, so after-midnight trains file under the previous day.
 Non-200 response bodies are kept too, as `<stamp>.pb.http<status>`.

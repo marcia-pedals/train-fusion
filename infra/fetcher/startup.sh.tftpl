@@ -1,0 +1,60 @@
+#!/bin/bash
+# The fetcher VM's startup script (a terraform template: see fetcher.tf). GCE runs it as
+# root on every boot, so it's idempotent. Logs: `just fetcher-logs`, or on the VM,
+# `sudo journalctl -u google-startup-scripts -u fetcher`.
+set -euxo pipefail
+APP=/opt/train-fusion
+
+id fetcher >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/fetcher \
+  --shell /usr/sbin/nologin fetcher
+mkdir -p $APP/data
+chown fetcher:fetcher $APP/data
+
+if ! [ -x $APP/venv/bin/python ]; then
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y python3-venv
+  python3 -m venv $APP/venv
+fi
+echo '${requirements}' | base64 -d > $APP/requirements.txt
+$APP/venv/bin/pip install --quiet --disable-pip-version-check -r $APP/requirements.txt
+
+echo '${fetch_py}' | base64 -d > $APP/fetch.py
+echo '${fetch_cloud_py}' | base64 -d > $APP/fetch_cloud.py
+
+# Secrets go into the process environment only, never to disk.
+cat > $APP/run.sh <<'RUN'
+#!/bin/bash
+set -euo pipefail
+for s in ${secrets}; do
+  export "$s=$(gcloud secrets versions access latest --secret="$s" --project=${project})"
+done
+# --data-dir must stay relative: the log records file paths, and decode resolves them
+# against the repo root on whichever machine reads the archive.
+exec /opt/train-fusion/venv/bin/python -u fetch.py --data-dir data --bucket ${bucket} --metrics
+RUN
+chmod 755 $APP/run.sh
+
+cat > /etc/systemd/system/fetcher.service <<'UNIT'
+[Unit]
+Description=train-fusion GTFS-RT archiver
+Wants=network-online.target
+After=network-online.target
+# never give up restarting
+StartLimitIntervalSec=0
+
+[Service]
+User=fetcher
+WorkingDirectory=/opt/train-fusion
+ExecStart=/opt/train-fusion/run.sh
+Restart=always
+RestartSec=10
+# on stop (incl. VM shutdown/deletion): SIGTERM, then fetch.py uploads what's left
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable fetcher
+systemctl restart fetcher

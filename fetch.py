@@ -4,10 +4,17 @@
 Layout (all under DATA_DIR, default ./data, which is gitignored):
 
     data/rt/<service_date>/<feed>/<utc_stamp>.pb   raw response body, byte-for-byte
-    data/rt/<service_date>/fetch_log.jsonl         one line per request (timing, status,
+    data/rt/<service_date>/fetch_log/<utc_minute>_<instance>.jsonl
+                                                   one line per request (timing, status,
                                                    headers, scheduler state) + parity checks
     data/gtfs/<local_date>/GTFSTransitData_CT_<utc_stamp>.zip   raw static GTFS zip
-    data/gtfs/fetch_log.jsonl
+    data/gtfs/fetch_log/<utc_minute>_<instance>.jsonl
+
+Every file is written once and never changed: the log goes to a new file each minute, named
+by this process's instance id. So archives from several fetchers (restarts, a replaced VM,
+two running at once) merge by plain union, which is what `--bucket` relies on: it uploads
+each finished file create-only to GCS (see fetch_cloud.py). Older archives have a single
+fetch_log.jsonl per directory instead; read_log() reads both.
 
 service_date is the Caltrain operating day: local (America/Los_Angeles) time minus
 SERVICE_DAY_CUTOFF_HOURS, so trains running after midnight file under the previous day.
@@ -25,16 +32,22 @@ The daily static GTFS fetch replaces one vehicle-position fetch (first slot afte
 local, when no trains run) so the key's budget is never exceeded.
 """
 
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
 import math
 import os
+import secrets
+import signal
+import socket
 import sys
 import threading
 import time
 import urllib.error
 import urllib.request
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -75,7 +88,12 @@ STATIC_LOCAL_HOUR = 3
 KEEP_HEADERS = ("date", "ratelimit-limit", "ratelimit-remaining", "content-type",
                 "content-length", "last-modified", "etag", "retry-after")
 
+# Names this process's log files, so concurrent or successive fetchers never share one.
+INSTANCE = f"{socket.gethostname().split('.')[0]}-{secrets.token_hex(3)}"
+LOG_DIR = "fetch_log"
+
 log_lock = threading.Lock()
+fetch_counts = Counter()  # feed -> successful (HTTP 200) fetches, for --metrics
 
 
 def service_date(t_utc: datetime) -> str:
@@ -108,10 +126,46 @@ def http_get(url: str, timeout: float = 30.0):
         return e.code, dict(e.headers or {}), e.read()
 
 
-def append_jsonl(path: Path, rec: dict) -> None:
+def log_minute(name: str) -> datetime | None:
+    """The UTC minute a log segment covers, from its name (None for other files)."""
+    try:
+        return datetime.strptime(name.split("_", 1)[0], "%Y%m%dT%H%MZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def append_log(log_dir: Path, rec: dict) -> None:
+    """Append to this process's segment for the current minute, under log_dir/fetch_log/."""
+    now = datetime.now(timezone.utc)
+    path = log_dir / LOG_DIR / f"{now:%Y%m%dT%H%MZ}_{INSTANCE}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with log_lock, path.open("a") as f:
         f.write(json.dumps(rec, separators=(",", ":")) + "\n")
+
+
+def log_files(log_dir: Path, since: datetime | None = None) -> list[Path]:
+    """The fetch-log files of a directory: the legacy single file, then the segments
+    (those covering `since` or later, if given)."""
+    out = [log_dir / "fetch_log.jsonl"] if (log_dir / "fetch_log.jsonl").exists() else []
+    seg = log_dir / LOG_DIR
+    if seg.is_dir():
+        for p in sorted(seg.glob("*.jsonl")):
+            m = log_minute(p.name)
+            if since is None or (m is not None and m + timedelta(minutes=1) > since):
+                out.append(p)
+    return out
+
+
+def read_log(log_dir: Path, since: datetime | None = None) -> list[dict]:
+    """Every record in a directory's fetch log, skipping unparseable (e.g. torn) lines."""
+    out = []
+    for p in log_files(log_dir, since):
+        for line in p.read_text().splitlines():
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                continue
+    return out
 
 
 def parse_feed(body: bytes):
@@ -133,7 +187,7 @@ def parse_feed(body: bytes):
     return (max(ts) if ts else None), digest
 
 
-def fetch_and_store(kind: str, url: str, out_dir: Path, filename: str, log_path: Path,
+def fetch_and_store(kind: str, url: str, out_dir: Path, filename: str, log_dir: Path,
                     scheduled: float, parse: bool, extra=None):
     """Fetch, save the raw body, log. Returns (request_time, entity_ts, content_digest)."""
     t0 = datetime.now(timezone.utc)
@@ -175,7 +229,10 @@ def fetch_and_store(kind: str, url: str, out_dir: Path, filename: str, log_path:
         "error": err,
         **(extra or {}),
     }
-    append_jsonl(log_path, rec)
+    append_log(log_dir, rec)
+    if status == 200:
+        with log_lock:
+            fetch_counts[kind] += 1
     tag = f" [{extra['role']}]" if extra and extra.get("role", "normal") != "normal" else ""
     print(f"{t0.astimezone(TZ):%H:%M:%S.%f}"[:-3], f"{kind:16s}", status, f"{len(body):6d}B",
           f"{elapsed:.2f}s", f"age={rec['age_at_request_s']}",
@@ -184,8 +241,8 @@ def fetch_and_store(kind: str, url: str, out_dir: Path, filename: str, log_path:
     return t0.timestamp(), ets, digest
 
 
-def rt_log_path(data_dir: Path) -> Path:
-    return data_dir / "rt" / service_date(datetime.now(timezone.utc)) / "fetch_log.jsonl"
+def rt_log_dir(data_dir: Path) -> Path:
+    return data_dir / "rt" / service_date(datetime.now(timezone.utc))
 
 
 def fetch_rt(feed: str, data_dir: Path, scheduled: float, extra=None):
@@ -194,7 +251,7 @@ def fetch_rt(feed: str, data_dir: Path, scheduled: float, extra=None):
     now = datetime.now(timezone.utc)
     sd = service_date(now)
     return fetch_and_store(feed, url, data_dir / "rt" / sd / feed, stamp(now) + ".pb",
-                           data_dir / "rt" / sd / "fetch_log.jsonl", scheduled, True, extra)
+                           data_dir / "rt" / sd, scheduled, True, extra)
 
 
 def fetch_static(data_dir: Path, scheduled: float):
@@ -203,12 +260,17 @@ def fetch_static(data_dir: Path, scheduled: float):
     day = now.astimezone(TZ).strftime("%Y-%m-%d")
     return fetch_and_store("gtfs_static", url, data_dir / "gtfs" / day,
                            f"GTFSTransitData_{AGENCY}_{stamp(now)}.zip",
-                           data_dir / "gtfs" / "fetch_log.jsonl", scheduled, False)
+                           data_dir / "gtfs", scheduled, False)
 
 
-def have_static_today(data_dir: Path) -> bool:
-    d = data_dir / "gtfs" / datetime.now(TZ).strftime("%Y-%m-%d")
-    return d.exists() and any(p.suffix == ".zip" for p in d.iterdir())
+def have_static_today(data_dir: Path, remote=None) -> bool:
+    """Whether today's static GTFS zip was fetched: locally, or else per `remote(day)`
+    (with --bucket, since uploaded files are deleted and a fresh VM starts empty)."""
+    day = datetime.now(TZ).strftime("%Y-%m-%d")
+    d = data_dir / "gtfs" / day
+    if d.exists() and any(p.suffix == ".zip" for p in d.iterdir()):
+        return True
+    return remote is not None and remote(day)
 
 
 class Scheduler:
@@ -306,22 +368,20 @@ def recent_requests(data_dir: Path, feed: str) -> list:
     """Request times for this feed's key in the last hour, from the fetch logs, so a
     restart doesn't overspend the quota."""
     cutoff = time.time() - RateLimiter.WINDOW_S
+    since = datetime.fromtimestamp(cutoff, timezone.utc)
     kinds = {feed} | ({"gtfs_static"} if feed == STATIC_SLOT_FEED else set())
     now = datetime.now(timezone.utc)
-    logs = {data_dir / "rt" / service_date(now - timedelta(hours=h)) / "fetch_log.jsonl" for h in (0, 1)}
-    logs.add(data_dir / "gtfs" / "fetch_log.jsonl")
+    dirs = {data_dir / "rt" / service_date(now - timedelta(hours=h)) for h in (0, 1)}
+    dirs.add(data_dir / "gtfs")
     out = []
-    for p in logs:
-        if not p.exists():
-            continue
-        for line in p.read_text().splitlines()[-500:]:
+    for d in dirs:
+        for r in read_log(d, since):
             try:
-                r = json.loads(line)
                 if r.get("feed") in kinds and "request_utc" in r:
                     t = datetime.fromisoformat(r["request_utc"]).timestamp()
                     if t > cutoff:
                         out.append(t)
-            except (ValueError, KeyError):
+            except (ValueError, TypeError):
                 continue
     return out
 
@@ -336,7 +396,7 @@ def feed_loop(feed: str, args, stop: threading.Event) -> None:
         if stop.is_set():
             break
         use_static = feed == STATIC_SLOT_FEED and (
-            not have_static_today(args.data_dir)
+            not have_static_today(args.data_dir, args.static_in_bucket)
             and datetime.now(TZ).hour >= STATIC_LOCAL_HOUR)
         if use_static:
             limiter.record(fetch_static(args.data_dir, sched)[0])
@@ -360,7 +420,7 @@ def feed_loop(feed: str, args, stop: threading.Event) -> None:
                 t_b, ets_b, dig_b = fetch_rt(feed, args.data_dir, t_b, state)
                 limiter.record(t_b)
                 result = s.parity_result(ets_a, dig_a, ets_b, dig_b, time.time())
-                append_jsonl(rt_log_path(args.data_dir), {
+                append_log(rt_log_dir(args.data_dir), {
                     "event": "parity_check", "feed": feed, "utc": datetime.now(timezone.utc).isoformat(),
                     "ets_a": ets_a, "ets_b": ets_b, "changed": dig_a != dig_b, "result": result})
                 print(f"  [{feed}] parity check: {ets_a} -> {ets_b}, "
@@ -377,6 +437,26 @@ def feed_loop(feed: str, args, stop: threading.Event) -> None:
             break
 
 
+crashed = threading.Event()
+
+
+def run_thread(target, *a) -> threading.Thread:
+    """Start a thread. If it raises, the traceback is printed and `crashed` set, so main()
+    exits nonzero and systemd restarts us, rather than one feed silently stopping while the
+    other keeps the process alive."""
+    def wrapped():
+        try:
+            target(*a)
+        except BaseException:
+            import traceback
+            traceback.print_exc()
+            sys.stdout.flush()
+            crashed.set()
+    t = threading.Thread(target=wrapped, name=getattr(target, "__name__", "thread"), daemon=True)
+    t.start()
+    return t
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data-dir", type=Path, default=Path(os.environ.get("DATA_DIR", "data")))
@@ -385,6 +465,10 @@ def main() -> None:
     ap.add_argument("--stagger", type=float, default=0.0,
                     help="delay the first vehiclepositions fetch by this many seconds")
     ap.add_argument("--max-minutes", type=int, default=0, help="stop after N fetch cycles per feed (0 = forever)")
+    ap.add_argument("--bucket", help="upload finished files create-only to this GCS bucket, then delete "
+                                     "them locally once older than the rate-limit window")
+    ap.add_argument("--metrics", action="store_true",
+                    help="report successful fetches per feed to Cloud Monitoring (for alerting)")
     ap.add_argument("-v", "--verbose", action="store_true", help="print scheduler state each cycle")
     args = ap.parse_args()
 
@@ -394,16 +478,34 @@ def main() -> None:
             sys.exit(f"missing {key_env} (put it in .env.local)")
     if gtfs_realtime_pb2 is None:
         print("warning: gtfs-realtime-bindings not importable; using plain 60 s cadence", flush=True)
+    print(f"instance {INSTANCE}, data in {args.data_dir}", flush=True)
 
     stop = threading.Event()
-    threads = [threading.Thread(target=feed_loop, args=(f, args, stop), daemon=True) for f in RT_FEEDS]
-    for t in threads:
-        t.start()
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())  # systemd stop: flush, then exit
+    uploader = None
+    args.static_in_bucket = None
+    if args.bucket or args.metrics:
+        import fetch_cloud  # only needed (with its google-cloud deps) in cloud mode
+    if args.bucket:
+        uploader = fetch_cloud.Uploader(args.data_dir, args.bucket, INSTANCE)
+        args.static_in_bucket = uploader.has_static
+        run_thread(uploader.run, stop)
+    if args.metrics:
+        run_thread(fetch_cloud.Metrics(INSTANCE, fetch_counts, log_lock, list(RT_FEEDS)).run, stop)
+
+    feeds = [run_thread(feed_loop, f, args, stop) for f in RT_FEEDS]
     try:
-        while any(t.is_alive() for t in threads):
-            time.sleep(0.5)
+        while not stop.is_set() and not crashed.is_set() and any(t.is_alive() for t in feeds):
+            stop.wait(0.5)
     except KeyboardInterrupt:
-        stop.set()
+        pass
+    stop.set()
+    for t in feeds:
+        t.join(timeout=40)  # an in-flight request times out after 30 s
+    if uploader is not None:
+        print("final upload...", flush=True)
+        uploader.upload_pass(final=True)
+    sys.exit(1 if crashed.is_set() else 0)
 
 
 if __name__ == "__main__":

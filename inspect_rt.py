@@ -4,13 +4,14 @@
 usage: python inspect_rt.py data/rt/<service_date> [--verbose]
 """
 
-import json
 import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
 from google.transit import gtfs_realtime_pb2 as g
+
+from fetch import read_log
 
 
 def load(path: Path):
@@ -39,7 +40,7 @@ def content_key(m):
 def main():
     day = Path(sys.argv[1])
     verbose = "--verbose" in sys.argv
-    log = [json.loads(l) for l in (day / "fetch_log.jsonl").read_text().splitlines()]
+    log = read_log(day)
     by_file = {r["file"]: r for r in log if r["file"]}
     for feed in ("tripupdates", "vehiclepositions"):
         files = sorted((day / feed).glob("*.pb"))
