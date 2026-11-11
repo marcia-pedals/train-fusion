@@ -1,7 +1,7 @@
 # Deployment (GCP)
 
 The archiver runs on a small VM and archives into a GCS bucket; `just sync` keeps a local
-copy of the bucket in `data/rt` and `data/gtfs`, which the pipeline reads as before. All
+copy of the bucket in `data/rt` and `data/gtfs`, which the pipeline reads. All
 of it is terraform in `infra/` (GCP project `train-fusion`).
 
 ```
@@ -69,7 +69,7 @@ just sync                             # fills this checkout's data/ from the buc
 
 | | |
 |---|---|
-| `just sync` | download what's new (also run by `just build`) |
+| `just sync` | download what's new (`just build` doesn't, so builds use a stable snapshot until you sync) |
 | `just tf plan` / `just tf apply` | deploy: any change under `fetchers/` or `infra/fetcher/` replaces the VM |
 | `just fetcher-logs` | follow the VM's logs (IAP ssh) |
 | `just pull-secrets` | write all secrets into `.env.local` for local runs |

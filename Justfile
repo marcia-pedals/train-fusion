@@ -7,8 +7,9 @@ default:
 sync:
     python -m train_fusion.sync
 
-# sync, then rebuild everything in data/derived for exactly these service dates (or --last-week)
-build +args: sync
+# rebuild everything in data/derived for exactly these service dates (or --last-week), from
+# the local archive as it is (no sync: run `just sync` when you want new data)
+build +args:
     python -m train_fusion.build {{args}}
 
 # generate web/packages/types/tables.ts (not checked in) from the stages' schemas.py

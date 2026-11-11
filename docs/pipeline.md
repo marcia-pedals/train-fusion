@@ -7,8 +7,9 @@ the `schemas.py` of the stage that writes it.
 
 - **Stages are plain functions from tables to tables.** No orchestration framework.
 - **Derived data is disposable.** Everything under `data/derived/` is rebuilt from the raw
-  archive (`data/rt`, `data/gtfs`: a local copy of the GCS bucket, updated by `just sync`,
-  see [deploy.md](deploy.md)) and the hand-maintained inputs in the repo.
+  archive (`data/rt`, `data/gtfs`: a local copy of the GCS bucket, updated only when you run
+  `just sync`, see [deploy.md](deploy.md)) and the hand-maintained inputs in the repo.
+  Builds never sync, so you iterate on a fixed snapshot until you choose to update it.
 - **Schemas live with their stage.** Each stage is a directory
   `train_fusion/stages/<stage>/` with its code (`stage.py`) and the tables it writes
   (`schemas.py`, plain Python, via `train_fusion/common/schema_dsl.py`), which give the polars
@@ -22,7 +23,7 @@ the `schemas.py` of the stage that writes it.
 ## Stages
 
 One command derives everything: `just build <dates>` (or `just build --last-week`, every
-archived date among the 7 days ending today) syncs the archive, wipes `data/derived` and runs all the stages
+archived date among the 7 days ending today) wipes `data/derived` and runs all the stages
 below for exactly those service dates (`train_fusion/build.py`, run with `python -m`).
 
 | Stage | Command | Writes |
