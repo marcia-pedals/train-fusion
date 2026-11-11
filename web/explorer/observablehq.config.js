@@ -7,7 +7,8 @@ export default {
   pages: [
     {name: "Static feed", path: "/", pages: [
       {name: "Trip patterns", path: "/patterns"}
-    ]}
+    ]},
+    {name: "Timetables", path: "/timetables"}
   ],
   theme: ["air", "near-midnight"],
   // Python loaders need the project's environment (nix shell, or $PYTHON if set)

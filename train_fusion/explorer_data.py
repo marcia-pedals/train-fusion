@@ -9,6 +9,7 @@ import polars as pl
 
 from train_fusion.common import paths
 from train_fusion.stages.static.stage import DAYS, Static
+from train_fusion.stages.timetable import stage as timetable_stage
 
 
 def _static() -> Static:
@@ -63,6 +64,19 @@ def services() -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
+def timetable() -> pl.DataFrame:
+    """(trip_id, stop_idx, station_id): each served stop's static GTFS time gtfs_s (whole
+    minutes) and, where 511's pre-departure trip updates gave one, its GTFS-RT time rt_s
+    (6 s grid; the true time is in [rt_s, rt_s + 6]); and the time since the trip's previous
+    stop for each (rt_delta_s only where both stops have an rt_s). Seconds after the
+    service-day origin."""
+    tt = timetable_stage.load(_static()).sort("trip_id", "stop_idx")
+    prev = lambda c: pl.col(c) - pl.col(c).shift(1).over("trip_id")
+    return (tt.select("trip_id", "stop_idx", "station_id", pl.col("static_s").cast(pl.Float64).alias("gtfs_s"),
+                      pl.when(pl.col("source") == "tu").then(pl.col("dep_lo_s")).alias("rt_s"))
+            .with_columns(prev("gtfs_s").alias("gtfs_delta_s"), prev("rt_s").alias("rt_delta_s")))
+
+
 # what web/explorer/src/data/[table].parquet.py serves, as data/<name>.parquet
 TABLES = {
     "trips": lambda: _static().trips,
@@ -73,4 +87,5 @@ TABLES = {
     "date_trips": date_trips,
     "services": services,
     "platforms": lambda: _static().platforms,
+    "timetable": timetable,
 }

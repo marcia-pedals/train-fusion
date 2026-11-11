@@ -69,3 +69,7 @@ entry there. Pages:
   - **Trip patterns**: a time-distance diagram of the trip patterns, with a picker to show /
     hide routes and patterns and to select one (or click a dot) to list its trips and when
     each runs.
+- **Timetables**: pick a service, a direction and a first and last trip; a table with a
+  row per station and, per trip, its static GTFS time and its GTFS-RT time from 511's
+  pre-departure trip updates (stage `timetable`), with the time since the previous stop in
+  a slim row between stations (`explorer_data.timetable`).
