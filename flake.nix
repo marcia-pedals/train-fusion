@@ -28,6 +28,7 @@
           (noCheck pyproj)
           pytest
           google-cloud-storage
+          tqdm
         ]);
       in
       {

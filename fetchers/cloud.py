@@ -196,10 +196,11 @@ def migrate(data_dir: Path, bucket: str, workers: int = 32, client_factory=None)
                                 client=client_factory())
         local.up.upload(p)
 
+    from tqdm import tqdm  # laptop-only (dev shell); the VM never migrates
+
     with ThreadPoolExecutor(workers) as ex:
-        for i, _ in enumerate(ex.map(one, todo), 1):
-            if i % 500 == 0 or i == len(todo):
-                print(f"  {i}/{len(todo)}", flush=True)
+        for _ in tqdm(ex.map(one, todo), total=len(todo), unit="file", desc="uploading"):
+            pass
     return len(todo)
 
 
