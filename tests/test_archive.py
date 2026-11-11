@@ -221,3 +221,28 @@ def test_legacy_log_uploaded_only_once_quiet(tmp_path, final):
     busy = write(tmp_path / "rt" / "d" / "fetch_log.jsonl")
     quiet = write(tmp_path / "rt" / "e" / "fetch_log.jsonl", age_s=3600)
     assert not up.finished(busy, final) and up.finished(quiet, final)
+
+
+def test_migrate_skips_existing_and_uploads_rest_in_parallel(tmp_path):
+    client = FakeClient()
+    day = tmp_path / "rt" / "2026-11-10"
+    write(day / "fetch_log.jsonl", "{}\n", age_s=3600)
+    for i in range(50):
+        write(day / "vehiclepositions" / f"{i:02d}.pb", str(i))
+    write(tmp_path / "gtfs" / "2026-11-10" / "z.zip", "zip")
+    client.b.store["rt/2026-11-10/vehiclepositions/00.pb"] = b"already"  # an interrupted run
+    attempts = []
+    real = FakeBlob.upload_from_filename
+
+    def counting(self, *a, **k):
+        attempts.append(self.name)
+        return real(self, *a, **k)
+
+    FakeBlob.upload_from_filename = counting
+    try:
+        assert cloud.migrate(tmp_path, "b", workers=8, client_factory=lambda: client) == 51
+    finally:
+        FakeBlob.upload_from_filename = real
+    assert "rt/2026-11-10/vehiclepositions/00.pb" not in attempts  # skipped without a request
+    assert client.b.store["rt/2026-11-10/vehiclepositions/00.pb"] == b"already"
+    assert len(client.b.store) == 52 and (day / "vehiclepositions" / "01.pb").exists()  # nothing deleted

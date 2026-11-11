@@ -11,8 +11,8 @@ last hour of its log), so the disk only holds what's recent or not yet uploaded.
 A log segment is finished once its minute is over (plus a grace period), or at the final
 pass on shutdown. Everything else is written via tmp + rename, so is finished on sight.
 
-    python -m fetchers.cloud migrate --data-dir data --bucket B   # one-off: upload an
-                                                                  # existing archive, deleting nothing
+    python -m fetchers.cloud migrate --data-dir data --bucket B   # one-off: upload an existing
+                                        # archive (in parallel, skipping what's there), deleting nothing
 """
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ import os
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -171,21 +172,44 @@ class Metrics:
                 print(f"metrics: {type(e).__name__}: {e}", flush=True)
 
 
+def migrate(data_dir: Path, bucket: str, workers: int = 32, client_factory=None) -> int:
+    """Upload an existing archive, deleting nothing. Lists the bucket once to skip what's
+    already there (so an interrupted run resumes cheaply), then uploads in parallel."""
+    client_factory = client_factory or storage.Client
+    up = Uploader(data_dir, bucket, instance="migrate", delete_local=False, client=client_factory())
+    # A legacy fetch_log.jsonl can't be updated once uploaded, so the fetcher appending to
+    # it must be stopped first. (The gtfs one only changes daily, so this can't catch it.)
+    skipped = [p for p in (data_dir / "rt").glob("*/fetch_log.jsonl") if not up.finished(p, True)]
+    if skipped:
+        wait = max(LEGACY_QUIET_S - (time.time() - p.stat().st_mtime) for p in skipped)
+        sys.exit(f"{[str(p) for p in skipped]} changed in the last {LEGACY_QUIET_S:.0f} s, so the "
+                 f"old fetcher may still be running. If it's stopped, retry in {wait:.0f} s.")
+    existing = {b.name for top in ("rt", "gtfs") for b in up.bucket.list_blobs(prefix=f"{top}/")}
+    todo = [p for p in up.candidates(final=True) if p.relative_to(data_dir).as_posix() not in existing]
+    print(f"{len(existing)} objects already in gs://{bucket}; uploading {len(todo)} files", flush=True)
+
+    local = threading.local()  # one client per thread
+
+    def one(p: Path) -> None:
+        if not hasattr(local, "up"):
+            local.up = Uploader(data_dir, bucket, instance="migrate", delete_local=False,
+                                client=client_factory())
+        local.up.upload(p)
+
+    with ThreadPoolExecutor(workers) as ex:
+        for i, _ in enumerate(ex.map(one, todo), 1):
+            if i % 500 == 0 or i == len(todo):
+                print(f"  {i}/{len(todo)}", flush=True)
+    return len(todo)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["migrate"])
     ap.add_argument("--data-dir", type=Path, default=Path(os.environ.get("DATA_DIR", "data")))
     ap.add_argument("--bucket", required=True)
     a = ap.parse_args()
-    up = Uploader(a.data_dir, a.bucket, instance="migrate", delete_local=False)
-    # A legacy fetch_log.jsonl can't be updated once uploaded, so the fetcher appending to
-    # it must be stopped first. (The gtfs one only changes daily, so this can't catch it.)
-    skipped = [p for p in (a.data_dir / "rt").glob("*/fetch_log.jsonl") if not up.finished(p, True)]
-    if skipped:
-        wait = max(LEGACY_QUIET_S - (time.time() - p.stat().st_mtime) for p in skipped)
-        sys.exit(f"{[str(p) for p in skipped]} changed in the last {LEGACY_QUIET_S:.0f} s, so the "
-                 f"old fetcher may still be running. If it's stopped, retry in {wait:.0f} s.")
-    n = up.upload_pass(final=True)
+    n = migrate(a.data_dir, a.bucket)
     print(f"uploaded {n} new files")
 
 
