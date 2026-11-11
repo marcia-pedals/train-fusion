@@ -2,11 +2,14 @@
 
 Trips of a pattern (same stations, same static times relative to the first departure;
 stages.static.stage.trip_patterns) are expected to share their timetable exactly, also below a minute.
-pattern_bounds checks that: relative to each trip's static first departure, every trip of
-the pattern that 511's trip updates narrowed must have the same timetable intervals
-(stage `timetable`); those are the pattern's intervals. A pattern with no narrowed trips
-uses the static ones, which are the same for all its trips by definition. Anything else is
-a PatternMismatch.
+pattern_bounds checks that, stop by stop: relative to each trip's static first departure,
+every trip of the pattern that 511's trip updates narrowed at a stop must have exactly the
+same timetable interval there (stage `timetable`), and that's the pattern's interval. At a
+stop no trip was narrowed at, the static minute is used, the same for all its trips by
+definition. Trips are narrowed at different stops: pre-departure updates list the stops
+in roughly the next 90 minutes (never the terminal), so a date whose archive ends before a
+trip departs, or a gap in fetches, leaves some of its stops at the static minute.
+Narrowed intervals that differ are a PatternMismatch.
 
 Then, for every segment i -> i+1 of every pattern g, with R the physical minimum run time
 (physics.py) and D the pattern's departures (inside its intervals):
@@ -46,29 +49,31 @@ class Fit:
 
 def pattern_bounds(timetable: pl.DataFrame, patterns: pl.DataFrame) -> pl.DataFrame:
     """One row per (pattern_id, stop_idx): station_id and the pattern's timetable interval
-    [lo_s, hi_s] relative to its first static departure; n_trips; narrowed (by trip
-    updates). Raises PatternMismatch if narrowed trips of a pattern disagree."""
-    tt = (timetable.join(patterns, on="trip_id").sort("trip_id", "stop_idx")
+    [lo_s, hi_s] relative to its first static departure; n_trips; narrowed (some trip of
+    the pattern narrowed by trip updates). Raises PatternMismatch if trips narrowed at the
+    same stop disagree."""
+    tt = (timetable.join(patterns, on="trip_id").sort("pattern_id", "stop_idx", "trip_id")
           .with_columns((pl.col("dep_lo_s") - pl.col("static_s").first().over("trip_id")).alias("lo_s"),
                         (pl.col("dep_hi_s") - pl.col("static_s").first().over("trip_id")).alias("hi_s"),
-                        (pl.col("source") == "tu").any().over("trip_id").alias("narrowed")))
-    out = []
-    for (pid,), g in tt.group_by("pattern_id", maintain_order=True):
-        use = g.filter("narrowed") if g["narrowed"].any() else g
-        ref_trip = use["trip_id"][0]
-        ref = use.filter(pl.col("trip_id") == ref_trip)
-        diff = (use.join(ref.select("stop_idx", pl.col("lo_s").alias("lo0"), pl.col("hi_s").alias("hi0")), on="stop_idx")
-                .filter((pl.col("lo_s") != pl.col("lo0")) | (pl.col("hi_s") != pl.col("hi0"))))
-        if len(diff):
-            d = diff.row(0, named=True)
-            raise PatternMismatch(
-                f"pattern {pid}: at stop {d['stop_idx']} ({d['station_id']}) trip {d['trip_id']} has "
-                f"[{d['lo_s']:.0f}, {d['hi_s']:.0f}] s but trip {ref_trip} has [{d['lo0']:.0f}, {d['hi0']:.0f}] s "
-                f"after the first departure")
-        out.append(ref.select(pl.lit(pid).alias("pattern_id"), "stop_idx", "station_id", "lo_s", "hi_s",
-                              pl.lit(g["trip_id"].n_unique()).cast(pl.Int64).alias("n_trips"),
-                              pl.lit(bool(g["narrowed"].any())).alias("narrowed")))
-    return pl.concat(out).sort("pattern_id", "stop_idx")
+                        (pl.col("source") == "tu").alias("tu")))
+    # per (pattern, stop): the narrowed intervals if there are any, else the static ones
+    key = ["pattern_id", "stop_idx"]
+    use = tt.filter(pl.col("tu") | ~pl.col("tu").any().over(key))
+    ref = use.group_by(key, maintain_order=True).first().select(
+        *key, pl.col("trip_id").alias("ref_trip"), pl.col("lo_s").alias("lo0"), pl.col("hi_s").alias("hi0"))
+    diff = (use.join(ref, on=key)
+            .filter((pl.col("lo_s") != pl.col("lo0")) | (pl.col("hi_s") != pl.col("hi0"))))
+    if len(diff):
+        d = diff.row(0, named=True)
+        raise PatternMismatch(
+            f"pattern {d['pattern_id']}: at stop {d['stop_idx']} ({d['station_id']}) trip {d['trip_id']} has "
+            f"[{d['lo_s']:.0f}, {d['hi_s']:.0f}] s but trip {d['ref_trip']} has [{d['lo0']:.0f}, {d['hi0']:.0f}] s "
+            f"after the first departure")
+    trips = tt.group_by("pattern_id").agg(pl.col("trip_id").n_unique().cast(pl.Int64).alias("n_trips"),
+                                          pl.col("tu").any().alias("narrowed"))
+    return (use.group_by(key, maintain_order=True).first()
+            .join(trips, on="pattern_id")
+            .select(*key, "station_id", "lo_s", "hi_s", "n_trips", "narrowed").sort(key))
 
 
 def fit(bounds: pl.DataFrame, run_s: dict[str, float]) -> Fit:

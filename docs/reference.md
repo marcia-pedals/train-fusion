@@ -49,12 +49,15 @@ and S is t truncated to the minute; otherwise it stops.
 **Trip patterns.** Trips with the same direction, served stations and static times
 relative to their first departure form a pattern (`trips.pattern_id`): at the static
 timetable's one-minute resolution they're constant offsets of each other, and they're
-expected to share their timetable below a minute too. The build checks that: relative to
-each trip's static first departure, every trip of a pattern that 511's trip updates
-narrowed must have exactly the same intervals, and those are the pattern's intervals
-[lo<sub>g,i</sub>, hi<sub>g,i</sub>]. A pattern with no narrowed trips uses the static
-intervals, the same for all its trips by definition. Otherwise the build stops, naming the
-pattern, stop and trips.
+expected to share their timetable below a minute too. The build checks that, stop by
+stop: relative to each trip's static first departure, every trip of a pattern that 511's
+trip updates narrowed at a stop must have exactly the same interval there, and that's the
+pattern's interval [lo<sub>g,i</sub>, hi<sub>g,i</sub>]. At a stop no trip was narrowed
+at, the static interval is used, the same for all its trips by definition. Trips are
+narrowed at different stops: pre-departure updates list the stops in roughly the next 90
+minutes and never the terminal, so a date archived only up to some time (or a gap in
+fetches) leaves later trips partly at static minutes. If narrowed intervals differ, the
+build stops, naming the pattern, stop and trips.
 
 **Fit** (`timetable_fit.py`), a linear program:
 

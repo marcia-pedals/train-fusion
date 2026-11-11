@@ -53,3 +53,25 @@ def test_narrowed_trips_that_disagree_stop_the_build():
     other = [("A", 0), ("B", 160), ("C", 390), ("D", 555)]
     with pytest.raises(PatternMismatch, match="at stop 1 .B. trip u has \\[160, 160\\] s but trip t has \\[140, 140\\] s"):
         pattern_bounds(_tt({"t": _exact(0, REL), "u": _exact(3600, other)}), _pat(t="p1", u="p1"))
+
+
+def test_trips_narrowed_at_different_stops_combine():
+    # t: 511 values for the first two stops only, u for the last two (as when pre-departure
+    # updates list only the next few stops); static minutes elsewhere
+    half = lambda start, n: _exact(start, REL)[:n] + _static(start, [(s, r // 60 * 60) for s, r in REL])[n:]
+    late = lambda start, n: _static(start, [(s, r // 60 * 60) for s, r in REL])[:n] + _exact(start, REL)[n:]
+    b = pattern_bounds(_tt({"t": half(0, 2), "u": late(3600, 2)}), _pat(t="p1", u="p1"))
+    assert b["lo_s"].to_list() == [0, 140, 390, 555] and b["hi_s"].to_list() == [0, 140, 390, 555]
+    assert b["narrowed"].all()
+
+
+def test_unnarrowed_stops_keep_the_static_minute():
+    b = pattern_bounds(_tt({"t": _exact(0, REL)[:1] + _static(0, [(s, r // 60 * 60) for s, r in REL])[1:]}), _pat(t="p1"))
+    assert b["lo_s"].to_list() == [0, 120, 360, 540] and b["hi_s"].to_list() == [0, 180, 420, 600]
+
+
+def test_narrowed_trips_that_differ_at_a_stop_stop_the_build_even_if_they_overlap():
+    t = _tt({"t": [("A", 0, 0, 6, "tu"), ("B", 120, 140, 146, "tu")],
+             "u": [("A", 3600, 3600, 3606, "tu"), ("B", 3720, 3742, 3748, "tu")]})
+    with pytest.raises(PatternMismatch, match="at stop 1 .B. trip u has \\[142, 148\\] s but trip t has \\[140, 146\\] s"):
+        pattern_bounds(t, _pat(t="p1", u="p1"))
