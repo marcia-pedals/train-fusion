@@ -10,6 +10,7 @@ Auth: `gcloud auth application-default login` once.
 from __future__ import annotations
 
 import argparse
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
@@ -30,27 +31,38 @@ def remote_dates(bucket) -> list[str]:
     return sorted(p.split("/")[1] for p in it.prefixes)
 
 
-def sync_prefix(bucket, prefix: str, dest: Path) -> tuple[int, float | None]:
-    """Download every object under `prefix` that's missing locally into dest (the data
-    dir). Returns (number downloaded, newest object's creation time)."""
+def missing(bucket, prefix: str, dest: Path) -> tuple[list[str], float | None]:
+    """Names of objects under `prefix` that are missing locally under dest (the data dir),
+    and the newest object's creation time."""
     todo, newest = [], None
     for b in bucket.list_blobs(prefix=prefix):
         t = b.time_created.timestamp() if b.time_created else None
         newest = t if newest is None or (t is not None and t > newest) else newest
-        p = dest / b.name
-        if not p.exists():
-            todo.append((b, p))
+        if not (dest / b.name).exists():
+            todo.append(b.name)
+    return todo, newest
 
-    def get(item):
-        b, p = item
+
+def download(client_factory, bucket_name: str, names: list[str], dest: Path, workers: int = 16) -> None:
+    """Download objects in parallel (one client per thread), each via a .part file so an
+    interrupted sync never leaves a truncated file under its real name."""
+    from tqdm import tqdm
+
+    local = threading.local()
+
+    def get(name: str) -> None:
+        if not hasattr(local, "bucket"):
+            local.bucket = client_factory().bucket(bucket_name)
+        p = dest / name
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp = p.with_name(p.name + ".part")
-        b.download_to_filename(str(tmp))
+        local.bucket.blob(name).download_to_filename(str(tmp))
         tmp.rename(p)
 
-    with ThreadPoolExecutor(16) as ex:
-        list(ex.map(get, todo))
-    return len(todo), newest
+    with ThreadPoolExecutor(workers) as ex:
+        for _ in tqdm(ex.map(get, names), total=len(names), unit="file", desc="downloading",
+                      disable=not names):
+            pass
 
 
 def is_final(day: str, today: str) -> bool:
@@ -58,26 +70,38 @@ def is_final(day: str, today: str) -> bool:
 
 
 def sync(bucket_name: str = paths.ARCHIVE_BUCKET, data: Path = paths.DATA, client=None) -> dict:
+    """List what's new (every unfinished date, plus gtfs/), download it all, then mark the
+    dates that can't get new objects anymore as final. Returns {date or "gtfs": count}."""
     if client is None:
         from google.cloud import storage
-        client = storage.Client()
-    bucket = client.bucket(bucket_name)
+        client_factory = storage.Client
+    else:
+        client_factory = lambda: client  # noqa: E731  (tests)
+    bucket = client_factory().bucket(bucket_name)
     today = service_date(time.time())
-    got, newest = {}, None
+    todo, got, newest, finals = [], {}, None, []
     for day in remote_dates(bucket):
         d = data / "rt" / day
         if (d / MARKER).exists():
             continue
-        n, t = sync_prefix(bucket, f"rt/{day}/", data)
-        if n:
-            got[day] = n
+        names, t = missing(bucket, f"rt/{day}/", data)
+        todo += names
+        if names:
+            got[day] = len(names)
         if t is not None and (newest is None or t > newest):
             newest = t
         if is_final(day, today):
-            (d / MARKER).touch()
-    n, _ = sync_prefix(bucket, "gtfs/", data)
-    if n:
-        got["gtfs"] = n
+            finals.append(d)
+    names, _ = missing(bucket, "gtfs/", data)
+    todo += names
+    if names:
+        got["gtfs"] = len(names)
+
+    download(client_factory, bucket_name, todo, data)
+    for d in finals:  # only once everything for them is down
+        d.mkdir(parents=True, exist_ok=True)
+        (d / MARKER).touch()
+
     if newest is None or time.time() - newest > STALE_WARN_S:
         age = "never" if newest is None else f"{(time.time() - newest) / 60:.0f} min ago"
         print(f"warning: newest RT object in gs://{bucket_name} was written {age}; is the fetcher running?")

@@ -246,3 +246,21 @@ def test_migrate_skips_existing_and_uploads_rest_in_parallel(tmp_path):
     assert "rt/2026-11-10/vehiclepositions/00.pb" not in attempts  # skipped without a request
     assert client.b.store["rt/2026-11-10/vehiclepositions/00.pb"] == b"already"
     assert len(client.b.store) == 52 and (day / "vehiclepositions" / "01.pb").exists()  # nothing deleted
+
+
+def test_sync_failed_download_leaves_day_unfinal_and_retries(tmp_path, monkeypatch):
+    client = FakeClient()
+    name = "rt/2026-11-01/vehiclepositions/a.pb"
+    client.b.store[name], client.b.created[name] = b"x", datetime.now(timezone.utc)
+    monkeypatch.setattr(sync, "service_date", lambda _: "2026-11-11")
+    real = FakeBlob.download_to_filename
+    monkeypatch.setattr(FakeBlob, "download_to_filename",
+                        lambda self, path: (_ for _ in ()).throw(ConnectionError("network")))
+    with pytest.raises(ConnectionError):
+        sync.sync("b", tmp_path, client=client)
+    day = tmp_path / "rt" / "2026-11-01"
+    assert not (day / ".final").exists() and not (day / "vehiclepositions" / "a.pb").exists()
+
+    monkeypatch.setattr(FakeBlob, "download_to_filename", real)
+    assert sync.sync("b", tmp_path, client=client) == {"2026-11-01": 1}
+    assert (day / ".final").exists() and (day / "vehiclepositions" / "a.pb").read_bytes() == b"x"
