@@ -1,7 +1,7 @@
 # Alerts, by email. Two failure modes are covered separately:
 #   - nothing reaches the archive (fetcher, VM or upload dead): GCS's own write metric;
 #   - a feed fails while uploads continue (e.g. a revoked key: error bodies are archived
-#     too): the fetcher's count of HTTP 200 fetches per feed (fetch_cloud.Metrics).
+#     too): the fetcher's count of HTTP 200 fetches per feed (fetchers/cloud.py Metrics).
 # Plus a warning when two fetchers keep running at once (doubling the 511 quota use).
 
 locals {

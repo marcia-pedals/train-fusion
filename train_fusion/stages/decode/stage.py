@@ -18,7 +18,8 @@ from train_fusion.common.paths import ROOT, RT, day_dir
 from train_fusion.stages.decode.schemas import TU, VP
 
 sys.path.insert(0, str(ROOT))
-from fetch import STAMP_S, parse_feed, read_log  # noqa: E402  (same digest as the fetcher logs)
+from fetchers.archive import read_log  # noqa: E402
+from fetchers.gtfs.fetch import STAMP_S, parse_feed  # noqa: E402  (same digest as the fetcher logs)
 
 FEEDS = ("tripupdates", "vehiclepositions")
 

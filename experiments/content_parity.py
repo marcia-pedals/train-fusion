@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from fetch import read_log  # noqa: E402
+from fetchers.archive import read_log  # noqa: E402
 from google.transit import gtfs_realtime_pb2 as g
 
 def info(path):

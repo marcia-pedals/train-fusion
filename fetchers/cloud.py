@@ -1,9 +1,9 @@
-"""The archiver's cloud side (used by `fetch.py --bucket/--metrics`): upload to GCS, and
-report fetch counts to Cloud Monitoring.
+"""The fetchers' cloud side (`--bucket/--metrics`): upload to GCS, and report fetch counts
+to Cloud Monitoring.
 
 Upload: every finished file under data/rt and data/gtfs is uploaded create-only (if the
 object already exists, it's left alone), to the same path relative to the data dir. Since
-fetch.py never changes a file once finished, this makes the bucket the plain union of what
+fetchers never change a file once finished (archive.py), this makes the bucket the plain union of what
 every fetcher ever wrote, whatever restarts or overlaps happened. Uploaded files are
 deleted locally once older than KEEP_LOCAL_S (the fetcher seeds its rate limiter from the
 last hour of its log), so the disk only holds what's recent or not yet uploaded.
@@ -11,8 +11,8 @@ last hour of its log), so the disk only holds what's recent or not yet uploaded.
 A log segment is finished once its minute is over (plus a grace period), or at the final
 pass on shutdown. Everything else is written via tmp + rename, so is finished on sight.
 
-    python fetch_cloud.py migrate --data-dir data --bucket B   # one-off: upload an existing
-                                                               # archive, deleting nothing
+    python -m fetchers.cloud migrate --data-dir data --bucket B   # one-off: upload an
+                                                                  # existing archive, deleting nothing
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from pathlib import Path
 from google.api_core import exceptions as gexc
 from google.cloud import storage
 
-from fetch import INSTANCE, LOG_DIR, log_minute
+from fetchers.archive import INSTANCE, LOG_DIR, log_minute
 
 UPLOAD_EVERY_S = 30.0
 KEEP_LOCAL_S = 2 * 3600.0   # > the rate limiter's 1 h window

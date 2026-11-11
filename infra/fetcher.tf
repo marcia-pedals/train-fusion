@@ -1,7 +1,7 @@
-# The archiver: fetch.py on one small VM, uploading to the archive bucket.
+# The GTFS archiver (fetchers/gtfs) on one small VM, uploading to the archive bucket.
 #
-# Deploying = `just tf apply`. The code is baked into the startup script, so any change to
-# fetch.py / fetch_cloud.py / the script replaces the VM: the new one is created before the
+# Deploying = `just tf apply`. The fetchers/ package is baked into the startup script, so
+# any change to it (or to the script) replaces the VM: the new one is created before the
 # old one is deleted, and on deletion the old one uploads everything it has before stopping.
 # Running both for a minute or two is harmless (the archive merges by union, and the 511
 # quota tolerates it).
@@ -11,12 +11,15 @@ locals {
   fetcher_secrets = ["API_KEY_511_1", "API_KEY_511_2"]
 
   startup_script = templatefile("${path.module}/fetcher/startup.sh.tftpl", {
-    project        = var.project
-    bucket         = google_storage_bucket.archive.name
-    secrets        = join(" ", local.fetcher_secrets)
-    requirements   = filebase64("${path.module}/fetcher/requirements.txt")
-    fetch_py       = filebase64("${path.module}/../fetch.py")
-    fetch_cloud_py = filebase64("${path.module}/../fetch_cloud.py")
+    project      = var.project
+    bucket       = google_storage_bucket.archive.name
+    secrets      = join(" ", local.fetcher_secrets)
+    requirements = filebase64("${path.module}/fetcher/requirements.txt")
+    # every .py under fetchers/, by path relative to the repo root
+    code = {
+      for f in fileset("${path.module}/../fetchers", "**/*.py") :
+      "fetchers/${f}" => filebase64("${path.module}/../fetchers/${f}")
+    }
   })
 }
 

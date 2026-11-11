@@ -1,6 +1,6 @@
 # Fetcher (archiver)
 
-`fetch.py` archives Caltrain's two 511.org GTFS-RT feeds and the daily static GTFS,
+`fetchers/gtfs/fetch.py` archives Caltrain's two 511.org GTFS-RT feeds and the daily static GTFS,
 byte-for-byte, so everything downstream can be rebuilt from the archive. The deployed one
 runs on a GCP VM and uploads to a bucket ([deploy.md](deploy.md)); `just sync` brings the
 archive into the local `data/`.
@@ -8,10 +8,10 @@ archive into the local `data/`.
 ## Usage
 
 ```sh
-python fetch.py            # runs forever; -v prints scheduler state
+just fetch                 # = python -m fetchers.gtfs.fetch; runs forever; -v prints scheduler state
                            # (--bucket B --metrics: the deployed mode, see deploy.md)
 pbcat data/rt/<day>/vehiclepositions/<stamp>.pb      # read a snapshot (--json for jq)
-python inspect_rt.py data/rt/<day>                   # freshness/cadence summary
+python -m fetchers.gtfs.inspect_rt data/rt/<day>     # freshness/cadence summary
 ```
 
 Everything lands under `data/` (gitignored):
@@ -28,7 +28,8 @@ data/gtfs/fetch_log/<utc_minute>_<instance>.jsonl
 Files are never changed once finished: the log starts a new file every minute, named by
 the process (`<host>-<random>`), so archives from any number of fetchers merge by union.
 Archives from before 2026-11-11 have one `fetch_log.jsonl` per directory instead.
-`fetch.read_log(dir)` reads both. If either feed's thread crashes, the process exits
+`fetchers.archive.read_log(dir)` reads both (the log format is shared by all fetchers:
+`fetchers/archive.py`; uploading is `fetchers/cloud.py`). If either feed's thread crashes, the process exits
 nonzero (for systemd to restart it) rather than carrying on with one feed.
 
 `service_date` = local time minus 3 h, so after-midnight trains file under the previous day.
@@ -42,7 +43,7 @@ borrows one vehicle-position slot per day (first fetch on or after 03:00 local, 
 run). The `RateLimit-Remaining` header is noisy: it goes up and down between consecutive
 calls, as if several backend servers each keep their own count, so it can't be used to
 measure real usage. We log it anyway. In practice we went well over 60/hour/key during
-testing without ever getting a 429. `fetch.py` still enforces 60 per rolling hour per key
+testing without ever getting a 429. The fetcher still enforces 60 per rolling hour per key
 itself (`RateLimiter`, seeded from the fetch log so restarts don't overspend).
 
 **Update cadence.**
@@ -56,7 +57,7 @@ itself (`RateLimiter`, seeded from the fetch log so restarts don't overspend).
 - Trip updates and vehicle positions are stamped on **separate cycles**. Sometimes they
   match to within a second; sometimes they're ~5-13 s apart.
 
-**Fetch scheduling** (`Scheduler` in `fetch.py`). Fetching on a fixed :00 schedule gives
+**Fetch scheduling** (`Scheduler` in `fetchers/gtfs/fetch.py`). Fetching on a fixed :00 schedule gives
 content 0-30 s old (~15 s on average), depending on luck. Instead, each feed:
 - aims `margin` after a content update: `last content stamp + 60 s` (2 content cycles),
   relative to the data's own timestamp, so phase drift is corrected every fetch;

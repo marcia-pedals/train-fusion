@@ -13,8 +13,10 @@ Layout (all under DATA_DIR, default ./data, which is gitignored):
 Every file is written once and never changed: the log goes to a new file each minute, named
 by this process's instance id. So archives from several fetchers (restarts, a replaced VM,
 two running at once) merge by plain union, which is what `--bucket` relies on: it uploads
-each finished file create-only to GCS (see fetch_cloud.py). Older archives have a single
-fetch_log.jsonl per directory instead; read_log() reads both.
+each finished file create-only to GCS (see fetchers/cloud.py). Older archives have a single
+fetch_log.jsonl per directory instead; fetchers.archive.read_log() reads both.
+
+Run from the repo root: python -m fetchers.gtfs.fetch
 
 service_date is the Caltrain operating day: local (America/Los_Angeles) time minus
 SERVICE_DAY_CUTOFF_HOURS, so trains running after midnight file under the previous day.
@@ -36,12 +38,9 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import math
 import os
-import secrets
 import signal
-import socket
 import sys
 import threading
 import time
@@ -51,6 +50,8 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+from fetchers.archive import INSTANCE, append_log, log_lock, read_log
 
 try:
     from google.transit import gtfs_realtime_pb2
@@ -88,11 +89,6 @@ STATIC_LOCAL_HOUR = 3
 KEEP_HEADERS = ("date", "ratelimit-limit", "ratelimit-remaining", "content-type",
                 "content-length", "last-modified", "etag", "retry-after")
 
-# Names this process's log files, so concurrent or successive fetchers never share one.
-INSTANCE = f"{socket.gethostname().split('.')[0]}-{secrets.token_hex(3)}"
-LOG_DIR = "fetch_log"
-
-log_lock = threading.Lock()
 fetch_counts = Counter()  # feed -> successful (HTTP 200) fetches, for --metrics
 
 
@@ -124,48 +120,6 @@ def http_get(url: str, timeout: float = 30.0):
             return r.status, dict(r.headers), r.read()
     except urllib.error.HTTPError as e:
         return e.code, dict(e.headers or {}), e.read()
-
-
-def log_minute(name: str) -> datetime | None:
-    """The UTC minute a log segment covers, from its name (None for other files)."""
-    try:
-        return datetime.strptime(name.split("_", 1)[0], "%Y%m%dT%H%MZ").replace(tzinfo=timezone.utc)
-    except ValueError:
-        return None
-
-
-def append_log(log_dir: Path, rec: dict) -> None:
-    """Append to this process's segment for the current minute, under log_dir/fetch_log/."""
-    now = datetime.now(timezone.utc)
-    path = log_dir / LOG_DIR / f"{now:%Y%m%dT%H%MZ}_{INSTANCE}.jsonl"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with log_lock, path.open("a") as f:
-        f.write(json.dumps(rec, separators=(",", ":")) + "\n")
-
-
-def log_files(log_dir: Path, since: datetime | None = None) -> list[Path]:
-    """The fetch-log files of a directory: the legacy single file, then the segments
-    (those covering `since` or later, if given)."""
-    out = [log_dir / "fetch_log.jsonl"] if (log_dir / "fetch_log.jsonl").exists() else []
-    seg = log_dir / LOG_DIR
-    if seg.is_dir():
-        for p in sorted(seg.glob("*.jsonl")):
-            m = log_minute(p.name)
-            if since is None or (m is not None and m + timedelta(minutes=1) > since):
-                out.append(p)
-    return out
-
-
-def read_log(log_dir: Path, since: datetime | None = None) -> list[dict]:
-    """Every record in a directory's fetch log, skipping unparseable (e.g. torn) lines."""
-    out = []
-    for p in log_files(log_dir, since):
-        for line in p.read_text().splitlines():
-            try:
-                out.append(json.loads(line))
-            except ValueError:
-                continue
-    return out
 
 
 def parse_feed(body: bytes):
@@ -472,7 +426,7 @@ def main() -> None:
     ap.add_argument("-v", "--verbose", action="store_true", help="print scheduler state each cycle")
     args = ap.parse_args()
 
-    load_dotenv(Path(__file__).with_name(".env.local"))
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env.local")
     for _, key_env in RT_FEEDS.values():
         if not os.environ.get(key_env):
             sys.exit(f"missing {key_env} (put it in .env.local)")
@@ -485,13 +439,13 @@ def main() -> None:
     uploader = None
     args.static_in_bucket = None
     if args.bucket or args.metrics:
-        import fetch_cloud  # only needed (with its google-cloud deps) in cloud mode
+        from fetchers import cloud  # only needed (with its google-cloud deps) in cloud mode
     if args.bucket:
-        uploader = fetch_cloud.Uploader(args.data_dir, args.bucket, INSTANCE)
+        uploader = cloud.Uploader(args.data_dir, args.bucket, INSTANCE)
         args.static_in_bucket = uploader.has_static
         run_thread(uploader.run, stop)
     if args.metrics:
-        run_thread(fetch_cloud.Metrics(INSTANCE, fetch_counts, log_lock, list(RT_FEEDS)).run, stop)
+        run_thread(cloud.Metrics(INSTANCE, fetch_counts, log_lock, list(RT_FEEDS)).run, stop)
 
     feeds = [run_thread(feed_loop, f, args, stop) for f in RT_FEEDS]
     try:

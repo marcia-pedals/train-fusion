@@ -18,7 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from fetch import AGENCY, BASE, RT_FEEDS, http_get, load_dotenv, stamp  # noqa: E402
+from fetchers.gtfs.fetch import AGENCY, BASE, RT_FEEDS, http_get, load_dotenv, stamp  # noqa: E402
 from google.transit import gtfs_realtime_pb2 as g  # noqa: E402
 
 

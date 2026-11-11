@@ -1,6 +1,6 @@
 """`just sync`: download what's new in the GCS archive into data/rt and data/gtfs.
 
-Archive objects are never changed once written (see fetch_cloud.py), so syncing is just
+Archive objects are never changed once written (see fetchers/archive.py), so syncing is just
 downloading the names we don't have yet. A service date that ended long enough ago that
 nothing more can arrive for it (FINAL_AFTER_DAYS) gets a `.final` marker once complete
 and is never listed again, so a sync only lists the last couple of days plus gtfs/.

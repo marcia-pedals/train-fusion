@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Summarize archived GTFS-RT snapshots: freshness, update cadence, content changes.
 
-usage: python inspect_rt.py data/rt/<service_date> [--verbose]
+usage: python -m fetchers.gtfs.inspect_rt data/rt/<service_date> [--verbose]
 """
 
 import sys
@@ -11,7 +11,7 @@ from pathlib import Path
 
 from google.transit import gtfs_realtime_pb2 as g
 
-from fetch import read_log
+from fetchers.archive import read_log
 
 
 def load(path: Path):

@@ -18,8 +18,11 @@ fi
 echo '${requirements}' | base64 -d > $APP/requirements.txt
 $APP/venv/bin/pip install --quiet --disable-pip-version-check -r $APP/requirements.txt
 
-echo '${fetch_py}' | base64 -d > $APP/fetch.py
-echo '${fetch_cloud_py}' | base64 -d > $APP/fetch_cloud.py
+rm -rf $APP/fetchers
+%{ for path, b64 in code ~}
+mkdir -p "$(dirname $APP/${path})"
+echo '${b64}' | base64 -d > $APP/${path}
+%{ endfor ~}
 
 # Secrets go into the process environment only, never to disk.
 cat > $APP/run.sh <<'RUN'
@@ -30,7 +33,7 @@ for s in ${secrets}; do
 done
 # --data-dir must stay relative: the log records file paths, and decode resolves them
 # against the repo root on whichever machine reads the archive.
-exec /opt/train-fusion/venv/bin/python -u fetch.py --data-dir data --bucket ${bucket} --metrics
+exec /opt/train-fusion/venv/bin/python -u -m fetchers.gtfs.fetch --data-dir data --bucket ${bucket} --metrics
 RUN
 chmod 755 $APP/run.sh
 
@@ -48,7 +51,7 @@ WorkingDirectory=/opt/train-fusion
 ExecStart=/opt/train-fusion/run.sh
 Restart=always
 RestartSec=10
-# on stop (incl. VM shutdown/deletion): SIGTERM, then fetch.py uploads what's left
+# on stop (incl. VM shutdown/deletion): SIGTERM, then the fetcher uploads what's left
 TimeoutStopSec=90
 
 [Install]

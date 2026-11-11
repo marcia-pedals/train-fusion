@@ -5,7 +5,7 @@ from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("America/Los_Angeles")
-SERVICE_DAY_CUTOFF_HOURS = 3  # same as fetch.py
+SERVICE_DAY_CUTOFF_HOURS = 3  # same as fetchers/gtfs/fetch.py
 
 
 def service_date(epoch: float) -> str:

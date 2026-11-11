@@ -10,8 +10,8 @@ import pytest
 from google.api_core import exceptions as gexc
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import fetch  # noqa: E402
-import fetch_cloud  # noqa: E402
+from fetchers import archive, cloud  # noqa: E402
+from fetchers.gtfs import fetch  # noqa: E402
 from train_fusion import sync  # noqa: E402
 
 
@@ -98,7 +98,7 @@ def test_read_log_merges_legacy_and_segments_and_skips_torn_lines(tmp_path):
     t = datetime(2026, 11, 11, 20, 0, tzinfo=timezone.utc)
     segment(d, t, "vm1-aaaaaa", ['{"b": 1}'])
     segment(d, t, "vm2-bbbbbb", ['{"c": 1}'])
-    assert fetch.read_log(d) == [{"a": 1}, {"b": 1}, {"c": 1}]
+    assert archive.read_log(d) == [{"a": 1}, {"b": 1}, {"c": 1}]
 
 
 def test_log_files_since_keeps_legacy_and_recent_segments(tmp_path):
@@ -109,23 +109,23 @@ def test_log_files_since_keeps_legacy_and_recent_segments(tmp_path):
     before = segment(d, t - timedelta(minutes=1), "i", [])  # ends exactly at `since`
     covering = segment(d, t, "i", [])  # its minute contains `since`
     new = segment(d, t + timedelta(minutes=5), "i", [])
-    files = fetch.log_files(d, since=t + timedelta(seconds=30))
+    files = archive.log_files(d, since=t + timedelta(seconds=30))
     assert before not in files
     assert d / "fetch_log.jsonl" in files and covering in files and new in files
     assert old not in files
 
 
 def test_append_log_writes_this_instances_segment(tmp_path):
-    fetch.append_log(tmp_path, {"x": 1})
+    archive.append_log(tmp_path, {"x": 1})
     (p,) = (tmp_path / "fetch_log").iterdir()
-    assert p.name.endswith(f"_{fetch.INSTANCE}.jsonl") and fetch.log_minute(p.name) is not None
-    assert fetch.read_log(tmp_path) == [{"x": 1}]
+    assert p.name.endswith(f"_{archive.INSTANCE}.jsonl") and archive.log_minute(p.name) is not None
+    assert archive.read_log(tmp_path) == [{"x": 1}]
 
 
 # ------------------------------------------------------------------ upload
 def test_upload_skips_open_files_and_deletes_only_old_uploaded_ones(tmp_path):
     client = FakeClient()
-    up = fetch_cloud.Uploader(tmp_path, "b", instance="me-111111", client=client)
+    up = cloud.Uploader(tmp_path, "b", instance="me-111111", client=client)
     day = tmp_path / "rt" / "2026-11-11"
     now = datetime.now(timezone.utc)
     pb_old = write(day / "vehiclepositions" / "a.pb", "old", age_s=3 * 3600)
@@ -148,9 +148,9 @@ def test_upload_skips_open_files_and_deletes_only_old_uploaded_ones(tmp_path):
 def test_upload_never_overwrites(tmp_path):
     client = FakeClient()
     p = write(tmp_path / "gtfs" / "2026-11-11" / "z.zip", "first")
-    fetch_cloud.Uploader(tmp_path, "b", client=client).upload_pass()
+    cloud.Uploader(tmp_path, "b", client=client).upload_pass()
     p.write_text("second")
-    fetch_cloud.Uploader(tmp_path, "b", client=client).upload_pass()  # e.g. after a restart
+    cloud.Uploader(tmp_path, "b", client=client).upload_pass()  # e.g. after a restart
     assert client.b.store["gtfs/2026-11-11/z.zip"] == b"first"
 
 
@@ -164,13 +164,13 @@ def test_two_fetchers_merge_by_union_and_sync_back(tmp_path, monkeypatch):
         root = tmp_path / inst
         write(root / "rt" / day / "vehiclepositions" / f"2026111{n}T200000.000Z.pb", inst)
         segment(root / "rt" / day, t, inst, [f'{{"from": "{inst}"}}'])
-        fetch_cloud.Uploader(root, "b", instance=inst, client=client).upload_pass(final=True)
+        cloud.Uploader(root, "b", instance=inst, client=client).upload_pass(final=True)
 
     local = tmp_path / "laptop"
     monkeypatch.setattr(sync, "service_date", lambda _: day)
     got = sync.sync("b", local, client=client)
     assert got == {day: 4}
-    assert {r["from"] for r in fetch.read_log(local / "rt" / day)} == {"vm1-aaaaaa", "vm2-bbbbbb"}
+    assert {r["from"] for r in archive.read_log(local / "rt" / day)} == {"vm1-aaaaaa", "vm2-bbbbbb"}
     assert len(list((local / "rt" / day / "vehiclepositions").glob("*.pb"))) == 2
 
 
@@ -217,7 +217,7 @@ def test_crashing_thread_sets_crashed(monkeypatch):
 
 @pytest.mark.parametrize("final", [False, True])
 def test_legacy_log_uploaded_only_once_quiet(tmp_path, final):
-    up = fetch_cloud.Uploader(tmp_path, "b", client=FakeClient())
+    up = cloud.Uploader(tmp_path, "b", client=FakeClient())
     busy = write(tmp_path / "rt" / "d" / "fetch_log.jsonl")
     quiet = write(tmp_path / "rt" / "e" / "fetch_log.jsonl", age_s=3600)
     assert not up.finished(busy, final) and up.finished(quiet, final)

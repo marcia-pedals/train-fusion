@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from fetch import BASE, AGENCY, RT_FEEDS, http_get, load_dotenv  # noqa: E402
+from fetchers.gtfs.fetch import BASE, AGENCY, RT_FEEDS, http_get, load_dotenv  # noqa: E402
 from google.transit import gtfs_realtime_pb2 as g  # noqa: E402
 
 

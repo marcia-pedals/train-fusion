@@ -6,7 +6,7 @@ of it is terraform in `infra/` (GCP project `train-fusion`).
 
 ```
 VM fetcher-<hash> (e2-micro, us-west1, no external IP)
-  fetch.py --bucket train-fusion-archive --metrics     (systemd: restarts on any exit)
+  python -m fetchers.gtfs.fetch --bucket train-fusion-archive --metrics   (systemd: restarts on any exit)
     ├─ writes data/ on its disk, as when run locally
     ├─ uploads each finished file create-only to gs://train-fusion-archive ─┐
     └─ reports successful fetches per feed to Cloud Monitoring              │
@@ -70,7 +70,7 @@ just sync                             # fills this checkout's data/ from the buc
 | | |
 |---|---|
 | `just sync` | download what's new (also run by `just build`) |
-| `just tf plan` / `just tf apply` | deploy: any change to `fetch.py`, `fetch_cloud.py` or `infra/fetcher/` replaces the VM |
+| `just tf plan` / `just tf apply` | deploy: any change under `fetchers/` or `infra/fetcher/` replaces the VM |
 | `just fetcher-logs` | follow the VM's logs (IAP ssh) |
 | `just pull-secrets` | write all secrets into `.env.local` for local runs |
 

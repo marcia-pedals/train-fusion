@@ -21,7 +21,7 @@ explore: types
 
 # run the archiver locally, into data/ (the deployed one runs on a VM: docs/deploy.md)
 fetch:
-    python fetch.py
+    python -m fetchers.gtfs.fetch
 
 # terraform in infra/, e.g. `just tf plan`, `just tf apply` (deploys the fetcher)
 tf *args:
@@ -39,7 +39,7 @@ pull-secrets:
 
 # one-off: upload an existing local archive (e.g. ../train-fusion/data) to the bucket
 migrate dir:
-    python fetch_cloud.py migrate --data-dir {{dir}} --bucket train-fusion-archive
+    python -m fetchers.cloud migrate --data-dir {{dir}} --bucket train-fusion-archive
 
 test:
     python -m pytest -q tests
