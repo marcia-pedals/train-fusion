@@ -25,7 +25,7 @@ const STYLE = `
 .fpair { display: inline-flex; align-items: center; gap: 10px; font: 400 13px var(--sans-serif); color: var(--theme-foreground-muted); }
 `;
 
-/** Rows of filter groups, each a caption over a control. */
+/** Rows of filter groups, each a caption (none if "") over a control. */
 export function filterBar(rows: [string, HTMLElement][][]): HTMLElement {
   const bar = document.createElement("div");
   bar.className = "fbar";
@@ -39,7 +39,8 @@ export function filterBar(rows: [string, HTMLElement][][]): HTMLElement {
       const c = document.createElement("span");
       c.className = "cap";
       c.textContent = caption;
-      g.append(c, control);
+      if (caption) g.append(c);
+      g.append(control);
       row.append(g);
     }
     bar.append(row);

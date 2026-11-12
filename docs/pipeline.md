@@ -76,14 +76,12 @@ entry there. Pages:
   row per station and, per trip, its static GTFS time and its GTFS-RT time from 511's
   pre-departure trip updates (stage `timetable`), with the time since the previous stop in
   a slim row between stations (`explorer_data.timetable`).
-- **Pipeline health**: decode and linearize for one built date. First a waterfall per feed
-  (`explorer_data.funnel`, `funnel_pieces`), two bars on a time axis of elapsed service time
-  (union of scheduled runs, up to the build): fetch results in time order (success / empty /
-  failed / no fetch), and below it a row per route and direction with each trip spanning its
-  scheduled run, coloured by the share of its fetched run it was seen in (red: never; dashed:
-  no success or empty fetch during its run). Then:
-  when each feed was fetched
-  (exact / inexact content time, empty, failed, gaps); which scheduled trips showed up in VP
-  and TU and when (against their scheduled runs); how complete those trips are (share of the
-  route VP fixes span, share of stops TU predicts, longest gaps); and the VP fixes' distance
-  from their shape. A table lists every trip's numbers (`explorer_data.rt_trips`).
+- **Pipeline health**: every built date at a glance, a row per date with a bar each for VP
+  and TU, as totals or over the day (03:00 to 03:00). *Fetcher health*
+  (`explorer_data.fetch_status`): each date's elapsed service time (union of scheduled runs,
+  up to the build) by the latest fetch within the previous 2.5 min: successful with fresh
+  content (exact content time, or an empty feed), successful with an unknown content stamp
+  (the raw stamp only), failed, or missing. *Data presence* (`explorer_data.data_presence`):
+  the time with a successful fetch by whether the feed had any entities against whether it
+  was expected to (VP is empty from just after midnight; everything else should have data),
+  judged per fetch by its content time.

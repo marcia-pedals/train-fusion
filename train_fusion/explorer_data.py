@@ -3,16 +3,13 @@ data/derived. web/explorer/src/data/[table].parquet.py serves TABLES[<table>]() 
 data/<table>.parquet; web/explorer/src/data/meta.json.py serves meta()."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, time, timedelta
 
-import numpy as np
 import polars as pl
 
 from train_fusion.common import paths
-from train_fusion.common.timeutil import service_day_origin
-from train_fusion.stages.decode.schemas import FETCHES, TU, VP
-from train_fusion.stages.linearize.schemas import VP_LIN
-from train_fusion.stages.reference.stage import FAR_M
+from train_fusion.common.timeutil import TZ, service_day_origin
+from train_fusion.stages.decode.schemas import FETCHES
 from train_fusion.stages.static.stage import DAYS, Static
 from train_fusion.stages.timetable import stage as timetable_stage
 
@@ -26,13 +23,8 @@ def _static() -> Static:
 
 
 def meta() -> dict:
-    """Built dates, the static feed version, the reference's far-fix threshold, and each
-    date's service day as [start, end] epochs (03:00 to 03:00 local, see fetch.py) and when
-    it was built."""
-    dates = paths.built_dates()
-    windows = {d: [service_day_origin(d) + 3 * 3600, service_day_origin(d) + 27 * 3600] for d in dates}
-    return {"dates": dates, "static_version": _static().version, "far_m": FAR_M, "day_windows": windows,
-            "built": {d: built_epoch(d) for d in dates}}
+    """Built dates and the static feed version."""
+    return {"dates": paths.built_dates(), "static_version": _static().version}
 
 
 def date_trips() -> pl.DataFrame:
@@ -90,10 +82,9 @@ def timetable() -> pl.DataFrame:
 
 # ------------------------------------------------------------------ pipeline health
 # A fetch stands for the time until the next one of its feed, but for no more than this:
-# beyond it (normally 60 s apart) there's a gap in the archive.
-FETCH_COVERS_S = 120.0
-# Breaks in a trip's presence in VP / TU longer than this split it into separate runs.
-RUN_BREAK_S = 150.0
+# beyond it there's a gap in the archive. Fetches are normally 60 s apart, 120-123 s when the
+# fetcher skips a slot to make room for a parity check (fetchers/gtfs/fetch.py).
+FETCH_COVERS_S = 150.0
 
 
 def _fetches(d: str) -> pl.DataFrame:
@@ -112,12 +103,6 @@ def _fetches(d: str) -> pl.DataFrame:
         .when((pl.col("status") == 200) & pl.col("content_sha256").is_not_null() & (pl.col("n_entities") == 0))
         .then(pl.lit("empty")).otherwise(pl.lit("failed")).alias("kind"),
     )
-
-
-def fetch_spans() -> pl.DataFrame:
-    """(date, feed, start_epoch, end_epoch, kind): every fetch, see _fetches."""
-    return pl.concat(_fetches(d).select("date", "feed", "start_epoch", "end_epoch", "kind")
-                     for d in paths.built_dates())
 
 
 # ---- interval lists: sorted, disjoint [(start, end)]
@@ -149,19 +134,6 @@ def _intersect(xs: Spans, ys: Spans) -> Spans:
     return out
 
 
-def _length(xs: Spans) -> float:
-    return sum(b - a for a, b in xs)
-
-
-def built_epoch(d: str) -> float:
-    """When the date was last built (its fetches.parquet was written): what "elapsed" means."""
-    return (paths.day_dir(d) / "fetches.parquet").stat().st_mtime
-
-
-FUNNEL_FEEDS = {"vehiclepositions": (VP, "vp"), "tripupdates": (TU, "tu")}
-COVER_BINS = 10
-
-
 def _subtract(xs: Spans, ys: Spans) -> Spans:
     """xs minus ys."""
     out = []
@@ -177,215 +149,108 @@ def _subtract(xs: Spans, ys: Spans) -> Spans:
     return out
 
 
-def funnel() -> pl.DataFrame:
-    """See _funnel."""
-    return _funnel()[0]
+def built_epoch(d: str) -> float:
+    """When the date was last built (its fetches.parquet was written): what "elapsed" means."""
+    return (paths.day_dir(d) / "fetches.parquet").stat().st_mtime
 
 
-def funnel_pieces() -> pl.DataFrame:
-    """See _funnel."""
-    return _funnel()[1]
+FEEDS = ["vehiclepositions", "tripupdates"]
 
 
-def _funnel() -> tuple[pl.DataFrame, pl.DataFrame]:
-    """How much survives each step from service hours to complete trips, per feed, as
-    (date, feed, stage, segment, value, n) totals and, for drawing the steps in time order,
-    (date, feed, stage, segment, x0, x1, start_epoch, end_epoch, label) pieces.
+def _elapsed_runs(d: str, st: Static) -> tuple[dict[str, Spans], Spans]:
+    """Each of the date's scheduled trips' run (first to last scheduled stop, up to when the
+    date was built; trips not started by then left out), and their union: elapsed service time."""
+    origin, built = service_day_origin(d), built_epoch(d)
+    runs = {}
+    for trip in st.active_trip_ids:
+        stops = st.stops_by_trip.get(trip)
+        if stops is not None:
+            lo, hi = origin + stops["sched_s"].min(), min(origin + stops["sched_s"].max(), built)
+            if lo < hi:
+                runs[trip] = [(lo, hi)]
+    return runs, _union(r[0] for r in runs.values())
 
-    Totals, by stage:
-    - service: elapsed service time (union of the scheduled runs of the date's trips, up to
-      when the date was built), value in s, n = scheduled trips with an elapsed run;
-    - fetches: that time by the kind of fetch standing for it ("success" = exact or inexact,
-      "empty", "failed", "no fetch"), value in s, n = fetches overlapping it;
-    - trips: scheduled trips whose elapsed run overlaps success / empty fetches, "seen" (at least
-      one observation in the feed that date) or "not seen"; plus "no fetch during run" (trips
-      with an elapsed run but no success / empty fetch during it, not part of the funnel);
-    - coverage: seen trips by the share of their elapsed run's success / empty fetch time in
-      which the fetched snapshot had them, in COVER_BINS bins ("0", "1", ..., "9": bin k is
-      [k/10, (k+1)/10), 100% in bin 9).
 
-    Pieces, in time order, by stage: "service": the elapsed service spans; "fetches": runs of
-    one fetch result (x in s of elapsed service time, so time with no trip scheduled is left
-    out); "trips": every trip with an elapsed run (x: its scheduled run, up to the build, on the
-    same axis), as "seen" (with its coverage share), "not seen" or "no fetch during run",
-    with its route and direction."""
-    rows, pieces = [], []
+FETCH_STATUSES = ["fresh", "unknown stamp", "failed", "missing"]
+STATUS_SCHEMA = {"date": pl.String, "feed": pl.String, "status": pl.String, "start_epoch": pl.Float64,
+                 "end_epoch": pl.Float64, "start_s": pl.Float64, "end_s": pl.Float64}
+
+
+def _status_rows(d: str, feed: str, parts: list[tuple[float, float, str]]) -> list[dict]:
+    """(start, end, status) parts of one date and feed -> rows of STATUS_SCHEMA, adjacent parts of
+    one status merged into runs. start_s / end_s: seconds after the service-day origin, to line
+    days up."""
+    origin = service_day_origin(d)
+    merged: list[list] = []
+    for a, b, status in sorted(parts):
+        if merged and merged[-1][2] == status and a - merged[-1][1] < 1e-6:
+            merged[-1][1] = b
+        else:
+            merged.append([a, b, status])
+    return [{"date": d, "feed": feed, "status": status, "start_epoch": a, "end_epoch": b,
+             "start_s": a - origin, "end_s": b - origin} for a, b, status in merged]
+
+
+def fetch_status() -> pl.DataFrame:
+    """(date, feed, status, start_epoch, end_epoch, start_s, end_s): elapsed service time (see
+    _elapsed_runs) split by the fetch standing for it (see _fetches), merged into runs of one
+    status. Statuses: "fresh" (successful, exact content time; or an empty feed: no trains, so
+    nothing stale), "unknown stamp" (successful, but only the raw stamp, so the content time is
+    unknown, up to 15 s earlier), "failed", "missing" (no fetch)."""
+    kind_status = {"exact": "fresh", "inexact": "unknown stamp", "empty": "fresh", "failed": "failed"}
+    rows = []
     for d in paths.built_dates():
-        st, origin, built = Static(d), service_day_origin(d), built_epoch(d)
-        runs = {}
-        for trip in st.active_trip_ids:
-            stops = st.stops_by_trip.get(trip)
-            if stops is not None:
-                lo, hi = origin + stops["sched_s"].min(), min(origin + stops["sched_s"].max(), built)
-                if lo < hi:
-                    runs[trip] = [(lo, hi)]
-        service = _union(r[0] for r in runs.values())
+        _, service = _elapsed_runs(d, Static(d))
         fetches = _fetches(d)
-        for feed, (table, name) in FUNNEL_FEEDS.items():
+        for feed in FEEDS:
             f = fetches.filter(pl.col("feed") == feed)
-            obs = table.read(paths.day_dir(d) / f"{name}.parquet")
-            # which trips each fetched snapshot had (duplicates: the kept fetch with the same content)
-            trips_in_file = {k[0]: set(g["trip_id"]) for k, g in obs.group_by("file")}
-            kept = {sha: file for sha, file in f.filter(pl.col("ok") & ~pl.col("duplicate"))
-                    .select("content_sha256", "file").iter_rows()}
-            by_kind = {"success": [], "empty": [], "failed": []}
-            n_kind = {k: 0 for k in by_kind}  # fetches overlapping elapsed service time
-            had = {}  # trip -> spans of fetches whose snapshot had it
-            for kind, a, b, sha in f.select("kind", "start_epoch", "end_epoch", "content_sha256").iter_rows():
-                k = "success" if kind in ("exact", "inexact") else kind
-                by_kind[k].append((a, b))
-                n_kind[k] += bool(_intersect([(a, b)], service))
-                if k == "success":
-                    for trip in trips_in_file.get(kept.get(sha), ()):
-                        had.setdefault(trip, []).append((a, b))
-            spans = {k: _intersect(_union(v), service) for k, v in by_kind.items()}
-            # a failed fetch's time isn't covered by a later good one (spans don't overlap per feed)
-            fetched = _union(spans["success"] + spans["empty"])
-            no_fetch = _length(service) - _length(fetched) - _length(spans["failed"])
-            base = {"date": d, "feed": feed}
-            rows.append({**base, "stage": "service", "segment": "elapsed", "value": _length(service), "n": len(runs)})
-            for k in ("success", "empty", "failed"):
-                rows.append({**base, "stage": "fetches", "segment": k, "value": _length(spans[k]), "n": n_kind[k]})
-            rows.append({**base, "stage": "fetches", "segment": "no fetch", "value": max(no_fetch, 0.0), "n": 0})
-            seen_in_feed = set(obs["trip_id"])
-            counts = {"seen": 0, "not seen": 0, "no fetch during run": 0}
-            bins = [0] * COVER_BINS
-            trip_kind = {}  # trip -> "seen" / "not seen" (trips with a fetched run only)
-            trip_share = {}  # seen trip -> share of its fetched run it's in
-            for trip, run in runs.items():
-                denom = _length(_intersect(fetched, run))
-                if denom <= 0:
-                    counts["no fetch during run"] += 1
-                    continue
-                trip_kind[trip] = "seen" if trip in seen_in_feed else "not seen"
-                counts[trip_kind[trip]] += 1
-                if trip not in seen_in_feed:
-                    continue
-                frac = _length(_intersect(_union(had.get(trip, [])), run)) / denom
-                trip_share[trip] = frac
-                bins[min(int(frac * COVER_BINS), COVER_BINS - 1)] += 1
-            for k, v in counts.items():
-                rows.append({**base, "stage": "trips", "segment": k, "value": float(v), "n": v})
-            for k, v in enumerate(bins):
-                rows.append({**base, "stage": "coverage", "segment": str(k), "value": float(v), "n": v})
-            # pieces: service spans and fetch results along elapsed service time, then the trips
-            x = 0.0
-            for a, b in service:
-                pieces.append({**base, "stage": "service", "segment": "elapsed", "x0": x, "x1": x + b - a,
-                               "start_epoch": a, "end_epoch": b, "label": None, "share": None,
-                               "route_id": None, "direction_id": None})
-                parts = [(c, e, k) for k in ("success", "empty", "failed") for c, e in _intersect(spans[k], [(a, b)])]
-                parts += [(c, e, "no fetch") for c, e in _subtract([(a, b)], _union((c, e) for c, e, _ in parts))]
-                for c, e, k in sorted(parts):
-                    prev = pieces[-1]
-                    if prev["stage"] == "fetches" and prev["segment"] == k and abs(prev["x1"] - (x + c - a)) < 1e-6:
-                        prev.update(x1=x + e - a, end_epoch=e)
-                    else:
-                        pieces.append({**base, "stage": "fetches", "segment": k, "x0": x + c - a, "x1": x + e - a,
-                                       "start_epoch": c, "end_epoch": e, "label": None, "share": None,
-                                       "route_id": None, "direction_id": None})
-                x += b - a
-            def on_axis(t: float) -> float:  # epoch -> s of elapsed service time before it
-                return sum(max(0.0, min(b, t) - a) for a, b in service)
-
-            info = {r["trip_id"]: r for r in st.trips.select("trip_id", "route_id", "direction_id").iter_rows(named=True)}
-            for trip in sorted(runs, key=lambda t: runs[t][0]):
-                (lo, hi), = runs[trip]
-                pieces.append({**base, "stage": "trips", "segment": trip_kind.get(trip, "no fetch during run"),
-                               "x0": on_axis(lo), "x1": on_axis(hi), "start_epoch": lo, "end_epoch": hi,
-                               "label": trip, "share": trip_share.get(trip),
-                               "route_id": info[trip]["route_id"], "direction_id": info[trip]["direction_id"]})
-    return pl.DataFrame(rows), pl.DataFrame(pieces, schema_overrides={"label": pl.String, "share": pl.Float64,
-                                                                "route_id": pl.String, "direction_id": pl.Int64})
+            parts = []
+            for status in FETCH_STATUSES[:-1]:
+                kinds = [k for k, v in kind_status.items() if v == status]
+                spans = f.filter(pl.col("kind").is_in(kinds)).select("start_epoch", "end_epoch").iter_rows()
+                parts += [(a, b, status) for a, b in _intersect(_union(spans), service)]
+            parts += [(a, b, "missing") for a, b in _subtract(service, _union((a, b) for a, b, _ in parts))]
+            rows += _status_rows(d, feed, parts)
+    return pl.DataFrame(rows, schema=STATUS_SCHEMA)
 
 
-def _runs(t: np.ndarray) -> list[tuple[float, float]]:
-    """Sorted times -> [(start, end)] runs, split where consecutive times are > RUN_BREAK_S apart."""
-    cuts = np.flatnonzero(np.diff(t) > RUN_BREAK_S)
-    return list(zip(t[np.r_[0, cuts + 1]], t[np.r_[cuts, len(t) - 1]]))
+PRESENCE_STATUSES = ["present", "absent as expected", "present unexpectedly", "absent unexpectedly"]
 
 
-def _covered(spans: list[tuple[float, float]], lo: float, hi: float) -> float:
-    """Fraction of [lo, hi] covered by (disjoint) spans."""
-    return sum(max(0.0, min(b, hi) - max(a, lo)) for a, b in spans) / max(hi - lo, 1.0)
+# VP is empty overnight: 511 drops every vehicle from it just after local midnight (seen
+# 2026-11-07..10: data with content at 00:00:10, empty by 00:00:28). For this long after
+# midnight either is expected.
+VP_EMPTIES_WITHIN_S = 30.0
 
 
-def _max_gap(t: np.ndarray) -> float | None:
-    return float(np.diff(t).max()) if len(t) > 1 else None
-
-
-def rt_trips() -> pl.DataFrame:
-    """One row per (date, trip_id) that was scheduled on the date or showed up in its VP / TU,
-    with how much of it the RT feeds covered:
-    - sched_*: scheduled first departure / last arrival; *_fetch_frac: share of that span the
-      feed's successful fetches cover (null for unscheduled trips);
-    - vp_*: fixes, share of the trip's route between its first and last stop the fixes span,
-      longest gap between fixes, fixes more than FAR_M from the shape;
-    - tu_*: snapshots it's in, share of its scheduled stops ever predicted, predicted stops
-      not in its schedule, first appearance before the scheduled departure, longest gap."""
-    rows = []
-    spans = fetch_spans().filter(pl.col("kind") != "failed")
-    for d in paths.built_dates():
-        st, origin = Static(d), service_day_origin(d)
-        feed_spans = {feed: list(g.select("start_epoch", "end_epoch").iter_rows())
-                      for (feed,), g in spans.filter(pl.col("date") == d).group_by("feed")}
-        vl = VP_LIN.read(paths.day_dir(d) / "vp_lin.parquet")
-        tu = TU.read(paths.day_dir(d) / "tu.parquet")
-        vp_by = {k[0]: g.sort("t_epoch") for k, g in vl.group_by("trip_id")}
-        tu_by = {k[0]: g for k, g in tu.group_by("trip_id")}
-        trips = {r["trip_id"]: r for r in st.trips.iter_rows(named=True)}
-        active = st.active_trip_ids
-        for trip in sorted(active | set(vp_by) | set(tu_by)):
-            info = trips.get(trip, {})
-            stops = st.stops_by_trip.get(trip)
-            r = {"date": d, "trip_id": trip, "scheduled": trip in active,
-                 "route_id": info.get("route_id"), "direction_id": info.get("direction_id"),
-                 "sched_start_epoch": None, "sched_end_epoch": None, "vp_fetch_frac": None, "tu_fetch_frac": None,
-                 "vp_fixes": 0, "vp_route_frac": None, "vp_max_gap_s": None, "vp_far_fixes": 0,
-                 "tu_snapshots": 0, "tu_stops_frac": None, "tu_extra_stops": 0, "tu_lead_s": None,
-                 "tu_max_gap_s": None}
-            if stops is not None:
-                lo, hi = origin + stops["sched_s"].min(), origin + stops["sched_s"].max()
-                r.update(sched_start_epoch=lo, sched_end_epoch=hi,
-                         vp_fetch_frac=_covered(feed_spans.get("vehiclepositions", []), lo, hi),
-                         tu_fetch_frac=_covered(feed_spans.get("tripupdates", []), lo, hi))
-            if (v := vp_by.get(trip)) is not None:
-                t = v["t_epoch"].to_numpy()
-                r.update(vp_fixes=len(v), vp_max_gap_s=_max_gap(t),
-                         vp_far_fixes=int((v["offset_m"] > FAR_M).sum()))
-                if stops is not None:
-                    s0, s1 = stops["s_m"].min(), stops["s_m"].max()
-                    near = v.filter(pl.col("offset_m") <= FAR_M)["s_m"].clip(s0, s1)
-                    r["vp_route_frac"] = (near.max() - near.min()) / (s1 - s0) if len(near) and s1 > s0 else 0.0
-            if (u := tu_by.get(trip)) is not None:
-                t = np.unique(u["t_epoch"].to_numpy())
-                seen = set(u["stop_id"])
-                r.update(tu_snapshots=len(t), tu_max_gap_s=_max_gap(t))
-                if stops is not None:
-                    planned = set(stops["stop_id"])
-                    r.update(tu_stops_frac=len(seen & planned) / len(planned), tu_extra_stops=len(seen - planned),
-                             tu_lead_s=r["sched_start_epoch"] - t[0])
-            rows.append(r)
-    return pl.DataFrame(rows, infer_schema_length=None)
-
-
-def rt_runs() -> pl.DataFrame:
-    """(date, trip_id, feed, start_epoch, end_epoch): stretches of time a trip is in a feed,
-    split where it's missing for more than RUN_BREAK_S."""
+def data_presence() -> pl.DataFrame:
+    """(date, feed, status, start_epoch, end_epoch, start_s, end_s): elapsed service time with a
+    successful fetch (see fetch_status) split by whether the fetched feed had any data (entities;
+    an empty feed has none) against whether it was expected to. That's judged per fetch, by the
+    time its content is from (content time; request time for an empty feed, which has no stamp):
+    VP is expected empty after local midnight (either within VP_EMPTIES_WITHIN_S of it),
+    everything else to have data.
+    Statuses: "present" (expected and there), "absent as expected", "present unexpectedly",
+    "absent unexpectedly"."""
+    state = {(True, True): "present", (False, False): "absent as expected",
+             (False, True): "present unexpectedly", (True, False): "absent unexpectedly"}
     rows = []
     for d in paths.built_dates():
-        for feed, df in (("vehiclepositions", VP_LIN.read(paths.day_dir(d) / "vp_lin.parquet")),
-                         ("tripupdates", TU.read(paths.day_dir(d) / "tu.parquet"))):
-            for (trip,), g in df.group_by("trip_id"):
-                for a, b in _runs(np.unique(g["t_epoch"].to_numpy())):
-                    rows.append({"date": d, "trip_id": trip, "feed": feed, "start_epoch": a, "end_epoch": b})
-    return pl.DataFrame(rows)
-
-
-def vp_offsets() -> pl.DataFrame:
-    """(date, trip_id, offset_m): every VP fix's distance from its trip's shape (linearize)."""
-    return pl.concat(VP_LIN.read(paths.day_dir(d) / "vp_lin.parquet").select(pl.lit(d).alias("date"), "trip_id", "offset_m")
-                     for d in paths.built_dates())
+        _, service = _elapsed_runs(d, Static(d))
+        midnight = datetime.combine(date.fromisoformat(d) + timedelta(days=1), time(0), TZ).timestamp()
+        f = (_fetches(d).filter(pl.col("kind").is_in(["exact", "inexact", "empty"]))
+             .with_columns((pl.col("kind") != "empty").alias("has_data"),
+                           pl.col("content_epoch").fill_null(pl.col("request_epoch")).alias("as_of")))
+        for feed in FEEDS:
+            vp = feed == "vehiclepositions"
+            by_status: dict[str, list] = {}
+            for a, b, has_data, as_of in (f.filter(pl.col("feed") == feed)
+                                          .select("start_epoch", "end_epoch", "has_data", "as_of").iter_rows()):
+                expect = (has_data if midnight <= as_of < midnight + VP_EMPTIES_WITHIN_S else as_of < midnight) if vp else True
+                by_status.setdefault(state[(expect, has_data)], []).append((a, b))
+            parts = [(a, b, st) for st, spans in by_status.items() for a, b in _intersect(_union(spans), service)]
+            rows += _status_rows(d, feed, parts)
+    return pl.DataFrame(rows, schema=STATUS_SCHEMA)
 
 
 # what web/explorer/src/data/[table].parquet.py serves, as data/<name>.parquet
@@ -399,10 +264,6 @@ TABLES = {
     "services": services,
     "platforms": lambda: _static().platforms,
     "timetable": timetable,
-    "fetch_spans": fetch_spans,
-    "funnel": funnel,
-    "funnel_pieces": funnel_pieces,
-    "rt_trips": rt_trips,
-    "rt_runs": rt_runs,
-    "vp_offsets": vp_offsets,
+    "fetch_status": fetch_status,
+    "data_presence": data_presence,
 }
