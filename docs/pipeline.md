@@ -50,8 +50,9 @@ below for exactly those service dates (`train_fusion/build.py`, run with `python
   H3, no departure is in the past; H4, every stop has a departure, and an arrival only at
   departure - 60 s. H3 and H4 have always held: a violation stops the build. H1 and H2 fail
   for a few trips a day: each trip's outcome is written for the Pipeline health page. Stop
-  lists are compared up to 90 min ahead (511's listing horizon); only snapshots with the trip
-  are judged, so missing or failed fetches never count as failures. Details in the stage's docstring.
+  lists are compared up to 90 min ahead (511's listing horizon); a trip is only judged when
+  it's seen while the check applies, so missing or failed fetches never count as failures.
+  Details in the stage's docstring.
 - **linearize**: each VP fix is projected onto its trip's shape (UTM 10N), giving s (m
   along the shape, matching the stops' `shape_dist_traveled`) and its distance from it.
 - **timetable**: every scheduled departure as an interval [`dep_lo_s`, `dep_hi_s`]
@@ -94,5 +95,5 @@ entry there. Pages:
   the time with a successful fetch by whether the feed had any entities against whether it
   was expected to (VP is empty from just after midnight; everything else should have data),
   judged per fetch by its content time. *Trip-update hypotheses* (`explorer_data.tu_checks`):
-  stage tu_checks' H1 and H2, a card each, by scheduled trip: the share that held, failed or
-  couldn't be checked, or a dot per trip at its check (H2: its first failure).
+  stage tu_checks' H1 and H2, a card each, by scheduled trip: the share of the trips seen
+  then that held or failed, or a dot per trip at its check (H2: its first failure).

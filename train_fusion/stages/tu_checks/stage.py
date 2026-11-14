@@ -3,7 +3,7 @@ evolve, on every date being built. All in terms of departure times (H4 is why th
 
 H1  Wherever the trip is seen with content time in [dep - 15 min, dep - 10 min] (dep: its
     scheduled first departure), at least once it lists, within the horizon (below), every
-    scheduled stop but the terminus, in order. (Not seen in that window at all: not judged.)
+    scheduled stop but the terminus, in order.
 H2  From dep - 15 min on, the stop list within the horizon is monotone: each time the same
     as the last one seen, or that list minus a prefix. Complete dropouts (snapshots without
     the trip, after which it comes back) are allowed; comparisons bridge them and fetch gaps
@@ -28,8 +28,8 @@ before the snapshot (late-night trips 511 brings back around 03:00 with ~95 min 
 
 Missing / failed fetches never count against a hypothesis:
 - H1 and H2 only judge snapshots that have the trip: a trip never seen when the check applies
-  is "not seen" (whether its fetches failed, were empty or just didn't list it), or "outside
-  archive" if that time isn't within the archive.
+  (whether its fetches failed, were empty or just didn't list it, or it's outside the
+  archive) isn't judged, and has no row for that check.
 - H2: a trip missing from a snapshot whose whole feed is empty isn't a dropout.
 - H3: an inexact content time (the raw stamp, up to INEXACT_S late) only puts a departure
   definitely in the past when it's more than INEXACT_S before the stamp.
@@ -90,7 +90,6 @@ class Trip:
     stops: list[str]
     sched: dict[str, float]  # stop_id -> scheduled departure, epoch s
     dep0: float
-    end: float  # scheduled last departure, epoch s
     obs: list[tuple[int, Stops]] = field(default_factory=list)  # (snapshot index, its stops)
 
 
@@ -128,7 +127,7 @@ def load_trips(dates: list[str]) -> tuple[dict[str, list[Trip]], dict[str, str]]
             if s is not None:
                 stops = s["stop_id"].to_list()
                 sched = {sid: origin + x for sid, x in zip(stops, s["sched_s"].to_list())}
-                trips[trip_id].append(Trip(d, trip_id, stops, sched, sched[stops[0]], sched[stops[-1]]))
+                trips[trip_id].append(Trip(d, trip_id, stops, sched, sched[stops[0]]))
     return trips, names
 
 
@@ -197,12 +196,13 @@ def check_h3_h4(snaps: list[Snap], obs: list[tuple[int, Stops, Trip]], names: di
     return {"stops": n}
 
 
-def check_h1(x: Trip, snaps: list[Snap], snap_t: np.ndarray, names: dict[str, str]) -> dict:
+def check_h1(x: Trip, snaps: list[Snap], names: dict[str, str]) -> dict | None:
+    """None if the trip isn't seen in the window."""
     lo, hi = x.dep0 - H1_WINDOW_S[0], x.dep0 - H1_WINDOW_S[1]
     row = {"check": "H1", "at_epoch": lo, "n_failures": 0, "detail": ""}
     seen = [(i, st) for i, st in x.obs if lo <= snaps[i].t <= hi]
     if not seen:
-        return row | {"outcome": "not seen" if snap_t[0] < lo and hi < snap_t[-1] else "outside archive"}
+        return None
     for i, st in seen:
         cut = snaps[i].t + HORIZON_S
         if any(within(timed(st), cut, m) == within(expected(x, st), cut, m) for m in (0.0, BOUNDARY_S)):
@@ -216,12 +216,12 @@ def check_h1(x: Trip, snaps: list[Snap], snap_t: np.ndarray, names: dict[str, st
                             f"{len(got)} of {len(want)} stops, missing {missing or 'none (out of order)'}"}
 
 
-def check_h2(x: Trip, snaps: list[Snap], snap_t: np.ndarray, names: dict[str, str]) -> dict:
+def check_h2(x: Trip, snaps: list[Snap], names: dict[str, str]) -> dict | None:
+    """None if the trip isn't seen from dep - 15 min on."""
     obs = [(i, timed(st)) for i, st in x.obs if snaps[i].t >= x.dep0 - H2_FROM_S]
     row = {"check": "H2", "at_epoch": x.dep0 - H2_FROM_S, "n_failures": 0, "detail": ""}
     if not obs:
-        inside = snap_t[0] < x.end and x.dep0 - H2_FROM_S < snap_t[-1]
-        return row | {"outcome": "not seen" if inside else "outside archive"}
+        return None
     prev, prev_t, fails = None, None, []
     for i, cur in obs:
         if prev is not None and not any(monotone(prev, cur, prev_t + HORIZON_S, m) for m in (0.0, BOUNDARY_S)):
@@ -254,11 +254,11 @@ def check(dates: list[str]) -> tuple[pl.DataFrame, dict]:
             x.obs.append((i, stops))
             obs.append((i, stops, x))
     info = check_h3_h4(snaps, obs, names)
-    snap_t = np.array([s.t for s in snaps])
     rows = []
     for x in sorted((x for v in trips.values() for x in v), key=lambda x: x.dep0):
-        for r in (check_h1(x, snaps, snap_t, names), check_h2(x, snaps, snap_t, names)):
-            rows.append({"date": x.date, "trip_id": x.trip_id, "dep0_epoch": x.dep0} | r)
+        for r in (check_h1(x, snaps, names), check_h2(x, snaps, names)):
+            if r is not None:
+                rows.append({"date": x.date, "trip_id": x.trip_id, "dep0_epoch": x.dep0} | r)
     df = TU_CHECKS.conform(pl.DataFrame(rows))
     for h in ("H1", "H2"):
         c = df.filter(pl.col("check") == h)["outcome"].value_counts()

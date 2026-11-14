@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 
 from train_fusion.stages.tu_checks.stage import (Snap, Trip, TuHypothesisViolation, check_h1, check_h2, check_h3_h4,
@@ -9,7 +8,7 @@ STOPS = ["a", "b", "c", "d"]
 
 
 def _trip(dep0=T0 + 720):
-    return Trip("2026-11-09", "101", STOPS, {s: dep0 + 300 * k for k, s in enumerate(STOPS)}, dep0, dep0 + 900)
+    return Trip("2026-11-09", "101", STOPS, {s: dep0 + 300 * k for k, s in enumerate(STOPS)}, dep0)
 
 
 def _snap(t, trips, exact=True, first=True):
@@ -57,13 +56,11 @@ def test_h1_needs_a_complete_sighting_in_the_window():
     x = _trip()
     snaps = [_snap(T0 - 600, {}), _snap(T0, {"101": _listed(x, STOPS[:-1])}), _snap(T0 + 600, {})]
     x.obs = [(1, snaps[1].trips["101"])]
-    t = np.array([s.t for s in snaps])
-    assert check_h1(x, snaps, t, {})["outcome"] == "ok"
+    assert check_h1(x, snaps, {})["outcome"] == "ok"
     x.obs = [(1, _listed(x, STOPS[:1]))]
-    assert check_h1(x, snaps, t, {})["outcome"] == "failed"
+    assert check_h1(x, snaps, {})["outcome"] == "failed"
     x.obs = []
-    assert check_h1(x, snaps, t, {})["outcome"] == "not seen"
-    assert check_h1(x, snaps[2:], t[2:], {})["outcome"] == "outside archive"
+    assert check_h1(x, snaps, {}) is None  # not seen in the window: not judged
 
 
 def test_h2_counts_non_monotone_changes_and_allows_dropouts():
@@ -72,5 +69,5 @@ def test_h2_counts_non_monotone_changes_and_allows_dropouts():
     lists = [STOPS[:-1], STOPS[:-1], None, STOPS[1:-1], ["c"], ["b", "c"]]
     snaps = [_snap(T0 + 60 * k, {} if s is None else {"101": _listed(x, s)}) for k, s in enumerate(lists)]
     x.obs = [(k, s.trips["101"]) for k, s in enumerate(snaps) if s.trips]
-    r = check_h2(x, snaps, np.array([s.t for s in snaps]), {})
+    r = check_h2(x, snaps, {})
     assert (r["outcome"], r["n_failures"], r["at_epoch"]) == ("failed", 1, T0 + 300)
