@@ -25,7 +25,7 @@ TU_LISTED = Table("tu_listed", "One scheduled trip expected in at least one trip
     col("detail", "str", "when it was missing, in words (empty if never)"),
 ])
 
-TU_KEPT = Table("tu_kept", "One trip-update entity (each content once, at its first appearance; South County left out): kept for the checks, or discarded.", [
+TU_KEPT = Table("tu_kept", "One trip-update entity (each content once, at its first appearance): kept for the checks, or discarded.", [
     col("date", "str", "service date of the snapshot"),
     col("trip_id", "str", "GTFS trip_id"),
     col("dep0_epoch", "f64?", "scheduled first departure of the trip it's assigned to (null: not in the static schedule)", "s"),

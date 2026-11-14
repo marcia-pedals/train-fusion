@@ -75,7 +75,14 @@ CALENDAR_DATES = Table("calendar_dates", "A date a service is added on or remove
 ])
 
 
-EXCLUDED_TRIPS = Table("excluded_trips", "One trip in the static GTFS feed of a route the project leaves out (South County: the corridor is San Francisco <-> Tamien), so other stages can tell its RT entities from unknown trips.", [
+EXCLUDED_TRIPS = Table("excluded_trips", "One trip in the static GTFS feed of a route the project leaves out (South County: the corridor is San Francisco <-> Tamien), so decode can drop its RT entities.", [
     col("trip_id", "str", "GTFS trip_id"),
     col("route_id", "str", "its route_id"),
+])
+
+
+FEED_VERSIONS = Table("feed_versions", "The static GTFS feed that applies to one service date being built (the newest zip fetched on or before it).", [
+    col("date", "str", "service date"),
+    col("feed_version", "str", "the feed's version: data/derived/static/<feed_version>/ holds its tables"),
+    col("zip", "str", "the static GTFS zip it was built from"),
 ])

@@ -21,8 +21,8 @@ LISTED_FEW of them, from more but not all, or from all.
 
 And one more ("kept") says which trip-update entities the checks discard: each entity (each
 content once, at its first appearance) is kept, or discarded as a ghost (below) or as a trip
-that isn't in the static schedule of the dates built. South County trips (dropped project-wide,
-see the static stage) are neither: they're left out of everything, this too.
+that isn't in the static schedule of the dates built. (South County trips never get here:
+decode drops them.)
 
 H2 and H3 have held on all data so far: a violation raises TuHypothesisViolation, which stops
 the build. H1 sometimes fails: each snapshot's H1 outcome goes to <date>/tu_h1.parquet (and
@@ -50,8 +50,7 @@ Snapshots are every successful TU fetch, including those whose content repeats a
 fetch (decode drops those from tu.parquet; here they take the content of the first fetch with
 the same digest), so an A, B, A flip-flop is seen. H2 and H3 are judged once per content, at
 its first appearance. An entity is assigned to the scheduled trip (trip_id, service date)
-whose times are nearest its predictions; trip_ids not in the static feed (South County) are
-ignored.
+whose times are nearest its predictions.
 """
 from __future__ import annotations
 
@@ -129,13 +128,11 @@ def load_snaps(dates: list[str]) -> list[Snap]:
     return [s for _, s in sorted(out, key=lambda x: x[0])]
 
 
-def load_trips(dates: list[str]) -> tuple[dict[str, list[Trip]], dict[str, str], set[str]]:
-    """The scheduled trips of these dates by trip_id, stop_id -> short station name, and the
-    trip_ids of the static feeds' excluded routes (South County)."""
-    trips, names, excluded = defaultdict(list), {}, set()
+def load_trips(dates: list[str]) -> tuple[dict[str, list[Trip]], dict[str, str]]:
+    """The scheduled trips of these dates by trip_id, and stop_id -> short station name."""
+    trips, names = defaultdict(list), {}
     for d in dates:
         st, origin = Static(d), service_day_origin(d)
-        excluded |= set(st.excluded_trips["trip_id"])
         station = dict(st.stations.select("station_id", "name").iter_rows())
         for sid, stn in st.platforms.select("stop_id", "station_id").iter_rows():
             names[sid] = station[stn].removesuffix(" Caltrain Station").removesuffix(" Station")
@@ -145,7 +142,7 @@ def load_trips(dates: list[str]) -> tuple[dict[str, list[Trip]], dict[str, str],
                 stops = s["stop_id"].to_list()
                 sched = {sid: origin + x for sid, x in zip(stops, s["sched_s"].to_list())}
                 trips[trip_id].append(Trip(d, trip_id, stops, sched, sched[stops[0]]))
-    return trips, names, excluded
+    return trips, names
 
 
 def _time(arr, dep) -> float:
@@ -303,13 +300,11 @@ def check(dates: list[str]) -> tuple[list[tuple[Table, pl.DataFrame]], dict]:
     """The tables with their rows (TU_H1: the snapshots of every scheduled trip of these dates;
     TU_LISTED: the trips; TU_KEPT: every entity); raises on H2 / H3."""
     snaps = load_snaps(dates)
-    trips, names, excluded = load_trips(dates)
+    trips, names = load_trips(dates)
     obs = []  # (snapshot index, stops, trip) of every non-ghost entity of a scheduled trip
     kept = []  # "kept" rows
     for i, s in enumerate(snaps):
         for trip_id, stops in s.trips.items():
-            if trip_id in excluded:
-                continue
             if trip_id not in trips:
                 kind = "not in schedule"
             elif all(_time(a, d) < s.t - GHOST_S for _, a, d in stops):

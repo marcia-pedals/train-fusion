@@ -25,5 +25,9 @@ def static_dir(version: str) -> Path:
     return DERIVED / "static" / version
 
 
+# which static feed version each built date uses (written by stage static)
+FEED_VERSIONS = DERIVED / "static" / "feed_versions.parquet"
+
+
 def built_dates() -> list[str]:
     return [d for d in archived_dates() if (day_dir(d) / "vp_lin.parquet").exists()]

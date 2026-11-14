@@ -4,6 +4,9 @@ Observations are timed by *content time* (when their content first appeared), fr
 order of preference: parity_check events, the fetcher's logged content_ets, else the raw
 stamp (flagged content_exact = false). Snapshots whose content repeats an earlier one of
 the same feed are dropped. See docs/pipeline.md 3.2.
+
+Entities of trips the static stage excludes (excluded_trips: South County) are dropped, so no
+later stage sees them. `fetches.n_entities` still counts every entity in the response.
 """
 from __future__ import annotations
 
@@ -16,6 +19,7 @@ from google.transit import gtfs_realtime_pb2 as g
 
 from train_fusion.common.paths import ROOT, RT, day_dir
 from train_fusion.stages.decode.schemas import FETCHES, TU, VP
+from train_fusion.stages.static.stage import Static
 
 sys.path.insert(0, str(ROOT))
 from fetchers.archive import read_log  # noqa: E402
@@ -86,6 +90,7 @@ def _content_times(fetches: list[dict], events: list[dict]) -> None:
 
 
 def run(day: str) -> dict[str, pl.DataFrame]:
+    excluded = set(Static(day).excluded_trips["trip_id"])
     reqs, events = _read_log(day)
     logged_files = set()
     fetches, bodies = [], {}
@@ -135,6 +140,8 @@ def run(day: str) -> dict[str, pl.DataFrame]:
         seen.add(key)
         msg, t, stamp, exact = bodies[id(f)], f["content_epoch"], f["stamp_epoch"], f["content_exact"]
         for e in msg.entity:
+            if (e.vehicle.trip.trip_id if e.HasField("vehicle") else e.trip_update.trip.trip_id) in excluded:
+                continue
             if e.HasField("vehicle"):
                 v = e.vehicle
                 vp_rows.append({"trip_id": v.trip.trip_id, "route_id": v.trip.route_id,

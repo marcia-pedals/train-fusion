@@ -6,6 +6,8 @@ the `schemas.py` of the stage that writes it.
 ## Principles
 
 - **Stages are plain functions from tables to tables.** No orchestration framework.
+- **Only `static` and `decode` read the raw archive.** Everything else reads tables that
+  earlier stages wrote; see [AGENTS.md](../AGENTS.md).
 - **Derived data is disposable.** Everything under `data/derived/` is rebuilt from the raw
   archive (`data/rt`, `data/gtfs`: a local copy of the GCS bucket, updated only when you run
   `just sync`, see [deploy.md](deploy.md)) and the hand-maintained inputs in the repo.
@@ -28,21 +30,23 @@ below for exactly those service dates (`train_fusion/build.py`, run with `python
 
 | Stage | Command | Writes |
 |---|---|---|
-| static | `just build` | `data/derived/static/<feed_version>/`: trips, trip_stops, shapes, stations, shape_stations, platforms, calendar, calendar_dates, excluded_trips |
+| static | `just build` | `data/derived/static/<feed_version>/`: trips, trip_stops, shapes, stations, shape_stations, platforms, calendar, calendar_dates, excluded_trips; `data/derived/static/feed_versions.parquet` |
 | decode | `just build` | `data/derived/<date>/`: fetches, vp, tu |
 | tu_checks | `just build` | `data/derived/<date>/`: tu_h1, tu_listed, tu_kept |
 | linearize | `just build` | `data/derived/<date>/vp_lin.parquet` |
 | timetable | `just build` | `data/derived/static/<feed_version>/timetable.parquet` |
 | reference | `just build` | `data/derived/reference/`: ref_segments, ref_knots, ref_limits, ref_cruise, ref_fit, reference.json; `<date>/`: ref_trips, ref_fixes, ref_pairs |
 
-- **static**: the static GTFS zip for a date is the newest fetched on or before it. GTFS
-  times are seconds after the service-day origin (local noon − 12 h); static arrival ==
-  departure, whole minutes. South County trips are dropped (`EXCLUDED_ROUTES`; their trip_ids go to `excluded_trips`): the
-  project covers San Francisco ↔ Tamien only.
+- **static**: the static GTFS zip for a date is the newest fetched on or before it; which
+  feed version each built date uses goes to `feed_versions` (`Static(day)` loads a date's
+  tables through it). GTFS times are seconds after the service-day origin (local noon −
+  12 h); static arrival == departure, whole minutes. South County trips are dropped
+  (`EXCLUDED_ROUTES`), their trip_ids written to `excluded_trips`: the project covers San
+  Francisco ↔ Tamien only.
 - **decode**: each snapshot is timed by when its content first appeared (511 re-stamps
   every ~15 s but changes content every ~30 s; see [fetcher.md](fetcher.md)).
   `content_exact = false` means the time may be up to 15 s late. Snapshots repeating
-  earlier content are dropped. `fetches` keeps every request (status, content time,
+  earlier content are dropped, and so are entities of `excluded_trips` (South County). `fetches` keeps every request (status, content time,
   exactness, whether it was a duplicate) for the Pipeline health page.
 - **tu_checks**: checks what we assume about how a trip's trip updates evolve.
 - **linearize**: each VP fix is projected onto its trip's shape (UTM 10N), giving s (m

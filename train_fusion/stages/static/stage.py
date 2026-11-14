@@ -1,4 +1,6 @@
-"""Stage `static`: static GTFS zip -> trips, trip_stops, shapes, stations, shape_stations.
+"""Stage `static`: static GTFS zips -> trips, trip_stops, shapes, stations, shape_stations,
+... per feed version, and feed_versions (which version each service date uses). The only
+stage that reads static GTFS: `Static(day)` loads a date's tables from what this wrote.
 Also the geometry helpers (projecting lat/lon onto a shape) used downstream."""
 from __future__ import annotations
 
@@ -16,14 +18,15 @@ import polars as pl
 import shapely
 from pyproj import Transformer
 
-from train_fusion.common.paths import GTFS, static_dir
+from train_fusion.common.paths import FEED_VERSIONS, GTFS, static_dir
 from train_fusion.common.timeutil import gtfs_seconds
-from train_fusion.stages.static.schemas import (CALENDAR, CALENDAR_DATES, EXCLUDED_TRIPS, PLATFORMS, SHAPES,
-                                               SHAPE_STATIONS, STATIONS, TRIPS, TRIP_STOPS)
+from train_fusion.stages.static.schemas import (CALENDAR, CALENDAR_DATES, EXCLUDED_TRIPS, FEED_VERSIONS as FEED_VERSIONS_TABLE,
+                                               PLATFORMS, SHAPES, SHAPE_STATIONS, STATIONS, TRIPS, TRIP_STOPS)
 
 STATION_ON_SHAPE_M = 100.0
-# Out of scope for the whole project (corridor is San Francisco <-> Tamien): dropped here,
-# so nothing downstream ever sees these trips, their stops or their shapes.
+# Out of scope for the whole project (corridor is San Francisco <-> Tamien): dropped here, and
+# their trip_ids written to excluded_trips so decode drops their RT entities too; nothing
+# downstream ever sees these trips, their stops or their shapes.
 EXCLUDED_ROUTES = {"South County"}
 _TO_UTM = Transformer.from_crs(4326, 32610, always_xy=True)  # UTM zone 10N
 
@@ -181,7 +184,7 @@ TABLES = {"trips": TRIPS, "trip_stops": TRIP_STOPS, "shapes": SHAPES, "stations"
 DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
 
-def run(zip_path: Path) -> str:
+def write_version(zip_path: Path) -> str:
     """Build and write the static tables for one zip; returns the feed version."""
     v = feed_version(zip_path)
     out = static_dir(v)
@@ -192,17 +195,31 @@ def run(zip_path: Path) -> str:
     return v
 
 
+def run(dates: list[str]) -> dict[str, list[str]]:
+    """Write the static tables of the feed versions these dates use, and feed_versions (which
+    version each date uses); returns {version: dates}."""
+    zips = {d: zip_for_date(d) for d in dates}
+    versions = {z: write_version(z) for z in sorted(set(zips.values()))}
+    rows = [{"date": d, "feed_version": versions[z], "zip": str(z)} for d, z in sorted(zips.items())]
+    FEED_VERSIONS_TABLE.write(pl.DataFrame(rows), FEED_VERSIONS)
+    out: dict[str, list[str]] = {}
+    for r in rows:
+        out.setdefault(r["feed_version"], []).append(r["date"])
+    return out
+
+
 # ------------------------------------------------------------------ loading
 class Static:
     """Static tables for one service date, plus calendar and geometry helpers."""
 
     def __init__(self, day: str):
         self.day = day
-        self.zip_path = zip_for_date(day)
-        self.version = feed_version(self.zip_path)
+        versions = FEED_VERSIONS_TABLE.read(FEED_VERSIONS) if FEED_VERSIONS.exists() else FEED_VERSIONS_TABLE.empty()
+        match = versions.filter(pl.col("date") == day)["feed_version"]
+        if match.is_empty():
+            raise LookupError(f"{day} isn't built (no static feed version for it): run `just build` with it")
+        self.version = match[0]
         d = static_dir(self.version)
-        if not (d / "trips.parquet").exists():
-            run(self.zip_path)
         for name, t in TABLES.items():
             setattr(self, name, t.read(d / f"{name}.parquet"))
 

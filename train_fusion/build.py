@@ -32,8 +32,7 @@ def _linearize(day: str) -> tuple[str, dict]:
 def main(dates: list[str]) -> None:
     t0 = time.time()
     shutil.rmtree(paths.DERIVED, ignore_errors=True)
-    for z in sorted({static.zip_for_date(d) for d in dates}):
-        print(f"static  {z.name} -> {static.run(z)}")
+    print(f"static  {static.run(dates)}")
     with ProcessPoolExecutor() as ex:
         for day, n in ex.map(_decode, dates):
             print(f"decode  {day} {n}")
