@@ -73,8 +73,9 @@ display(checkCard(checks.filter((r) => r.check === "H2").map((r) => ({...r, outc
   subtitle: "From 15 min before departure, each snapshot of a trip lists its scheduled stops from some stop on, but the terminus",
   toggle: h2ViewInput, view: h2View, width, unit: "snapshots", at: "snapshot at",
   outcomes: ["ok", "first two swapped", "other two swapped", "ends early", "other"],
-  // blue 700, then red, yellow, aqua (reference categorical slots) and gray for "other"
-  colors: ["#1c5cab", "#e34948", "#eda100", "#1baf7a", "#8c8c8c"],
+  // blue 700, then failures from yellow (the most expected: the train is at one of the two stops) to
+  // dark red (the least), lightness falling with severity
+  colors: ["#1c5cab", "#f2b705", "#f28c28", "#dc4f1e", "#9e1b1b"],
   labels: {ok: "held", "first two swapped": "failed: first two stops swapped", "other two swapped": "failed: two other stops swapped",
     "ends early": "failed: list ends early", other: "failed: other"},
   caption: "One count per snapshot of a trip (each content once, at its first appearance); stops are compared up to 90 min after it. When: a dot per failed snapshot.",
