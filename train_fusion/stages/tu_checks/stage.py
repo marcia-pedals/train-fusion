@@ -7,9 +7,7 @@ H1  From dep - 15 min on (dep: its scheduled first departure), every snapshot li
     at the origin (all of them). Judged per snapshot (each content once, at its first
     appearance). A failure is one of TU_H1's outcomes: the first two listed stops swapped, two other
     adjacent ones swapped, the list ending short of the horizon, not starting at the origin
-    by dep - 10 min, or anything else. (A separate check that the trip was seen at least once
-    in [dep - 15 min, dep - 10 min] listing every stop but the terminus is folded in. Before
-    dep - 15 min, about 3% of a trip's snapshots start one stop or so in, routinely.)
+    by dep - 10 min, or anything else.
 H2  No departure is in the past (before the snapshot's content time).
 H3  Every stop has a departure, and an arrival only at exactly departure - 60 s.
 
