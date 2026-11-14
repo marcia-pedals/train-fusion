@@ -255,16 +255,14 @@ def data_presence() -> pl.DataFrame:
 
 
 def tu_checks() -> pl.DataFrame:
-    """Stage tu_checks' per-trip outcomes of H1 and H2 on every built date, plus at_s:
-    at_epoch in seconds after the service-day origin, to line days up; and the trip's
-    direction_id (static GTFS)."""
+    """Stage tu_checks' outcomes of H1 (per trip) and H2 (per snapshot) on every built date, plus at_s:
+    at_epoch in seconds after the service-day origin, to line days up."""
     parts = []
     for d in paths.built_dates():
         p = paths.day_dir(d) / "tu_checks.parquet"
         if not p.exists():
             raise SystemExit(f"{d} was built before stage tu_checks existed: run `just build` again")
-        parts.append(TU_CHECKS.read(p).with_columns((pl.col("at_epoch") - service_day_origin(d)).alias("at_s"))
-                     .join(Static(d).trips.select("trip_id", "direction_id"), on="trip_id", how="left"))
+        parts.append(TU_CHECKS.read(p).with_columns((pl.col("at_epoch") - service_day_origin(d)).alias("at_s")))
     return pl.concat(parts)
 
 

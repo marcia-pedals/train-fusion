@@ -1,13 +1,13 @@
-// How each day's scheduled trips fared against one trip-update hypothesis (stage tu_checks,
+// How each day's cases (trips or snapshots) fared against a trip-update hypothesis (stage tu_checks,
 // served as data/tu_checks.parquet by train_fusion.explorer_data.tu_checks), a row per date:
-// the share of trips by outcome ("aggregate") or a dot per trip at when it was checked, or
-// first failed, northbound and southbound apart, on the 03:00-03:00 time-of-day axis of the other health cards ("time").
+// the share of cases by outcome ("aggregate") or a dot per failed case at its time (at_epoch),
+// on the 03:00-03:00 time-of-day axis of the other health cards ("time").
 import * as d3 from "npm:d3";
 import * as Plot from "npm:@observablehq/plot";
 import {toggleCard, type StatusView} from "./statusdays.js";
 
 export interface TuCheck {date: string; trip_id: string; check: string; outcome: string; dep0_epoch: number;
-  at_epoch: number; at_s: number; n_failures: number; detail: string; direction_id: number}
+  at_epoch: number; at_s: number; detail: string}
 
 const dayLabel = (d: string) => new Date(`${d}T12:00`).toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"});
 const hhmm = (s: number) => new Date(s * 1000).toLocaleTimeString("en-US", {hour: "2-digit", minute: "2-digit", hour12: false});
@@ -19,15 +19,16 @@ export function checkCard(rows: TuCheck[], {title, subtitle, toggle, ...opts}: P
   return toggleCard({title, subtitle, toggle, chart: checkDays(rows, {...opts, width: opts.width - 34})});
 }
 
-export function checkDays(rows: TuCheck[], {outcomes, colors, labels, view, caption, failures, width}: {
+export function checkDays(rows: TuCheck[], {outcomes, colors, labels, view, caption, unit, at, width}: {
   outcomes: string[]; colors: string[]; labels: Record<string, string>; view: StatusView; caption: string;
-  failures: string;  // what n_failures counts, e.g. "changes"
+  unit: string;  // what a row is, plural: "trips", "snapshots"
+  at: string;  // what at_epoch is, e.g. "snapshot at"
   width: number;
 }) {
   const dates = [...new Set(rows.map((r) => r.date))].sort();
   const totals = d3.flatRollup(rows, (v) => v, (r) => r.date, (r) => r.outcome)
-    .map(([date, outcome, v]) => ({date, outcome, n: v.length, share: 0, trips: v.map((r) => r.trip_id),
-      failures: d3.sum(v, (r) => r.n_failures)}));
+    .map(([date, outcome, v]) => ({date, outcome, n: v.length, share: 0,
+      trips: d3.rollups(v, (g) => g.length, (r) => r.trip_id).map(([t, k]) => (k > 1 ? `${t} (${k})` : t))}));
   const whole = d3.rollup(rows, (v) => v.length, (r) => r.date);
   for (const r of totals) r.share = r.n / whole.get(r.date)!;
   const color = {domain: outcomes, range: colors, tickFormat: (k: string) => labels[k]};
@@ -46,8 +47,8 @@ export function checkDays(rows: TuCheck[], {outcomes, colors, labels, view, capt
       x: {domain: [0, 1], tickFormat: "%", label: null, grid: true, axis: "top"},
       marks: [
         Plot.barX(totals, Plot.stackX({order: outcomes}, {x: "share", y: "date", fill: "outcome",
-          title: (r) => `${dayLabel(r.date)}: ${labels[r.outcome]}\n${r.n} of ${whole.get(r.date)} trips (${(100 * r.share).toFixed(1)}%)`
-            + (failed(r.outcome) ? `, ${r.failures} ${failures}\ntrips ${r.trips.join(", ")}` : ""),
+          title: (r) => `${dayLabel(r.date)}: ${labels[r.outcome]}\n${r.n} of ${whole.get(r.date)} ${unit} (${(100 * r.share).toFixed(1)}%)`
+            + (failed(r.outcome) ? `\ntrips ${r.trips.join(", ")}` : ""),
           tip: true})),
         // the failure count beside its row, so a thin sliver is still read
         Plot.text(dates, {x: 1, y: (d) => d, dx: 8, textAnchor: "start", fill: "currentColor",
@@ -56,31 +57,21 @@ export function checkDays(rows: TuCheck[], {outcomes, colors, labels, view, capt
       ],
     })
     : timePlot(rows, dates, {...common, title: (r: TuCheck) => `${dayLabel(r.date)} trip ${r.trip_id} (scheduled ${hhmm(r.dep0_epoch)}): ${labels[r.outcome]}`
-        + (r.detail ? `\n${r.detail}` : `\nfrom ${hhmm(r.at_epoch)}`)});
+        + `\n${at} ${hhmm(r.at_epoch)}` + (r.detail ? `\n${r.detail}` : "")});
 }
 
-const DIRS = ["NB", "SB"];  // direction_id 0, 1
-
-/** A dot per trip on a 03:00-03:00 axis, a row per date, split into northbound and
- *  southbound (as the other cards split VP and TU). */
+/** A dot per failure on a 03:00-03:00 axis, a row per date (held cases aren't drawn). */
 function timePlot(rows: TuCheck[], dates: string[], {title, ...common}: Record<string, any> & {
   title: (r: TuCheck) => string;
 }) {
-  const failed = (r: TuCheck) => r.outcome === "failed";
   return Plot.plot({
     ...common,
-    height: 20 + dates.length * 56,
     // hours after the service-day origin; 3 to 27 is the fetcher's 03:00-03:00 service day
     x: {domain: [3, 27], ticks: d3.range(3, 28, 3), tickFormat: (h: number) => `${h % 24}:00`, label: null, grid: true, axis: "top"},
-    fy: {domain: dates, axis: null, padding: 0.15},
-    // points, not bands: a day's NB and SB sit close together, well apart from the next day's
-    y: {type: "point", domain: DIRS, label: null, padding: 1},
     marks: [
-      // failures last, on top
-      Plot.dot(d3.sort(rows, failed), {x: (r) => r.at_s / 3600, y: (r) => DIRS[r.direction_id], fy: "date",
-        fill: "outcome", r: 4, stroke: "var(--theme-background)", strokeWidth: 1, title, tip: true}),
-      // the date on the left, outside the NB / SB labels
-      Plot.axisFy({anchor: "left", tickFormat: dayLabel, tickSize: 0, dx: -30, label: null, fontWeight: 600}),
+      Plot.dot(rows.filter((r) => r.outcome === "failed"), {x: (r) => r.at_s / 3600, y: "date", fill: "outcome", r: 4,
+        stroke: "var(--theme-background)", strokeWidth: 1, title, tip: true}),
+      Plot.axisY({tickFormat: dayLabel, tickSize: 0, label: null, fontWeight: 600}),
     ],
   });
 }

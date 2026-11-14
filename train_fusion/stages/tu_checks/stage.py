@@ -4,22 +4,20 @@ evolve, on every date being built. All in terms of departure times (H4 is why th
 H1  Wherever the trip is seen with content time in [dep - 15 min, dep - 10 min] (dep: its
     scheduled first departure), at least once it lists, within the horizon (below), every
     scheduled stop but the terminus, in order.
-H2  From dep - 15 min on, the stop list within the horizon is monotone: each time the same
-    as the last one seen, or that list minus a prefix. Complete dropouts (snapshots without
-    the trip, after which it comes back) are allowed; comparisons bridge them and fetch gaps
-    ("same or minus a prefix" is transitive, so a gap can't create a failure).
+H2  From dep - 15 min on, every snapshot listing the trip lists, within the horizon, a suffix
+    of its scheduled stops but the terminus: from some stop on, every one of them, in order.
+    Judged per snapshot (each content once, at its first appearance).
 H3  No departure is in the past (before the snapshot's content time).
 H4  Every stop has a departure, and an arrival only at exactly departure - 60 s.
 
 H3 and H4 have held on all data so far: a violation raises TuHypothesisViolation, which stops
-the build. H1 and H2 fail for a few trips a day: each trip's outcome goes to
-<date>/tu_checks.parquet, for the Pipeline health page. (Exploration that led here: branch
+the build. H1 and H2 sometimes fail: each trip's H1 outcome and each snapshot's H2 outcome go
+to <date>/tu_checks.parquet, for the Pipeline health page. (Exploration that led here: branch
 tu-exploration, experiments/tu_hypotheses.py.)
 
 The horizon: 511 lists a trip's stops only up to ~90 min after now, but before departure
 sometimes lists all of them (every stop but the terminus) instead, alternating between the
-two. So H1 and H2 compare stop lists within HORIZON_S of the snapshot (H1), or of the earlier
-of the two snapshots compared (H2). An expected stop a snapshot doesn't list is placed at its
+two. So H1 and H2 compare stop lists only up to HORIZON_S after the snapshot. An expected stop a snapshot doesn't list is placed at its
 scheduled time plus the delay of the nearest listed stop before it. A difference that goes
 away when stops within BOUNDARY_S of the cut are ignored isn't a failure.
 
@@ -165,12 +163,6 @@ def within(lst: Timed, cut: float, margin: float = 0.0) -> list[str]:
     return [s for s, t in lst if t <= cut and not abs(t - cut) <= margin]
 
 
-def monotone(prev: Timed, cur: Timed, cut: float, margin: float = 0.0) -> bool:
-    """cur's stops (up to cut) are prev's, or prev's minus a prefix."""
-    p, c = within(prev, cut, margin), within(cur, cut, margin)
-    return c == p or (len(c) < len(p) and c == p[len(p) - len(c):])
-
-
 def check_h3_h4(snaps: list[Snap], obs: list[tuple[int, Stops, Trip]], names: dict[str, str]) -> dict:
     """Raises TuHypothesisViolation on any H3 or H4 failure; counts what was checked."""
     bad: list[str] = []
@@ -199,7 +191,7 @@ def check_h3_h4(snaps: list[Snap], obs: list[tuple[int, Stops, Trip]], names: di
 def check_h1(x: Trip, snaps: list[Snap], names: dict[str, str]) -> dict | None:
     """None if the trip isn't seen in the window."""
     lo, hi = x.dep0 - H1_WINDOW_S[0], x.dep0 - H1_WINDOW_S[1]
-    row = {"check": "H1", "at_epoch": lo, "n_failures": 0, "detail": ""}
+    row = {"check": "H1", "at_epoch": lo, "detail": ""}
     seen = [(i, st) for i, st in x.obs if lo <= snaps[i].t <= hi]
     if not seen:
         return None
@@ -211,36 +203,53 @@ def check_h1(x: Trip, snaps: list[Snap], names: dict[str, str]) -> dict | None:
     cut = snaps[i].t + HORIZON_S
     got, want = within(timed(st), cut), within(expected(x, st), cut)
     missing = ", ".join(names.get(s, s) for s in want if s not in got)
-    return row | {"outcome": "failed", "n_failures": 1,
+    return row | {"outcome": "failed",
                   "detail": f"seen {len(seen)}× in its window, never with every stop; at {local_hms(snaps[i].t)} "
                             f"{len(got)} of {len(want)} stops, missing {missing or 'none (out of order)'}"}
 
 
-def check_h2(x: Trip, snaps: list[Snap], names: dict[str, str]) -> dict | None:
-    """None if the trip isn't seen from dep - 15 min on."""
-    obs = [(i, timed(st)) for i, st in x.obs if snaps[i].t >= x.dep0 - H2_FROM_S]
-    row = {"check": "H2", "at_epoch": x.dep0 - H2_FROM_S, "n_failures": 0, "detail": ""}
-    if not obs:
-        return None
-    prev, prev_t, fails = None, None, []
-    for i, cur in obs:
-        if prev is not None and not any(monotone(prev, cur, prev_t + HORIZON_S, m) for m in (0.0, BOUNDARY_S)):
-            cut = prev_t + HORIZON_S
-            p, c = within(prev, cut), within(cur, cut)
-            gone, new = [s for s in p if s not in c], [s for s in c if s not in p]
-            fails.append((snaps[i].t, f"at {local_hms(snaps[i].t)} ({(snaps[i].t - x.dep0) / 60:+.0f} min) "
-                          f"{len(p)} → {len(c)} stops" + (f", lost {', '.join(names.get(s, s) for s in gone)}" if gone else "")
-                          + (f", gained {', '.join(names.get(s, s) for s in new)}" if new else "")
-                          + ("" if gone or new else ", reordered")))
-        prev, prev_t = cur, snaps[i].t
-    if not fails:
-        return row | {"outcome": "ok"}
-    return row | {"outcome": "failed", "at_epoch": fails[0][0], "n_failures": len(fails),
-                  "detail": f"{len(fails)} non-monotone change{'s' * (len(fails) > 1)}, first {fails[0][1]}"}
+def _not_a_suffix(got: list[str], want: list[str], names: dict[str, str]) -> str:
+    """How a stop list that isn't a suffix of `want` differs from the nearest one, in words."""
+    name = lambda n: names.get(n, n)
+    if bad := [n for n in got if n not in want]:
+        return f"lists {', '.join(map(name, bad))}, not a scheduled stop before the terminus"
+    k = min(want.index(n) for n in got)  # the suffix from the earliest scheduled stop listed
+    expect = [n for n in want[k:] if want.index(n) <= max(want.index(n) for n in got)]
+    if got == expect:  # a suffix, but cut short of the horizon
+        return f"ends at {name(got[-1])}, short of the 90 min horizon"
+    if sorted(got, key=want.index) == expect:
+        a, b = next((a, b) for a, b in zip(got, got[1:]) if want.index(a) > want.index(b))
+        return f"out of order: {name(a)} before {name(b)}"
+    missing = [n for n in expect if n not in got]
+    return f"missing {', '.join(map(name, missing))}" + (", and out of order" if sorted(got, key=want.index) != got else "")
+
+
+def check_h2(x: Trip, snaps: list[Snap], names: dict[str, str]) -> list[dict]:
+    """One row per snapshot of the trip from dep - 15 min on (each content once)."""
+    want = x.stops[:-1]
+    rows = []
+    for i, st in x.obs:
+        s = snaps[i]
+        if s.t < x.dep0 - H2_FROM_S or not s.first or not st:
+            continue
+        row = {"check": "H2", "at_epoch": s.t, "detail": ""}
+        got, cut = timed(st), s.t + HORIZON_S
+        first = got[0][0]
+        if first in want:  # the suffix from the first listed stop
+            suffix = expected(x, st)[want.index(first):]
+            if any(within(got, cut, m) == within(suffix, cut, m) for m in (0.0, BOUNDARY_S)):
+                rows.append(row | {"outcome": "ok"})
+                continue
+        what = _not_a_suffix(within(got, cut) or [n for n, _ in got], want, names)
+        listed = ", ".join(names.get(n, n) for n, _ in got[:8]) + (", …" if len(got) > 8 else "")
+        rows.append(row | {"outcome": "failed",
+                           "detail": f"{(s.t - x.dep0) / 60:+.0f} min from departure: {what} ({len(got)} listed: {listed})"})
+    return rows
 
 
 def check(dates: list[str]) -> tuple[pl.DataFrame, dict]:
-    """H1 and H2 outcomes of every scheduled trip of these dates; raises on H3 / H4."""
+    """H1 outcomes of every scheduled trip of these dates and H2 outcomes of their snapshots; raises
+    on H3 / H4."""
     snaps = load_snaps(dates)
     trips, names = load_trips(dates)
     obs = []  # (snapshot index, stops, trip) of every non-ghost entity of a scheduled trip
@@ -256,9 +265,9 @@ def check(dates: list[str]) -> tuple[pl.DataFrame, dict]:
     info = check_h3_h4(snaps, obs, names)
     rows = []
     for x in sorted((x for v in trips.values() for x in v), key=lambda x: x.dep0):
-        for r in (check_h1(x, snaps, names), check_h2(x, snaps, names)):
-            if r is not None:
-                rows.append({"date": x.date, "trip_id": x.trip_id, "dep0_epoch": x.dep0} | r)
+        h1 = check_h1(x, snaps, names)
+        for r in ([h1] if h1 else []) + check_h2(x, snaps, names):
+            rows.append({"date": x.date, "trip_id": x.trip_id, "dep0_epoch": x.dep0} | r)
     df = TU_CHECKS.conform(pl.DataFrame(rows))
     for h in ("H1", "H2"):
         c = df.filter(pl.col("check") == h)["outcome"].value_counts()

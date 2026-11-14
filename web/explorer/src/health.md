@@ -43,7 +43,7 @@ display(statusCard(presence, {
 
 ## Trip-update hypotheses
 
-What the pipeline assumes about how 511's trip updates for one trip evolve (stage `tu_checks`). Two have always held and stop the build if they don't: no predicted departure is in the past, and every stop has a departure, with an arrival only at departure − 60 s. The two below fail for a few trips a day, so they're shown here: one count per scheduled trip. A trip is only judged when it has a trip update while the check applies, so missing, failed or empty fetches never count, and trips without one aren't shown.
+What the pipeline assumes about how 511's trip updates for one trip evolve (stage `tu_checks`). Two have always held and stop the build if they don't: no predicted departure is in the past, and every stop has a departure, with an arrival only at departure − 60 s. The two below sometimes fail, so they're shown here. Only trip updates are judged: a trip without one while the check applies isn't counted, so missing, failed or empty fetches never count.
 
 ```js
 import {checkCard} from "./components/checkdays.js";
@@ -60,18 +60,18 @@ const CHECK_COLORS = ["#1c5cab", "#d03b3b"];
 display(checkCard(checks.filter((r) => r.check === "H1"), {
   title: "H1: listed in full before departure",
   subtitle: "When seen 10 to 15 min before its scheduled departure, it lists every stop but the terminus at least once",
-  toggle: h1ViewInput, view: h1View, width, failures: "failures",
+  toggle: h1ViewInput, view: h1View, width, unit: "trips", at: "window from",
   outcomes: ["ok", "failed"], colors: CHECK_COLORS, labels: {ok: "held", failed: "failed"},
-  caption: "Stops are compared up to 90 min after the snapshot, about as far ahead as 511 lists them. When: a dot per trip at the start of its window, 15 min before departure.",
+  caption: "Stops are compared up to 90 min after the snapshot, about as far ahead as 511 lists them. When: a dot per failed trip at the start of its window, 15 min before departure.",
 }));
 ```
 
 ```js
 display(checkCard(checks.filter((r) => r.check === "H2"), {
-  title: "H2: stops only drop off the front",
-  subtitle: "From 15 min before departure, each snapshot lists the previous one's stops, or those minus a prefix",
-  toggle: h2ViewInput, view: h2View, width, failures: "non-monotone changes",
+  title: "H2: a snapshot lists the rest of the trip",
+  subtitle: "From 15 min before departure, each snapshot of a trip lists its scheduled stops from some stop on, but the terminus",
+  toggle: h2ViewInput, view: h2View, width, unit: "snapshots", at: "snapshot at",
   outcomes: ["ok", "failed"], colors: CHECK_COLORS, labels: {ok: "held", failed: "failed"},
-  caption: "Snapshots without the trip are allowed in between. When: a dot per trip at its first failure, or 15 min before departure if none.",
+  caption: "One count per snapshot of a trip (each content once, at its first appearance); stops are compared up to 90 min after it. When: a dot per failed snapshot.",
 }));
 ```
