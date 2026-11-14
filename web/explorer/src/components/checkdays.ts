@@ -7,7 +7,7 @@ import * as Plot from "npm:@observablehq/plot";
 import {toggleCard, type StatusView} from "./statusdays.js";
 
 // outcome: "ok", "failed" or (as the caller likes) a kind of failure, e.g. from `failure`
-export interface TuCheck {date: string; trip_id: string; check: string; outcome: string; failure: string | null; dep0_epoch: number;
+export interface TuCheck {date: string; trip_id: string; check: string; outcome: string; failure: string | null; dep0_epoch: number | null;
   at_epoch: number; at_s: number; detail: string}
 
 const dayLabel = (d: string) => new Date(`${d}T12:00`).toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"});
@@ -56,7 +56,7 @@ export function checkDays(rows: TuCheck[], {outcomes, colors, labels, view, capt
     })
     : timePlot(rows, dates, {...common, title: (g: TuCheck[]) => `${dayLabel(g[0].date)}, ${at} ${hhmm(g[0].at_epoch)}: `
         + `${labels[g[0].outcome]}, ${g.length} trip${g.length > 1 ? "s" : ""}\n`
-        + g.map((r) => `${r.trip_id} (${hhmm(r.dep0_epoch)})` + (r.detail ? `: ${r.detail}` : "")).join("\n")});
+        + g.map((r) => r.trip_id + (r.dep0_epoch == null ? "" : ` (${hhmm(r.dep0_epoch)})`) + (r.detail ? `: ${r.detail}` : "")).join("\n")});
 }
 
 /** A dot per moment with failures (same date, time and kind) on a 03:00-03:00 axis, a row per
@@ -77,7 +77,7 @@ function timePlot(rows: TuCheck[], dates: string[], {title, ...common}: Record<s
       // a faint line along each day, to tell which day a lone dot is on
       Plot.ruleY(dates, {y: (d) => d, stroke: "currentColor", strokeOpacity: 0.15}),
       Plot.dot(groups, {x, y: (g) => g[0].date, fill: (g) => g[0].outcome, r: 4,
-        stroke: "var(--theme-background)", strokeWidth: 1, title, tip: {anchor: "top", lineWidth: 40}}),
+        stroke: "var(--theme-background)", strokeWidth: 1, title, tip: {preferredAnchor: "top", lineWidth: 40}}),
       // the count beside a dot that stands for several (only then: a row of "1"s would run together)
       Plot.text(groups.filter((g) => g.length > 1), {x, y: (g) => g[0].date, text: (g) => g.length, textAnchor: "start", dx: 6, dy: -7,
         fontSize: 9, fill: "currentColor", stroke: "var(--theme-background-alt)", strokeWidth: 3, paintOrder: "stroke"}),

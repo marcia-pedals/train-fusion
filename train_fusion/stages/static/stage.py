@@ -57,6 +57,11 @@ def _read(z: zipfile.ZipFile, name: str) -> list[dict]:
     return list(csv.DictReader(io.TextIOWrapper(z.open(name), "utf-8-sig")))
 
 
+def excluded_trip_ids(zip_path: Path) -> set[str]:
+    """The trip_ids of EXCLUDED_ROUTES in a static feed (the trips build() drops)."""
+    return {r["trip_id"] for r in _read(zipfile.ZipFile(zip_path), "trips.txt") if r["route_id"] in EXCLUDED_ROUTES}
+
+
 def feed_version(zip_path: Path) -> str:
     z = zipfile.ZipFile(zip_path)
     info = _read(z, "feed_info.txt")

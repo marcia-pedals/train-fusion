@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from train_fusion.stages.tu_checks.stage import (HORIZON_S, check_listed, Snap, Trip, TuHypothesisViolation, check_h1, check_h2, check_h3_h4)
+from train_fusion.stages.tu_checks.stage import (HORIZON_S, check_listed, kept_row, Snap, Trip, TuHypothesisViolation, check_h1, check_h2, check_h3_h4)
 
 T0 = 1_800_000_000.0  # a snapshot time
 STOPS = ["a", "b", "c", "d"]
@@ -103,3 +103,15 @@ def test_listed_counts_the_trip_updates_a_trip_is_missing_from():
     assert _listed_case([True] + [False] * 23)["failure"] == "missing more"
     assert _listed_case([False] * 24)["failure"] == "never listed"
     assert _listed_case([True] * 24 + [False] * 3)["outcome"] == "ok"  # after it's due to leave: not expected
+
+
+def test_kept_rows_say_why_an_entity_is_discarded():
+    x = _trip(dep0=T0)
+    s = _snap(T0 + 7000, {})
+    kept = kept_row(s, "101", _listed(x, ["c"]), x, None, {})
+    assert (kept["outcome"], kept["failure"], kept["dep0_epoch"]) == ("ok", None, T0)
+    ghost = kept_row(s, "101", _listed(x, ["c"]), x, "ghost", {"c": "Cee"})
+    assert ghost["failure"] == "ghost"
+    assert ghost["detail"].startswith("1 stop from Cee") and ghost["detail"].endswith("(107 min before)")  # 6400 s
+    other = kept_row(s, "999", [("z", None, int(T0))], None, "not in schedule", {})
+    assert (other["failure"], other["dep0_epoch"]) == ("not in schedule", None)

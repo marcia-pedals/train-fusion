@@ -20,6 +20,11 @@ listed stop (the one before the terminus; the trip leaves the list when it depar
 can be a little early). Its outcome: listed in all of them, or missing from 1 to
 LISTED_FEW of them, from more but not all, or from all.
 
+And a fourth ("kept") says which trip-update entities the checks discard: each entity (each
+content once, at its first appearance) is kept, or discarded as a ghost (below) or as a trip
+that isn't in the static schedule of the dates built. South County trips (dropped project-wide,
+see the static stage) are neither: they're left out of everything, this too.
+
 H3 and H4 have held on all data so far: a violation raises TuHypothesisViolation, which stops
 the build. H1 and H2 sometimes fail: each trip's H1 outcome and each snapshot's H2 outcome go
 to <date>/tu_checks.parquet, for the Pipeline health page. (Exploration that led here: branch
@@ -58,9 +63,9 @@ import numpy as np
 import polars as pl
 
 from train_fusion.common import paths
-from train_fusion.common.timeutil import local_hms, service_day_origin
+from train_fusion.common.timeutil import local_hms, service_date, service_day_origin
 from train_fusion.stages.decode.schemas import FETCHES, TU
-from train_fusion.stages.static.stage import Static
+from train_fusion.stages.static.stage import Static, excluded_trip_ids
 from train_fusion.stages.tu_checks.schemas import TU_CHECKS
 
 H1_WINDOW_S = (900.0, 600.0)  # [dep - 15 min, dep - 10 min]
@@ -124,11 +129,13 @@ def load_snaps(dates: list[str]) -> list[Snap]:
     return [s for _, s in sorted(out, key=lambda x: x[0])]
 
 
-def load_trips(dates: list[str]) -> tuple[dict[str, list[Trip]], dict[str, str]]:
-    """The scheduled trips of these dates by trip_id, and stop_id -> short station name."""
-    trips, names = defaultdict(list), {}
+def load_trips(dates: list[str]) -> tuple[dict[str, list[Trip]], dict[str, str], set[str]]:
+    """The scheduled trips of these dates by trip_id, stop_id -> short station name, and the
+    trip_ids of the static feeds' excluded routes (South County)."""
+    trips, names, excluded = defaultdict(list), {}, set()
     for d in dates:
         st, origin = Static(d), service_day_origin(d)
+        excluded |= excluded_trip_ids(st.zip_path)
         station = dict(st.stations.select("station_id", "name").iter_rows())
         for sid, stn in st.platforms.select("stop_id", "station_id").iter_rows():
             names[sid] = station[stn].removesuffix(" Caltrain Station").removesuffix(" Station")
@@ -138,7 +145,7 @@ def load_trips(dates: list[str]) -> tuple[dict[str, list[Trip]], dict[str, str]]
                 stops = s["stop_id"].to_list()
                 sched = {sid: origin + x for sid, x in zip(stops, s["sched_s"].to_list())}
                 trips[trip_id].append(Trip(d, trip_id, stops, sched, sched[stops[0]]))
-    return trips, names
+    return trips, names, excluded
 
 
 def _time(arr, dep) -> float:
@@ -291,21 +298,42 @@ def check_listed(x: Trip, snaps: list[Snap], expected_t: np.ndarray, expected_i:
                   "detail": f"missing from {len(missing)} of {len(expected)}: {gaps}"}
 
 
+def kept_row(s: Snap, trip_id: str, stops: Stops, x: Trip | None, kind: str | None, names: dict[str, str]) -> dict:
+    """Whether a trip-update entity is kept or discarded (kind: "ghost", "not in schedule")."""
+    row = {"date": service_date(s.t), "trip_id": trip_id, "check": "kept", "dep0_epoch": x.dep0 if x else None,
+           "at_epoch": s.t, "outcome": "ok" if kind is None else "failed", "failure": kind, "detail": ""}
+    if kind is None:
+        return row
+    deps = [t for t in (_time(a, d) for _, a, d in stops) if t is not None]
+    first = f"{len(stops)} stop{'s' * (len(stops) > 1)} from {names.get(stops[0][0], stops[0][0])}"
+    if kind == "ghost":
+        return row | {"detail": f"{first}, latest departure {local_hms(max(deps))} ({(s.t - max(deps)) / 60:.0f} min before)"}
+    return row | {"detail": f"{first}" + (f" at {local_hms(_time(*stops[0][1:]))}" if deps else "")}
+
+
 def check(dates: list[str]) -> tuple[pl.DataFrame, dict]:
     """H1 outcomes of every scheduled trip of these dates and H2 outcomes of their snapshots; raises
     on H3 / H4."""
     snaps = load_snaps(dates)
-    trips, names = load_trips(dates)
+    trips, names, excluded = load_trips(dates)
     obs = []  # (snapshot index, stops, trip) of every non-ghost entity of a scheduled trip
+    kept = []  # "kept" rows
     for i, s in enumerate(snaps):
         for trip_id, stops in s.trips.items():
+            if trip_id in excluded:
+                continue
             if trip_id not in trips:
-                continue
-            if all(_time(a, d) < s.t - GHOST_S for _, a, d in stops):
-                continue
-            x = assign(trips[trip_id], stops)
-            x.obs.append((i, stops))
-            obs.append((i, stops, x))
+                kind = "not in schedule"
+            elif all(_time(a, d) < s.t - GHOST_S for _, a, d in stops):
+                kind = "ghost"
+            else:
+                kind = None
+            x = assign(trips[trip_id], stops) if trip_id in trips else None
+            if s.first:
+                kept.append(kept_row(s, trip_id, stops, x, kind, names))
+            if kind is None:
+                x.obs.append((i, stops))
+                obs.append((i, stops, x))
     info = check_h3_h4(snaps, obs, names)
     expected_i = np.array([i for i, s in enumerate(snaps) if s.first and s.n_entities > 0], dtype=int)
     expected_t = np.array([snaps[i].t for i in expected_i])
@@ -315,8 +343,9 @@ def check(dates: list[str]) -> tuple[pl.DataFrame, dict]:
         listed = check_listed(x, snaps, expected_t, expected_i)
         for r in [r for r in (h1, listed) if r] + check_h2(x, snaps, names):
             rows.append({"date": x.date, "trip_id": x.trip_id, "dep0_epoch": x.dep0} | r)
+    rows += [r for r in kept if r["date"] in dates]
     df = TU_CHECKS.conform(pl.DataFrame(rows))
-    for h in ("H1", "H2", "listed"):
+    for h in ("H1", "H2", "listed", "kept"):
         c = df.filter(pl.col("check") == h)["outcome"].value_counts()
         info[h] = dict(c.iter_rows())
     return df, info

@@ -51,7 +51,8 @@ below for exactly those service dates (`train_fusion/build.py`, run with `python
   arrival only at departure - 60 s. H3 and H4 have always held: a violation stops the build.
   H1 and H2 sometimes fail: each trip's H1 outcome and each snapshot's H2 outcome are written
   for the Pipeline health page, along with whether each trip was missing from any non-empty
-  trip update it was expected in ("listed"). Stop lists are compared up to 90 min ahead (511's listing
+  trip update it was expected in ("listed") and which trip-update entities the checks discard
+  ("kept": 03:00 ghosts, trips not in the static schedule; South County isn't counted). Stop lists are compared up to 90 min ahead (511's listing
   horizon); only trip updates are judged, so missing or failed fetches never count as
   failures. Details in the stage's docstring.
 - **linearize**: each VP fix is projected onto its trip's shape (UTM 10N), giving s (m
@@ -96,5 +97,5 @@ entry there. Pages:
   the time with a successful fetch by whether the feed had any entities against whether it
   was expected to (VP is empty from just after midnight; everything else should have data),
   judged per fetch by its content time. *Trip-update hypotheses* (`explorer_data.tu_checks`):
-  stage tu_checks' listed, H1 and H2, a card each (listed and H1 by trip, H2 by snapshot; listed
-  and H2 failures by kind): the share that held or failed, or a dot per failure.
+  stage tu_checks' kept, listed, H1 and H2, a card each (kept by entity, listed and H1 by
+  trip, H2 by snapshot; failures by kind): the share that held or failed, or a dot per failure.

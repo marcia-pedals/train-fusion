@@ -43,19 +43,35 @@ display(statusCard(presence, {
 
 ## Trip-update hypotheses
 
-What the pipeline assumes about how 511's trip updates for one trip evolve (stage `tu_checks`). Two have always held and stop the build if they don't: no predicted departure is in the past, and every stop has a departure, with an arrival only at departure − 60 s. Two more sometimes fail, so they're shown below (H1, H2). They only judge trip updates that have the trip, so missing, failed or empty fetches never count against them; the first card shows when trips are missing from the trip updates.
+What the pipeline assumes about how 511's trip updates for one trip evolve (stage `tu_checks`). Two have always held and stop the build if they don't: no predicted departure is in the past, and every stop has a departure, with an arrival only at departure − 60 s. Two more sometimes fail, so they're shown below (H1, H2). They only judge trip updates that have the trip, so missing, failed or empty fetches never count against them; the first two cards show which trip updates the checks discard, and when trips are missing from them.
 
 ```js
 import {checkCard} from "./components/checkdays.js";
 const checks = rows(await FileAttachment("data/tu_checks.parquet").parquet());
 const h1ViewInput = viewToggle();
 const h1View = Generators.input(h1ViewInput);
+const keptViewInput = viewToggle();
+const keptView = Generators.input(keptViewInput);
 const listedViewInput = viewToggle();
 const listedView = Generators.input(listedViewInput);
 const h2ViewInput = viewToggle();
 const h2View = Generators.input(h2ViewInput);
 // blue 700, status critical
 const CHECK_COLORS = ["#1c5cab", "#d03b3b"];
+```
+
+```js
+// each discarded entity by why (stage tu_checks' KEPT_FAILURES)
+display(checkCard(checks.filter((r) => r.check === "kept").map((r) => ({...r, outcome: r.failure ?? r.outcome})), {
+  title: "Discarded trip updates",
+  subtitle: "Trip-update entities the checks below leave out",
+  toggle: keptViewInput, view: keptView, width, unit: "trip updates", at: "at",
+  outcomes: ["ok", "ghost", "not in schedule"],
+  // blue 700, then yellow (expected: 511's nightly ghosts) and dark red (not expected)
+  colors: ["#1c5cab", "#f2b705", "#9e1b1b"],
+  labels: {ok: "kept", ghost: "discarded: ghost (every time over 1 h old)", "not in schedule": "discarded: trip not in the static schedule"},
+  caption: "One count per trip in each trip update (each content once, at its first appearance). Ghosts: late-night trips 511 brings back around 03:00 with times from before. South County trips are out of the project's scope and not counted at all. When: a dot per trip update with discarded trips, with how many if more than one.",
+}));
 ```
 
 ```js
