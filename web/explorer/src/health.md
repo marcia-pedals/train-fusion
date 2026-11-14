@@ -67,11 +67,16 @@ display(checkCard(checks.filter((r) => r.check === "H1"), {
 ```
 
 ```js
-display(checkCard(checks.filter((r) => r.check === "H2"), {
+// each failure by its kind (stage tu_checks' H2_FAILURES)
+display(checkCard(checks.filter((r) => r.check === "H2").map((r) => ({...r, outcome: r.failure ?? r.outcome})), {
   title: "H2: a snapshot lists the rest of the trip",
   subtitle: "From 15 min before departure, each snapshot of a trip lists its scheduled stops from some stop on, but the terminus",
   toggle: h2ViewInput, view: h2View, width, unit: "snapshots", at: "snapshot at",
-  outcomes: ["ok", "failed"], colors: CHECK_COLORS, labels: {ok: "held", failed: "failed"},
+  outcomes: ["ok", "first two swapped", "other two swapped", "ends early", "other"],
+  // blue 700, then red, yellow, aqua (reference categorical slots) and gray for "other"
+  colors: ["#1c5cab", "#e34948", "#eda100", "#1baf7a", "#8c8c8c"],
+  labels: {ok: "held", "first two swapped": "failed: first two stops swapped", "other two swapped": "failed: two other stops swapped",
+    "ends early": "failed: list ends early", other: "failed: other"},
   caption: "One count per snapshot of a trip (each content once, at its first appearance); stops are compared up to 90 min after it. When: a dot per failed snapshot.",
 }));
 ```

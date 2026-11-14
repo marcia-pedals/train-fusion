@@ -6,7 +6,8 @@ import * as d3 from "npm:d3";
 import * as Plot from "npm:@observablehq/plot";
 import {toggleCard, type StatusView} from "./statusdays.js";
 
-export interface TuCheck {date: string; trip_id: string; check: string; outcome: string; dep0_epoch: number;
+// outcome: "ok", "failed" or (as the caller likes) a kind of failure, e.g. from `failure`
+export interface TuCheck {date: string; trip_id: string; check: string; outcome: string; failure: string | null; dep0_epoch: number;
   at_epoch: number; at_s: number; detail: string}
 
 const dayLabel = (d: string) => new Date(`${d}T12:00`).toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"});
@@ -40,7 +41,7 @@ export function checkDays(rows: TuCheck[], {outcomes, colors, labels, view, capt
   };
   common.caption.append(Plot.legend({color, style: "margin: 0 0 2px"} as Plot.LegendOptions), caption);
   const yAxis = Plot.axisY({tickFormat: dayLabel, tickSize: 0, label: null, fontWeight: 600});
-  const failed = (o: string) => o === "failed";
+  const failed = (o: string) => o !== "ok";  // "failed", or a kind of failure
   return view === "aggregate"
     ? Plot.plot({
       ...common,
@@ -52,7 +53,7 @@ export function checkDays(rows: TuCheck[], {outcomes, colors, labels, view, capt
           tip: true})),
         // the failure count beside its row, so a thin sliver is still read
         Plot.text(dates, {x: 1, y: (d) => d, dx: 8, textAnchor: "start", fill: "currentColor",
-          text: (d) => `${totals.find((r) => r.date === d && failed(r.outcome))?.n ?? 0} failed`}),
+          text: (d) => `${d3.sum(totals, (r) => (r.date === d && failed(r.outcome) ? r.n : 0))} failed`}),
         yAxis,
       ],
     })
@@ -71,7 +72,7 @@ function timePlot(rows: TuCheck[], dates: string[], {title, ...common}: Record<s
     marks: [
       // a faint line along each day, to tell which day a lone dot is on
       Plot.ruleY(dates, {y: (d) => d, stroke: "currentColor", strokeOpacity: 0.15}),
-      Plot.dot(rows.filter((r) => r.outcome === "failed"), {x: (r) => r.at_s / 3600, y: "date", fill: "outcome", r: 4,
+      Plot.dot(rows.filter((r) => r.outcome !== "ok"), {x: (r) => r.at_s / 3600, y: "date", fill: "outcome", r: 4,
         stroke: "var(--theme-background)", strokeWidth: 1, title, tip: true}),
       Plot.axisY({tickFormat: dayLabel, tickSize: 0, label: null, fontWeight: 600}),
     ],

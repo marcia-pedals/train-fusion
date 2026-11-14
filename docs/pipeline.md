@@ -95,5 +95,5 @@ entry there. Pages:
   the time with a successful fetch by whether the feed had any entities against whether it
   was expected to (VP is empty from just after midnight; everything else should have data),
   judged per fetch by its content time. *Trip-update hypotheses* (`explorer_data.tu_checks`):
-  stage tu_checks' H1 and H2, a card each (H1 by trip, H2 by snapshot): the share that
-  held or failed, or a dot per failure.
+  stage tu_checks' H1 and H2, a card each (H1 by trip, H2 by snapshot, its failures by
+  kind): the share that held or failed, or a dot per failure.

@@ -61,6 +61,7 @@ def test_h2_wants_a_suffix_of_the_schedule_up_to_the_horizon():
     rows = check_h2(x, snaps, {})
     assert [r["outcome"] for r in rows] == ["ok", "ok", "ok", "failed", "failed", "failed"]
     assert "missing b" in rows[3]["detail"]
+    assert [r["failure"] for r in rows] == [None, None, None, "other", "first two swapped", "other"]
     # beyond the 90 min horizon a stop needn't be listed
     far = Trip("2026-11-09", "101", STOPS, dict(zip(STOPS, (T0 + 600, T0 + 3000, T0 + HORIZON_S + 600, T0 + HORIZON_S + 900))),
                T0 + 600)  # c is beyond the horizon
@@ -74,3 +75,11 @@ def test_h2_judges_each_content_once():
     snaps = [_snap(T0, {"101": _listed(x, ["b", "a"])}), _snap(T0 + 60, {"101": _listed(x, ["b", "a"])}, first=False)]
     x.obs = [(0, snaps[0].trips["101"]), (1, snaps[1].trips["101"])]
     assert len(check_h2(x, snaps, {})) == 1
+
+
+def test_h2_failure_kinds():
+    x = _trip(dep0=T0)
+    lists = [["a", "c", "b"], ["a", "b"]]  # a later swap; ends at b though c is well within the horizon
+    snaps = [_snap(T0 + k, {"101": _listed(x, s)}) for k, s in enumerate(lists)]
+    x.obs = [(k, s.trips["101"]) for k, s in enumerate(snaps)]
+    assert [r["failure"] for r in check_h2(x, snaps, {})] == ["other two swapped", "ends early"]

@@ -6,7 +6,9 @@ H1  Wherever the trip is seen with content time in [dep - 15 min, dep - 10 min] 
     scheduled stop but the terminus, in order.
 H2  From dep - 15 min on, every snapshot listing the trip lists, within the horizon, a suffix
     of its scheduled stops but the terminus: from some stop on, every one of them, in order.
-    Judged per snapshot (each content once, at its first appearance).
+    Judged per snapshot (each content once, at its first appearance). A failure is one of
+    H2_FAILURES: the first two listed stops swapped, two other adjacent ones swapped, the
+    list ending short of the horizon, or anything else.
 H3  No departure is in the past (before the snapshot's content time).
 H4  Every stop has a departure, and an arrival only at exactly departure - 60 s.
 
@@ -191,7 +193,7 @@ def check_h3_h4(snaps: list[Snap], obs: list[tuple[int, Stops, Trip]], names: di
 def check_h1(x: Trip, snaps: list[Snap], names: dict[str, str]) -> dict | None:
     """None if the trip isn't seen in the window."""
     lo, hi = x.dep0 - H1_WINDOW_S[0], x.dep0 - H1_WINDOW_S[1]
-    row = {"check": "H1", "at_epoch": lo, "detail": ""}
+    row = {"check": "H1", "at_epoch": lo, "failure": None, "detail": ""}
     seen = [(i, st) for i, st in x.obs if lo <= snaps[i].t <= hi]
     if not seen:
         return None
@@ -208,20 +210,24 @@ def check_h1(x: Trip, snaps: list[Snap], names: dict[str, str]) -> dict | None:
                             f"{len(got)} of {len(want)} stops, missing {missing or 'none (out of order)'}"}
 
 
-def _not_a_suffix(got: list[str], want: list[str], names: dict[str, str]) -> str:
-    """How a stop list that isn't a suffix of `want` differs from the nearest one, in words."""
+def _not_a_suffix(got: list[str], want: list[str], names: dict[str, str]) -> tuple[str, str]:
+    """How a stop list that isn't a suffix of `want` differs from the nearest one: its kind (an
+    H2 failure kind) and in words."""
     name = lambda n: names.get(n, n)
     if bad := [n for n in got if n not in want]:
-        return f"lists {', '.join(map(name, bad))}, not a scheduled stop before the terminus"
+        return "other", f"lists {', '.join(map(name, bad))}, not a scheduled stop before the terminus"
     k = min(want.index(n) for n in got)  # the suffix from the earliest scheduled stop listed
     expect = [n for n in want[k:] if want.index(n) <= max(want.index(n) for n in got)]
     if got == expect:  # a suffix, but cut short of the horizon
-        return f"ends at {name(got[-1])}, short of the 90 min horizon"
-    if sorted(got, key=want.index) == expect:
-        a, b = next((a, b) for a, b in zip(got, got[1:]) if want.index(a) > want.index(b))
-        return f"out of order: {name(a)} before {name(b)}"
+        return "ends early", f"ends at {name(got[-1])}, short of the 90 min horizon"
+    for j in range(len(got) - 1):  # two adjacent stops swapped, nothing else
+        if got[:j] + [got[j + 1], got[j]] + got[j + 2:] == expect:
+            return ("first two swapped" if j == 0 else "other two swapped",
+                    f"{name(got[j])} listed before {name(got[j + 1])} (stops {j + 1} and {j + 2})")
     missing = [n for n in expect if n not in got]
-    return f"missing {', '.join(map(name, missing))}" + (", and out of order" if sorted(got, key=want.index) != got else "")
+    inv = next(((a, b) for a, b in zip(got, got[1:]) if want.index(a) > want.index(b)), None)
+    return "other", ", and ".join(([f"missing {', '.join(map(name, missing))}"] if missing else [])
+                                  + ([f"out of order: {name(inv[0])} before {name(inv[1])}"] if inv else []))
 
 
 def check_h2(x: Trip, snaps: list[Snap], names: dict[str, str]) -> list[dict]:
@@ -232,7 +238,7 @@ def check_h2(x: Trip, snaps: list[Snap], names: dict[str, str]) -> list[dict]:
         s = snaps[i]
         if s.t < x.dep0 - H2_FROM_S or not s.first or not st:
             continue
-        row = {"check": "H2", "at_epoch": s.t, "detail": ""}
+        row = {"check": "H2", "at_epoch": s.t, "failure": None, "detail": ""}
         got, cut = timed(st), s.t + HORIZON_S
         first = got[0][0]
         if first in want:  # the suffix from the first listed stop
@@ -240,9 +246,9 @@ def check_h2(x: Trip, snaps: list[Snap], names: dict[str, str]) -> list[dict]:
             if any(within(got, cut, m) == within(suffix, cut, m) for m in (0.0, BOUNDARY_S)):
                 rows.append(row | {"outcome": "ok"})
                 continue
-        what = _not_a_suffix(within(got, cut) or [n for n, _ in got], want, names)
+        kind, what = _not_a_suffix(within(got, cut) or [n for n, _ in got], want, names)
         listed = ", ".join(names.get(n, n) for n, _ in got[:8]) + (", …" if len(got) > 8 else "")
-        rows.append(row | {"outcome": "failed",
+        rows.append(row | {"outcome": "failed", "failure": kind,
                            "detail": f"{(s.t - x.dep0) / 60:+.0f} min from departure: {what} ({len(got)} listed: {listed})"})
     return rows
 
