@@ -43,21 +43,17 @@ display(statusCard(presence, {
 
 ## Trip-update hypotheses
 
-What the pipeline assumes about how 511's trip updates for one trip evolve (stage `tu_checks`). Two have always held and stop the build if they don't: no predicted departure is in the past, and every stop has a departure, with an arrival only at departure − 60 s. Two more sometimes fail, so they're shown below (H1, H2). They only judge trip updates that have the trip, so missing, failed or empty fetches never count against them; the first two cards show which trip updates the checks discard, and when trips are missing from them.
+What the pipeline assumes about how 511's trip updates for one trip evolve (stage `tu_checks`). Two have always held and stop the build if they don't: no predicted departure is in the past, and every stop has a departure, with an arrival only at departure − 60 s. One more sometimes fails, so it's shown below (H2). It only judges trip updates that have the trip, so missing, failed or empty fetches never count against it; the first two cards show which trip updates the checks discard, and when trips are missing from them.
 
 ```js
 import {checkCard} from "./components/checkdays.js";
 const checks = rows(await FileAttachment("data/tu_checks.parquet").parquet());
-const h1ViewInput = viewToggle();
-const h1View = Generators.input(h1ViewInput);
 const keptViewInput = viewToggle();
 const keptView = Generators.input(keptViewInput);
 const listedViewInput = viewToggle();
 const listedView = Generators.input(listedViewInput);
 const h2ViewInput = viewToggle();
 const h2View = Generators.input(h2ViewInput);
-// blue 700, status critical
-const CHECK_COLORS = ["#1c5cab", "#d03b3b"];
 ```
 
 ```js
@@ -90,27 +86,18 @@ display(checkCard(checks.filter((r) => r.check === "listed").map((r) => ({...r, 
 ```
 
 ```js
-display(checkCard(checks.filter((r) => r.check === "H1"), {
-  title: "H1: listed in full before departure",
-  subtitle: "When seen 10 to 15 min before its scheduled departure, it lists every stop but the terminus at least once",
-  toggle: h1ViewInput, view: h1View, width, unit: "trips", at: "window from",
-  outcomes: ["ok", "failed"], colors: CHECK_COLORS, labels: {ok: "held", failed: "failed"},
-  caption: "Stops are compared up to 90 min after the snapshot, about as far ahead as 511 lists them. When: a dot at the start of a failing trip's window (15 min before its departure), with how many trips if more than one.",
-}));
-```
-
-```js
 // each failure by its kind (stage tu_checks' H2_FAILURES)
 display(checkCard(checks.filter((r) => r.check === "H2").map((r) => ({...r, outcome: r.failure ?? r.outcome})), {
   title: "H2: a snapshot lists the rest of the trip",
-  subtitle: "From 15 min before departure, each snapshot of a trip lists its scheduled stops from some stop on, but the terminus",
+  subtitle: "From 15 min before departure, each snapshot of a trip lists its scheduled stops from some stop on, but the terminus; until 10 min before, from the origin",
   toggle: h2ViewInput, view: h2View, width, unit: "snapshots", at: "snapshot at",
-  outcomes: ["ok", "first two swapped", "other two swapped", "ends early", "other"],
+  outcomes: ["ok", "first two swapped", "other two swapped", "ends early", "not from origin", "other"],
   // blue 700, then failures from yellow (the most expected: the train is at one of the two stops) to
   // dark red (the least), lightness falling with severity
-  colors: ["#1c5cab", "#f2b705", "#f28c28", "#dc4f1e", "#9e1b1b"],
+  colors: ["#1c5cab", "#f2b705", "#f29a2e", "#e8712a", "#cf4520", "#9e1b1b"],
   labels: {ok: "held", "first two swapped": "failed: first two stops swapped", "other two swapped": "failed: two other stops swapped",
-    "ends early": "failed: list ends early", other: "failed: other"},
+    "ends early": "failed: list ends early", "not from origin": "failed: not from the origin early on",
+    other: "failed: other"},
   caption: "One count per snapshot of a trip (each content once, at its first appearance); stops are compared up to 90 min after it. When: a dot per snapshot (and kind) where trips failed, with how many trips if more than one.",
 }));
 ```

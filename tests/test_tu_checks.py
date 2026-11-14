@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from train_fusion.stages.tu_checks.stage import (HORIZON_S, check_listed, kept_row, Snap, Trip, TuHypothesisViolation, check_h1, check_h2, check_h3_h4)
+from train_fusion.stages.tu_checks.stage import (HORIZON_S, check_listed, kept_row, Snap, Trip, TuHypothesisViolation, check_h2, check_h3_h4)
 
 T0 = 1_800_000_000.0  # a snapshot time
 STOPS = ["a", "b", "c", "d"]
@@ -43,15 +43,13 @@ def test_h3_allows_an_inexact_content_time_to_be_late():
     check_h3_h4(snaps, [(0, stops, _trip())], {})
 
 
-def test_h1_needs_a_complete_sighting_in_the_window():
-    x = _trip()
-    snaps = [_snap(T0 - 600, {}), _snap(T0, {"101": _listed(x, STOPS[:-1])}), _snap(T0 + 600, {})]
-    x.obs = [(1, snaps[1].trips["101"])]
-    assert check_h1(x, snaps, {})["outcome"] == "ok"
-    x.obs = [(1, _listed(x, STOPS[:1]))]
-    assert check_h1(x, snaps, {})["outcome"] == "failed"
-    x.obs = []
-    assert check_h1(x, snaps, {}) is None  # not seen in the window: not judged
+def test_h2_wants_the_origin_up_to_10_min_before_departure():
+    x = _trip(dep0=T0 + 840)  # snapshots at T0 (dep - 14 min) and T0 + 300 (dep - 9 min)
+    snaps = [_snap(T0, {"101": _listed(x, STOPS[1:-1])}), _snap(T0 + 300, {"101": _listed(x, STOPS[1:-1])})]
+    x.obs = [(k, s.trips["101"]) for k, s in enumerate(snaps)]
+    rows = check_h2(x, snaps, {})
+    assert [(r["outcome"], r["failure"]) for r in rows] == [("failed", "not from origin"), ("ok", None)]
+    assert "starts at b, leaving out a" in rows[0]["detail"]
 
 
 def test_h2_wants_a_suffix_of_the_schedule_up_to_the_horizon():

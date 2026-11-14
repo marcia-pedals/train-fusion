@@ -255,7 +255,7 @@ def data_presence() -> pl.DataFrame:
 
 
 def tu_checks() -> pl.DataFrame:
-    """Stage tu_checks' outcomes of H1 (per trip) and H2 (per snapshot) on every built date, plus at_s:
+    """Stage tu_checks' outcomes (kept, listed, H2) on every built date, plus at_s:
     at_epoch in seconds after the service-day origin, to line days up."""
     parts = []
     for d in paths.built_dates():
