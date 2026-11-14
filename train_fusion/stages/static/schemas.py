@@ -73,3 +73,9 @@ CALENDAR_DATES = Table("calendar_dates", "A date a service is added on or remove
     col("date", "str", "YYYY-MM-DD"),
     col("added", "bool", "the service runs this date (else it doesn't)"),
 ])
+
+
+EXCLUDED_TRIPS = Table("excluded_trips", "One trip in the static GTFS feed of a route the project leaves out (South County: the corridor is San Francisco <-> Tamien), so other stages can tell its RT entities from unknown trips.", [
+    col("trip_id", "str", "GTFS trip_id"),
+    col("route_id", "str", "its route_id"),
+])

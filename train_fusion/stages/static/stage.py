@@ -18,8 +18,8 @@ from pyproj import Transformer
 
 from train_fusion.common.paths import GTFS, static_dir
 from train_fusion.common.timeutil import gtfs_seconds
-from train_fusion.stages.static.schemas import (CALENDAR, CALENDAR_DATES, PLATFORMS, SHAPES, SHAPE_STATIONS,
-                                               STATIONS, TRIPS, TRIP_STOPS)
+from train_fusion.stages.static.schemas import (CALENDAR, CALENDAR_DATES, EXCLUDED_TRIPS, PLATFORMS, SHAPES,
+                                               SHAPE_STATIONS, STATIONS, TRIPS, TRIP_STOPS)
 
 STATION_ON_SHAPE_M = 100.0
 # Out of scope for the whole project (corridor is San Francisco <-> Tamien): dropped here,
@@ -55,11 +55,6 @@ def _read(z: zipfile.ZipFile, name: str) -> list[dict]:
     if name not in z.namelist():
         return []
     return list(csv.DictReader(io.TextIOWrapper(z.open(name), "utf-8-sig")))
-
-
-def excluded_trip_ids(zip_path: Path) -> set[str]:
-    """The trip_ids of EXCLUDED_ROUTES in a static feed (the trips build() drops)."""
-    return {r["trip_id"] for r in _read(zipfile.ZipFile(zip_path), "trips.txt") if r["route_id"] in EXCLUDED_ROUTES}
 
 
 def feed_version(zip_path: Path) -> str:
@@ -114,6 +109,7 @@ def build(zip_path: Path) -> dict[str, pl.DataFrame]:
     z = zipfile.ZipFile(zip_path)
     trips = pl.DataFrame([{k: r[k] for k in ("trip_id", "route_id", "service_id", "direction_id", "shape_id")}
                           for r in _read(z, "trips.txt")]).with_columns(pl.col("direction_id").cast(pl.Int64))
+    excluded_trips = trips.filter(pl.col("route_id").is_in(list(EXCLUDED_ROUTES))).select("trip_id", "route_id")
     trips = trips.filter(~pl.col("route_id").is_in(list(EXCLUDED_ROUTES)))
     kept_trips, kept_shapes = set(trips["trip_id"]), set(trips["shape_id"])
     stops = {r["stop_id"]: r for r in _read(z, "stops.txt")}
@@ -159,7 +155,7 @@ def build(zip_path: Path) -> dict[str, pl.DataFrame]:
                                    for r in _read(z, "calendar_dates.txt")], schema=CALENDAR_DATES.polars_schema())
     return {"trips": trips, "trip_stops": trip_stops, "shapes": shapes, "stations": stations,
             "shape_stations": shape_stations, "platforms": platforms, "calendar": calendar,
-            "calendar_dates": calendar_dates}
+            "calendar_dates": calendar_dates, "excluded_trips": excluded_trips}
 
 
 def trip_patterns(trips: pl.DataFrame, trip_stops: pl.DataFrame) -> pl.DataFrame:
@@ -181,7 +177,7 @@ def trip_patterns(trips: pl.DataFrame, trip_stops: pl.DataFrame) -> pl.DataFrame
 
 TABLES = {"trips": TRIPS, "trip_stops": TRIP_STOPS, "shapes": SHAPES, "stations": STATIONS,
           "shape_stations": SHAPE_STATIONS, "platforms": PLATFORMS, "calendar": CALENDAR,
-          "calendar_dates": CALENDAR_DATES}
+          "calendar_dates": CALENDAR_DATES, "excluded_trips": EXCLUDED_TRIPS}
 DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
 

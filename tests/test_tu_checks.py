@@ -48,7 +48,7 @@ def test_h1_wants_the_origin_up_to_10_min_before_departure():
     snaps = [_snap(T0, {"101": _listed(x, STOPS[1:-1])}), _snap(T0 + 300, {"101": _listed(x, STOPS[1:-1])})]
     x.obs = [(k, s.trips["101"]) for k, s in enumerate(snaps)]
     rows = check_h1(x, snaps, {})
-    assert [(r["outcome"], r["failure"]) for r in rows] == [("failed", "not from origin"), ("ok", None)]
+    assert [r["outcome"] for r in rows] == ["not from origin", "ok"]
     assert "starts at b, leaving out a" in rows[0]["detail"]
 
 
@@ -58,15 +58,14 @@ def test_h1_wants_a_suffix_of_the_schedule_up_to_the_horizon():
     snaps = [_snap(T0 + k, {"101": _listed(x, s)}) for k, s in enumerate(lists)]
     x.obs = [(k, s.trips["101"]) for k, s in enumerate(snaps)]
     rows = check_h1(x, snaps, {})
-    assert [r["outcome"] for r in rows] == ["ok", "ok", "ok", "failed", "failed", "failed"]
+    assert [r["outcome"] for r in rows] == ["ok", "ok", "ok", "other", "first two swapped", "other"]
     assert "missing b" in rows[3]["detail"]
-    assert [r["failure"] for r in rows] == [None, None, None, "other", "first two swapped", "other"]
     # beyond the 90 min horizon a stop needn't be listed
     far = Trip("2026-11-09", "101", STOPS, dict(zip(STOPS, (T0 + 600, T0 + 3000, T0 + HORIZON_S + 600, T0 + HORIZON_S + 900))),
                T0 + 600)  # c is beyond the horizon
     snaps = [_snap(T0, {"101": _listed(far, ["a", "b"])}), _snap(T0 + 60, {"101": _listed(far, ["a"])})]
     far.obs = [(0, snaps[0].trips["101"]), (1, snaps[1].trips["101"])]
-    assert [r["outcome"] for r in check_h1(far, snaps, {})] == ["ok", "failed"]
+    assert [r["outcome"] for r in check_h1(far, snaps, {})] == ["ok", "ends early"]
 
 
 def test_h1_judges_each_content_once():
@@ -81,7 +80,7 @@ def test_h1_failure_kinds():
     lists = [["a", "c", "b"], ["a", "b"]]  # a later swap; ends at b though c is well within the horizon
     snaps = [_snap(T0 + k, {"101": _listed(x, s)}) for k, s in enumerate(lists)]
     x.obs = [(k, s.trips["101"]) for k, s in enumerate(snaps)]
-    assert [r["failure"] for r in check_h1(x, snaps, {})] == ["other two swapped", "ends early"]
+    assert [r["outcome"] for r in check_h1(x, snaps, {})] == ["other two swapped", "ends early"]
 
 
 def _listed_case(present: list[bool]):
@@ -94,22 +93,22 @@ def _listed_case(present: list[bool]):
 
 
 def test_listed_counts_the_trip_updates_a_trip_is_missing_from():
-    assert _listed_case([True] * 24)["outcome"] == "ok"
+    assert _listed_case([True] * 24)["outcome"] == "in all"
     r = _listed_case([True] * 5 + [False] * 3 + [True] * 16)
-    assert (r["failure"], r["at_epoch"]) == ("missing 1-10", T0 + 300)
+    assert (r["outcome"], r["n_missing"], r["n_expected"], r["first_missing_epoch"]) == ("missing 1-10", 3, 24, T0 + 300)
     assert r["detail"].startswith("missing from 3 of 24: ") and r["detail"].endswith("(3)")
-    assert _listed_case([True] + [False] * 23)["failure"] == "missing more"
-    assert _listed_case([False] * 24)["failure"] == "never listed"
-    assert _listed_case([True] * 24 + [False] * 3)["outcome"] == "ok"  # after it's due to leave: not expected
+    assert _listed_case([True] + [False] * 23)["outcome"] == "missing more"
+    assert _listed_case([False] * 24)["outcome"] == "never listed"
+    assert _listed_case([True] * 24 + [False] * 3)["outcome"] == "in all"  # after it's due to leave: not expected
 
 
 def test_kept_rows_say_why_an_entity_is_discarded():
     x = _trip(dep0=T0)
     s = _snap(T0 + 7000, {})
     kept = kept_row(s, "101", _listed(x, ["c"]), x, None, {})
-    assert (kept["outcome"], kept["failure"], kept["dep0_epoch"]) == ("ok", None, T0)
+    assert (kept["outcome"], kept["dep0_epoch"]) == ("kept", T0)
     ghost = kept_row(s, "101", _listed(x, ["c"]), x, "ghost", {"c": "Cee"})
-    assert ghost["failure"] == "ghost"
+    assert ghost["outcome"] == "ghost"
     assert ghost["detail"].startswith("1 stop from Cee") and ghost["detail"].endswith("(107 min before)")  # 6400 s
     other = kept_row(s, "999", [("z", None, int(T0))], None, "not in schedule", {})
-    assert (other["failure"], other["dep0_epoch"]) == ("not in schedule", None)
+    assert (other["outcome"], other["dep0_epoch"]) == ("not in schedule", None)

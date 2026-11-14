@@ -47,7 +47,9 @@ How 511's trip updates hold up, trip by trip (stage `tu_checks`).
 
 ```js
 import {checkCard} from "./components/checkdays.js";
-const checks = rows(await FileAttachment("data/tu_checks.parquet").parquet());
+const tuKept = rows(await FileAttachment("data/tu_kept.parquet").parquet());
+const tuListed = rows(await FileAttachment("data/tu_listed.parquet").parquet());
+const tuH1 = rows(await FileAttachment("data/tu_h1.parquet").parquet());
 const keptViewInput = viewToggle();
 const keptView = Generators.input(keptViewInput);
 const listedViewInput = viewToggle();
@@ -57,36 +59,33 @@ const h1View = Generators.input(h1ViewInput);
 ```
 
 ```js
-// each discarded entity by why (stage tu_checks' KEPT_FAILURES)
-display(checkCard(checks.filter((r) => r.check === "kept").map((r) => ({...r, outcome: r.failure ?? r.outcome})), {
+display(checkCard(tuKept, {
   title: "Discarded trip updates",
   subtitle: "Left out of the checks below",
   toggle: keptViewInput, view: keptView, width, unit: "trip updates", at: "at",
-  outcomes: ["ok", "ghost", "not in schedule"],
+  outcomes: ["kept", "ghost", "not in schedule"],
   // blue 700, then yellow (expected: 511's nightly ghosts) and dark red (not expected)
   colors: ["#1c5cab", "#f2b705", "#9e1b1b"],
-  labels: {ok: "kept", ghost: "ghost (all times over 1 h old)", "not in schedule": "trip not in schedule"},
+  labels: {kept: "kept", ghost: "ghost (all times over 1 h old)", "not in schedule": "trip not in schedule"},
   caption: "South County not counted.",
 }));
 ```
 
 ```js
-// each failure by how many trip updates the trip is missing from (stage tu_checks' LISTED_FAILURES)
-display(checkCard(checks.filter((r) => r.check === "listed").map((r) => ({...r, outcome: r.failure ?? r.outcome})), {
+display(checkCard(tuListed, {
   title: "Trips listed in trip updates",
   subtitle: "In every non-empty trip update from 15 min before departure until its last stop",
   toggle: listedViewInput, view: listedView, width, unit: "trips", at: "first missing at",
-  outcomes: ["ok", "missing 1-10", "missing more", "never listed"],
+  outcomes: ["in all", "missing 1-10", "missing more", "never listed"],
   // blue 700, then yellow to dark red as more is missing
   colors: ["#1c5cab", "#f2b705", "#f28c28", "#9e1b1b"],
-  labels: {ok: "in all", "missing 1-10": "missing from 1–10", "missing more": "missing from over 10", "never listed": "missing from all"},
+  labels: {"in all": "in all", "missing 1-10": "missing from 1–10", "missing more": "missing from over 10", "never listed": "missing from all"},
   caption: "",
 }));
 ```
 
 ```js
-// each failure by its kind (stage tu_checks' H1_FAILURES)
-display(checkCard(checks.filter((r) => r.check === "H1").map((r) => ({...r, outcome: r.failure ?? r.outcome})), {
+display(checkCard(tuH1, {
   title: "H1: each trip update lists the rest of the trip",
   subtitle: "Remaining stops in schedule order; until 10 min before departure, from the origin",
   toggle: h1ViewInput, view: h1View, width, unit: "snapshots", at: "snapshot at",

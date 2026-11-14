@@ -1,13 +1,13 @@
-// How each day's cases (trips or snapshots) fared against a trip-update hypothesis (stage tu_checks,
-// served as data/tu_checks.parquet by train_fusion.explorer_data.tu_checks), a row per date:
+// How each day's cases (trips, snapshots or entities) fared in one of stage tu_checks' checks (its
+// tables, served as data/tu_*.parquet by train_fusion.explorer_data._tu_check), a row per date:
 // the share of cases by outcome ("aggregate") or a dot per time (at_epoch) with failures, and how many,
 // on the 03:00-03:00 time-of-day axis of the other health cards ("time").
 import * as d3 from "npm:d3";
 import * as Plot from "npm:@observablehq/plot";
 import {toggleCard, type StatusView} from "./statusdays.js";
 
-// outcome: "ok", "failed" or (as the caller likes) a kind of failure, e.g. from `failure`
-export interface TuCheck {date: string; trip_id: string; check: string; outcome: string; failure: string | null; dep0_epoch: number | null;
+// outcome: the first of the card's outcomes is the good one, the rest kinds of failure
+export interface TuCheck {date: string; trip_id: string; outcome: string; dep0_epoch: number | null;
   at_epoch: number; at_s: number; detail: string}
 
 const dayLabel = (d: string) => new Date(`${d}T12:00`).toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"});
@@ -41,7 +41,7 @@ export function checkDays(rows: TuCheck[], {outcomes, colors, labels, view, capt
   };
   common.caption.append(Plot.legend({color, style: "margin: 0 0 2px"} as Plot.LegendOptions), caption);
   const yAxis = Plot.axisY({tickFormat: dayLabel, tickSize: 0, label: null, fontWeight: 600});
-  const failed = (o: string) => o !== "ok";  // "failed", or a kind of failure
+  const failed = (o: string) => o !== outcomes[0];  // a kind of failure
   return view === "aggregate"
     ? Plot.plot({
       ...common,
@@ -54,17 +54,17 @@ export function checkDays(rows: TuCheck[], {outcomes, colors, labels, view, capt
         yAxis,
       ],
     })
-    : timePlot(rows, dates, {...common, title: (g: TuCheck[]) => `${dayLabel(g[0].date)}, ${at} ${hhmm(g[0].at_epoch)}: `
+    : timePlot(rows, dates, {...common, ok: outcomes[0], title: (g: TuCheck[]) => `${dayLabel(g[0].date)}, ${at} ${hhmm(g[0].at_epoch)}: `
         + `${labels[g[0].outcome]}, ${g.length} trip${g.length > 1 ? "s" : ""}\n`
         + g.map((r) => r.trip_id + (r.dep0_epoch == null ? "" : ` (${hhmm(r.dep0_epoch)})`) + (r.detail ? `: ${r.detail}` : "")).join("\n")});
 }
 
 /** A dot per moment with failures (same date, time and kind) on a 03:00-03:00 axis, a row per
  *  date, with how many there were beside it if more than one (held cases aren't drawn). */
-function timePlot(rows: TuCheck[], dates: string[], {title, ...common}: Record<string, any> & {
-  title: (g: TuCheck[]) => string;
+function timePlot(rows: TuCheck[], dates: string[], {title, ok, ...common}: Record<string, any> & {
+  title: (g: TuCheck[]) => string; ok: string;  // the good outcome (not drawn)
 }) {
-  const groups = d3.groups(rows.filter((r) => r.outcome !== "ok"), (r) => `${r.date} ${r.at_epoch} ${r.outcome}`)
+  const groups = d3.groups(rows.filter((r) => r.outcome !== ok), (r) => `${r.date} ${r.at_epoch} ${r.outcome}`)
     .map(([, g]) => g);
   const x = (g: TuCheck[]) => g[0].at_s / 3600;
   return Plot.plot({

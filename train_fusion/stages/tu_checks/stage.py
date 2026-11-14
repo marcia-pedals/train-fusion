@@ -5,7 +5,7 @@ H1  From dep - 15 min on (dep: its scheduled first departure), every snapshot li
     trip lists, within the horizon (below), a suffix of its scheduled stops but the terminus:
     from some stop on, every one of them, in order; and up to dep - 10 min that suffix starts
     at the origin (all of them). Judged per snapshot (each content once, at its first
-    appearance). A failure is one of H1_FAILURES: the first two listed stops swapped, two other
+    appearance). A failure is one of TU_H1's outcomes: the first two listed stops swapped, two other
     adjacent ones swapped, the list ending short of the horizon, not starting at the origin
     by dep - 10 min, or anything else. (A separate check that the trip was seen at least once
     in [dep - 15 min, dep - 10 min] listing every stop but the terminus is folded in. Before
@@ -27,8 +27,8 @@ that isn't in the static schedule of the dates built. South County trips (droppe
 see the static stage) are neither: they're left out of everything, this too.
 
 H2 and H3 have held on all data so far: a violation raises TuHypothesisViolation, which stops
-the build. H1 sometimes fails: each snapshot's H1 outcome goes to <date>/tu_checks.parquet,
-for the Pipeline health page. (Exploration that led here: branch
+the build. H1 sometimes fails: each snapshot's H1 outcome goes to <date>/tu_h1.parquet (and
+"listed" to tu_listed, "kept" to tu_kept), for the Pipeline health page. (Exploration that led here: branch
 tu-exploration, experiments/tu_hypotheses.py.)
 
 The horizon: 511 lists a trip's stops only up to ~90 min after now, but before departure
@@ -64,10 +64,11 @@ import numpy as np
 import polars as pl
 
 from train_fusion.common import paths
+from train_fusion.common.schema_dsl import Table
 from train_fusion.common.timeutil import local_hms, service_date, service_day_origin
 from train_fusion.stages.decode.schemas import FETCHES, TU
-from train_fusion.stages.static.stage import Static, excluded_trip_ids
-from train_fusion.stages.tu_checks.schemas import TU_CHECKS
+from train_fusion.stages.static.stage import Static
+from train_fusion.stages.tu_checks.schemas import TU_H1, TU_KEPT, TU_LISTED
 
 H1_FROM_S = 900.0  # H1 applies from dep - 15 min
 H1_ORIGIN_UNTIL_S = 600.0  # and up to dep - 10 min the list starts at the origin
@@ -136,7 +137,7 @@ def load_trips(dates: list[str]) -> tuple[dict[str, list[Trip]], dict[str, str],
     trips, names, excluded = defaultdict(list), {}, set()
     for d in dates:
         st, origin = Static(d), service_day_origin(d)
-        excluded |= excluded_trip_ids(st.zip_path)
+        excluded |= set(st.excluded_trips["trip_id"])
         station = dict(st.stations.select("station_id", "name").iter_rows())
         for sid, stn in st.platforms.select("stop_id", "station_id").iter_rows():
             names[sid] = station[stn].removesuffix(" Caltrain Station").removesuffix(" Station")
@@ -236,7 +237,7 @@ def check_h1(x: Trip, snaps: list[Snap], names: dict[str, str]) -> list[dict]:
         s = snaps[i]
         if s.t < x.dep0 - H1_FROM_S or not s.first or not st:
             continue
-        row = {"check": "H1", "at_epoch": s.t, "failure": None, "detail": ""}
+        row = {"date": x.date, "trip_id": x.trip_id, "dep0_epoch": x.dep0, "t_epoch": s.t, "detail": ""}
         got, cut = timed(st), s.t + HORIZON_S
         first = got[0][0]
         if first in want:  # the suffix from the first listed stop (from the origin, up to dep - 10 min)
@@ -253,7 +254,7 @@ def check_h1(x: Trip, snaps: list[Snap], names: dict[str, str]) -> list[dict]:
         else:
             kind, what = _not_a_suffix(within(got, cut) or [n for n, _ in got], want, names)
         listed = ", ".join(names.get(n, n) for n, _ in got[:8]) + (", …" if len(got) > 8 else "")
-        rows.append(row | {"outcome": "failed", "failure": kind,
+        rows.append(row | {"outcome": kind,
                            "detail": f"{(s.t - x.dep0) / 60:+.0f} min from departure: {what} ({len(got)} listed: {listed})"})
     return rows
 
@@ -268,9 +269,10 @@ def check_listed(x: Trip, snaps: list[Snap], expected_t: np.ndarray, expected_i:
         return None
     seen = {i for i, _ in x.obs}
     missing = [int(i) for i in expected if i not in seen]
-    row = {"check": "listed", "at_epoch": lo, "failure": None, "detail": ""}
+    row = {"date": x.date, "trip_id": x.trip_id, "dep0_epoch": x.dep0, "n_expected": len(expected),
+           "n_missing": len(missing), "first_missing_epoch": None, "detail": ""}
     if not missing:
-        return row | {"outcome": "ok"}
+        return row | {"outcome": "in all"}
     runs: list[list[int]] = []  # consecutive expected trip updates it's missing from
     pos = {int(i): k for k, i in enumerate(expected)}
     for i in missing:
@@ -282,14 +284,14 @@ def check_listed(x: Trip, snaps: list[Snap], expected_t: np.ndarray, expected_i:
             else "missing 1-10" if len(missing) <= LISTED_FEW else "missing more")
     gaps = ", ".join(f"{local_hms(snaps[r[0]].t)}" + (f"–{local_hms(snaps[r[-1]].t)} ({len(r)})" if len(r) > 1 else "")
                      for r in runs[:6]) + (", …" if len(runs) > 6 else "")
-    return row | {"outcome": "failed", "failure": kind, "at_epoch": snaps[missing[0]].t,
+    return row | {"outcome": kind, "first_missing_epoch": snaps[missing[0]].t,
                   "detail": f"missing from {len(missing)} of {len(expected)}: {gaps}"}
 
 
 def kept_row(s: Snap, trip_id: str, stops: Stops, x: Trip | None, kind: str | None, names: dict[str, str]) -> dict:
     """Whether a trip-update entity is kept or discarded (kind: "ghost", "not in schedule")."""
-    row = {"date": service_date(s.t), "trip_id": trip_id, "check": "kept", "dep0_epoch": x.dep0 if x else None,
-           "at_epoch": s.t, "outcome": "ok" if kind is None else "failed", "failure": kind, "detail": ""}
+    row = {"date": service_date(s.t), "trip_id": trip_id, "dep0_epoch": x.dep0 if x else None, "t_epoch": s.t,
+           "outcome": kind or "kept", "detail": ""}
     if kind is None:
         return row
     deps = [t for t in (_time(a, d) for _, a, d in stops) if t is not None]
@@ -299,9 +301,9 @@ def kept_row(s: Snap, trip_id: str, stops: Stops, x: Trip | None, kind: str | No
     return row | {"detail": f"{first}" + (f" at {local_hms(_time(*stops[0][1:]))}" if deps else "")}
 
 
-def check(dates: list[str]) -> tuple[pl.DataFrame, dict]:
-    """H1 outcomes of the snapshots of every scheduled trip of these dates, the trips' "listed"
-    outcomes and every entity's "kept"; raises on H2 / H3."""
+def check(dates: list[str]) -> tuple[list[tuple[Table, pl.DataFrame]], dict]:
+    """The tables with their rows (TU_H1: the snapshots of every scheduled trip of these dates;
+    TU_LISTED: the trips; TU_KEPT: every entity); raises on H2 / H3."""
     snaps = load_snaps(dates)
     trips, names, excluded = load_trips(dates)
     obs = []  # (snapshot index, stops, trip) of every non-ghost entity of a scheduled trip
@@ -325,22 +327,22 @@ def check(dates: list[str]) -> tuple[pl.DataFrame, dict]:
     info = check_h2_h3(snaps, obs, names)
     expected_i = np.array([i for i, s in enumerate(snaps) if s.first and s.n_entities > 0], dtype=int)
     expected_t = np.array([snaps[i].t for i in expected_i])
-    rows = []
+    h1, listed = [], []
     for x in sorted((x for v in trips.values() for x in v), key=lambda x: x.dep0):
-        listed = check_listed(x, snaps, expected_t, expected_i)
-        for r in ([listed] if listed else []) + check_h1(x, snaps, names):
-            rows.append({"date": x.date, "trip_id": x.trip_id, "dep0_epoch": x.dep0} | r)
-    rows += [r for r in kept if r["date"] in dates]
-    df = TU_CHECKS.conform(pl.DataFrame(rows))
-    for h in ("H1", "listed", "kept"):
-        c = df.filter(pl.col("check") == h)["outcome"].value_counts()
-        info[h] = dict(c.iter_rows())
-    return df, info
+        h1 += check_h1(x, snaps, names)
+        if r := check_listed(x, snaps, expected_t, expected_i):
+            listed.append(r)
+    tables = [(t, t.conform(pl.DataFrame(rows, schema=t.polars_schema())) if rows else t.empty())
+              for t, rows in ((TU_H1, h1), (TU_LISTED, listed), (TU_KEPT, [r for r in kept if r["date"] in dates]))]
+    for t, df in tables:
+        info[t.name] = dict(df["outcome"].value_counts().iter_rows())
+    return tables, info
 
 
 def run(dates: list[str]) -> dict:
-    """Check every date; write each date's outcomes to <date>/tu_checks.parquet."""
-    df, info = check(dates)
-    for d in dates:
-        TU_CHECKS.write(df.filter(pl.col("date") == d), paths.day_dir(d) / "tu_checks.parquet")
+    """Check every date; write each date's rows of each table to <date>/<table>.parquet."""
+    tables, info = check(dates)
+    for t, df in tables:
+        for d in dates:
+            t.write(df.filter(pl.col("date") == d), paths.day_dir(d) / f"{t.name}.parquet")
     return info

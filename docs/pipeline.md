@@ -28,33 +28,23 @@ below for exactly those service dates (`train_fusion/build.py`, run with `python
 
 | Stage | Command | Writes |
 |---|---|---|
-| static | `just build` | `data/derived/static/<feed_version>/`: trips, trip_stops, shapes, stations, shape_stations, platforms, calendar, calendar_dates |
+| static | `just build` | `data/derived/static/<feed_version>/`: trips, trip_stops, shapes, stations, shape_stations, platforms, calendar, calendar_dates, excluded_trips |
 | decode | `just build` | `data/derived/<date>/`: fetches, vp, tu |
-| tu_checks | `just build` | `data/derived/<date>/tu_checks.parquet` |
+| tu_checks | `just build` | `data/derived/<date>/`: tu_h1, tu_listed, tu_kept |
 | linearize | `just build` | `data/derived/<date>/vp_lin.parquet` |
 | timetable | `just build` | `data/derived/static/<feed_version>/timetable.parquet` |
 | reference | `just build` | `data/derived/reference/`: ref_segments, ref_knots, ref_limits, ref_cruise, ref_fit, reference.json; `<date>/`: ref_trips, ref_fixes, ref_pairs |
 
 - **static**: the static GTFS zip for a date is the newest fetched on or before it. GTFS
   times are seconds after the service-day origin (local noon − 12 h); static arrival ==
-  departure, whole minutes. South County trips are dropped (`EXCLUDED_ROUTES`): the
+  departure, whole minutes. South County trips are dropped (`EXCLUDED_ROUTES`; their trip_ids go to `excluded_trips`): the
   project covers San Francisco ↔ Tamien only.
 - **decode**: each snapshot is timed by when its content first appeared (511 re-stamps
   every ~15 s but changes content every ~30 s; see [fetcher.md](fetcher.md)).
   `content_exact = false` means the time may be up to 15 s late. Snapshots repeating
   earlier content are dropped. `fetches` keeps every request (status, content time,
   exactness, whether it was a duplicate) for the Pipeline health page.
-- **tu_checks**: checks what we assume about how a trip's trip updates evolve (all in terms
-  of departures): H1, from 15 min before its scheduled departure each snapshot of a trip
-  lists a suffix of its scheduled stops but the terminus, from the origin until 10 min
-  before; H2, no departure is in the past; H3, every stop has a departure, and an arrival
-  only at departure - 60 s. H2 and H3 have always held: a violation stops the build. H1
-  sometimes fails: each snapshot's H1 outcome is written for the Pipeline health page, along
-  with whether each trip was missing from any non-empty trip update it was expected in
-  ("listed") and which trip-update entities the checks discard ("kept": 03:00 ghosts, trips
-  not in the static schedule; South County isn't counted). Stop lists are compared up to 90
-  min ahead (511's listing horizon); only trip updates are judged, so missing or failed
-  fetches never count as failures. Details in the stage's docstring.
+- **tu_checks**: checks what we assume about how a trip's trip updates evolve.
 - **linearize**: each VP fix is projected onto its trip's shape (UTM 10N), giving s (m
   along the shape, matching the stops' `shape_dist_traveled`) and its distance from it.
 - **timetable**: every scheduled departure as an interval [`dep_lo_s`, `dep_hi_s`]
@@ -96,6 +86,4 @@ entry there. Pages:
   (the raw stamp only), failed, or missing. *Data presence* (`explorer_data.data_presence`):
   the time with a successful fetch by whether the feed had any entities against whether it
   was expected to (VP is empty from just after midnight; everything else should have data),
-  judged per fetch by its content time. *Trip-update hypotheses* (`explorer_data.tu_checks`):
-  stage tu_checks' kept, listed and H1, a card each (kept by entity, listed by trip, H1 by
-  snapshot; failures by kind): the share that held or failed, or a dot per failure.
+  judged per fetch by its content time.

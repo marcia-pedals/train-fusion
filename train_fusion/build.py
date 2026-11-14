@@ -1,6 +1,5 @@
 """`just build <dates>` / `just build --last-week`: rebuild data/derived from scratch for
-exactly these service dates: static (the feed versions they use), decode, the trip-update
-checks, linearize, the timetable, and the reference measured against them."""
+exactly these service dates, running every stage."""
 from __future__ import annotations
 
 import argparse
