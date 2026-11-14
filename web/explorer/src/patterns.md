@@ -89,9 +89,21 @@ function patternDiagram(width, shownLines, selected) {
 }
 ```
 
+```js
+// The diagram's box stays on the page and only its contents are swapped. (A resize() per change
+// would put in a new box that's empty until its ResizeObserver fires: the page gets shorter
+// for a moment, and the browser scrolls up to fit it.)
+const diagramBox = document.createElement("div");
+const diagramWidth = Generators.width(diagramBox);
+```
+
+```js
+diagramBox.replaceChildren(patternDiagram(diagramWidth, patternLines.filter((l) => shownPatterns.includes(l.pattern)), pinned));
+```
+
 <div style="display: grid; grid-template-columns: 220px 1fr; gap: 1rem; align-items: start;">
   <div>${picker}</div>
-  <div>${resize((width) => patternDiagram(width, patternLines.filter((l) => shownPatterns.includes(l.pattern)), pinned))}</div>
+  ${diagramBox}
 </div>
 
 ```js
