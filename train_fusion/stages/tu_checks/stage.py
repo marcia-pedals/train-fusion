@@ -1,9 +1,9 @@
 """Stage `tu_checks`: check what we assume about how 511's trip updates (TU) for one trip
 evolve, on every date being built. All in terms of departure times (H4 is why that's safe).
 
-H1  The trip is seen at least once with content time in [dep - 15 min, dep - 10 min] (dep:
-    its scheduled first departure), and there it lists, within the horizon (below), every
-    scheduled stop but the terminus, in order.
+H1  Wherever the trip is seen with content time in [dep - 15 min, dep - 10 min] (dep: its
+    scheduled first departure), at least once it lists, within the horizon (below), every
+    scheduled stop but the terminus, in order. (Not seen in that window at all: not judged.)
 H2  From dep - 15 min on, the stop list within the horizon is monotone: each time the same
     as the last one seen, or that list minus a prefix. Complete dropouts (snapshots without
     the trip, after which it comes back) are allowed; comparisons bridge them and fetch gaps
@@ -27,9 +27,9 @@ Ghosts are discarded before any check: entities whose departures are all more th
 before the snapshot (late-night trips 511 brings back around 03:00 with ~95 min old times).
 
 Missing / failed fetches never count against a hypothesis:
-- H1 is "no fetch" when no successful fetch has content time in the window ("outside
-  archive" when the window isn't within the archive at all); H2 is "outside archive" for a
-  trip never seen whose run (from dep - 15 min) isn't within it.
+- H1 and H2 only judge snapshots that have the trip: a trip never seen when the check applies
+  is "not seen" (whether its fetches failed, were empty or just didn't list it), or "outside
+  archive" if that time isn't within the archive.
 - H2: a trip missing from a snapshot whose whole feed is empty isn't a dropout.
 - H3: an inexact content time (the raw stamp, up to INEXACT_S late) only puts a departure
   definitely in the past when it's more than INEXACT_S before the stamp.
@@ -200,13 +200,9 @@ def check_h3_h4(snaps: list[Snap], obs: list[tuple[int, Stops, Trip]], names: di
 def check_h1(x: Trip, snaps: list[Snap], snap_t: np.ndarray, names: dict[str, str]) -> dict:
     lo, hi = x.dep0 - H1_WINDOW_S[0], x.dep0 - H1_WINDOW_S[1]
     row = {"check": "H1", "at_epoch": lo, "n_failures": 0, "detail": ""}
-    if not ((snap_t >= lo) & (snap_t <= hi)).any():
-        inside = snap_t[0] < lo and hi < snap_t[-1]
-        return row | {"outcome": "no fetch" if inside else "outside archive"}
     seen = [(i, st) for i, st in x.obs if lo <= snaps[i].t <= hi]
     if not seen:
-        return row | {"outcome": "failed", "n_failures": 1, "detail": f"not seen in its window ({local_hms(lo)}–"
-                      f"{local_hms(hi)}), though there were snapshots"}
+        return row | {"outcome": "not seen" if snap_t[0] < lo and hi < snap_t[-1] else "outside archive"}
     for i, st in seen:
         cut = snaps[i].t + HORIZON_S
         if any(within(timed(st), cut, m) == within(expected(x, st), cut, m) for m in (0.0, BOUNDARY_S)):

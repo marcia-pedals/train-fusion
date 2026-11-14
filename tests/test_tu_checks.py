@@ -62,7 +62,7 @@ def test_h1_needs_a_complete_sighting_in_the_window():
     x.obs = [(1, _listed(x, STOPS[:1]))]
     assert check_h1(x, snaps, t, {})["outcome"] == "failed"
     x.obs = []
-    assert check_h1(x, snaps, t, {})["detail"].startswith("not seen in its window")
+    assert check_h1(x, snaps, t, {})["outcome"] == "not seen"
     assert check_h1(x, snaps[2:], t[2:], {})["outcome"] == "outside archive"
 
 

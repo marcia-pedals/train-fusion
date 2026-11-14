@@ -43,7 +43,7 @@ display(statusCard(presence, {
 
 ## Trip-update hypotheses
 
-What the pipeline assumes about how 511's trip updates for one trip evolve (stage `tu_checks`). Two have always held and stop the build if they don't: no predicted departure is in the past, and every stop has a departure, with an arrival only at departure − 60 s. The two below fail for a few trips a day, so they're shown here: one count per scheduled trip. Missing or failed fetches never count as a failure.
+What the pipeline assumes about how 511's trip updates for one trip evolve (stage `tu_checks`). Two have always held and stop the build if they don't: no predicted departure is in the past, and every stop has a departure, with an arrival only at departure − 60 s. The two below fail for a few trips a day, so they're shown here: one count per scheduled trip. Only snapshots that have the trip are judged, so missing, failed or empty fetches never count as a failure.
 
 ```js
 import {checkCard} from "./components/checkdays.js";
@@ -59,10 +59,10 @@ const CHECK_COLORS = ["#1c5cab", "#d03b3b", "#8c8c8c", "#cfcfcf"];
 ```js
 display(checkCard(checks.filter((r) => r.check === "H1"), {
   title: "H1: listed in full before departure",
-  subtitle: "Seen 10 to 15 min before its scheduled departure, listing every stop but the terminus",
+  subtitle: "When seen 10 to 15 min before its scheduled departure, it lists every stop but the terminus at least once",
   toggle: h1ViewInput, view: h1View, width, failures: "failures",
-  outcomes: ["ok", "failed", "no fetch", "outside archive"], colors: CHECK_COLORS,
-  labels: {ok: "held", failed: "failed", "no fetch": "no successful fetch then", "outside archive": "outside the archive"},
+  outcomes: ["ok", "failed", "not seen", "outside archive"], colors: CHECK_COLORS,
+  labels: {ok: "held", failed: "failed", "not seen": "no trip update in window", "outside archive": "outside the archive"},
   caption: "Stops are compared up to 90 min after the snapshot, about as far ahead as 511 lists them. When: a dot per trip at the start of its window, 15 min before departure.",
 }));
 ```

@@ -45,13 +45,13 @@ below for exactly those service dates (`train_fusion/build.py`, run with `python
   earlier content are dropped. `fetches` keeps every request (status, content time,
   exactness, whether it was a duplicate) for the Pipeline health page.
 - **tu_checks**: checks what we assume about how a trip's trip updates evolve (all in terms
-  of departures): H1, it's seen 10-15 min before its scheduled departure listing every stop
+  of departures): H1, if seen 10-15 min before its scheduled departure, it lists every stop
   but the terminus; H2, from then on its stops only drop off the front (dropouts allowed);
   H3, no departure is in the past; H4, every stop has a departure, and an arrival only at
   departure - 60 s. H3 and H4 have always held: a violation stops the build. H1 and H2 fail
   for a few trips a day: each trip's outcome is written for the Pipeline health page. Stop
-  lists are compared up to 90 min ahead (511's listing horizon); missing or failed fetches
-  never count as failures. Details in the stage's docstring.
+  lists are compared up to 90 min ahead (511's listing horizon); only snapshots with the trip
+  are judged, so missing or failed fetches never count as failures. Details in the stage's docstring.
 - **linearize**: each VP fix is projected onto its trip's shape (UTM 10N), giving s (m
   along the shape, matching the stops' `shape_dist_traveled`) and its distance from it.
 - **timetable**: every scheduled departure as an interval [`dep_lo_s`, `dep_hi_s`]
