@@ -27,6 +27,13 @@ export function viewToggle(): HTMLElement & {value: StatusView} {
 export function statusCard(spans: StatusSpan[], {title, subtitle, toggle, ...opts}: Parameters<typeof statusDays>[1] & {
   title: string; subtitle: string; toggle: HTMLElement;
 }): HTMLElement {
+  // inside the card's 1rem padding and border
+  return toggleCard({title, subtitle, toggle, chart: statusDays(spans, {...opts, width: opts.width - 34})});
+}
+
+/** The card statusCard puts its chart in (the chart's width: the card's minus 34 px). */
+export function toggleCard({title, subtitle, toggle, chart}: {title: string; subtitle: string; toggle: HTMLElement;
+  chart: HTMLElement | SVGSVGElement}): HTMLElement {
   const card = document.createElement("div");
   card.className = "card";
   card.style.cssText = "display: grid; gap: 12px";
@@ -38,8 +45,6 @@ export function statusCard(spans: StatusSpan[], {title, subtitle, toggle, ...opt
   titles.append(h2, h3);
   // filterBar carries the toggle's styles; no margins in the header
   head.append(titles, Object.assign(filterBar([[["", toggle]]]), {style: "margin: 0"}));
-  // inside the card's 1rem padding and border
-  const chart = statusDays(spans, {...opts, width: opts.width - 34});
   chart.style.margin = "0";  // Plot's <figure> (it has a caption) brings its own
   card.append(head, chart);
   return card;

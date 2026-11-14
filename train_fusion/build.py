@@ -1,6 +1,6 @@
 """`just build <dates>` / `just build --last-week`: rebuild data/derived from scratch for
-exactly these service dates: static (the feed versions they use), decode, linearize, the
-timetable, and the reference measured against them."""
+exactly these service dates: static (the feed versions they use), decode, the trip-update
+checks, linearize, the timetable, and the reference measured against them."""
 from __future__ import annotations
 
 import argparse
@@ -18,6 +18,7 @@ from train_fusion.stages.linearize import stage as linearize
 from train_fusion.stages.reference import stage as reference
 from train_fusion.stages.static import stage as static
 from train_fusion.stages.timetable import stage as timetable
+from train_fusion.stages.tu_checks import stage as tu_checks
 
 
 def _decode(day: str) -> tuple[str, dict]:
@@ -37,6 +38,7 @@ def main(dates: list[str]) -> None:
     with ProcessPoolExecutor() as ex:
         for day, n in ex.map(_decode, dates):
             print(f"decode  {day} {n}")
+    print(f"tu_checks {tu_checks.run(dates)}")
     with ProcessPoolExecutor() as ex:
         for day, info in ex.map(_linearize, dates):
             print(f"linearize {day} {info}")

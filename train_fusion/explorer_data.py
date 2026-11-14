@@ -12,6 +12,7 @@ from train_fusion.common.timeutil import TZ, service_day_origin
 from train_fusion.stages.decode.schemas import FETCHES
 from train_fusion.stages.static.stage import DAYS, Static
 from train_fusion.stages.timetable import stage as timetable_stage
+from train_fusion.stages.tu_checks.schemas import TU_CHECKS
 
 
 def _static() -> Static:
@@ -253,6 +254,18 @@ def data_presence() -> pl.DataFrame:
     return pl.DataFrame(rows, schema=STATUS_SCHEMA)
 
 
+def tu_checks() -> pl.DataFrame:
+    """Stage tu_checks' per-trip outcomes of H1 and H2 on every built date, plus at_s:
+    at_epoch in seconds after the service-day origin, to line days up."""
+    parts = []
+    for d in paths.built_dates():
+        p = paths.day_dir(d) / "tu_checks.parquet"
+        if not p.exists():
+            raise SystemExit(f"{d} was built before stage tu_checks existed: run `just build` again")
+        parts.append(TU_CHECKS.read(p).with_columns((pl.col("at_epoch") - service_day_origin(d)).alias("at_s")))
+    return pl.concat(parts)
+
+
 # what web/explorer/src/data/[table].parquet.py serves, as data/<name>.parquet
 TABLES = {
     "trips": lambda: _static().trips,
@@ -266,4 +279,5 @@ TABLES = {
     "timetable": timetable,
     "fetch_status": fetch_status,
     "data_presence": data_presence,
+    "tu_checks": tu_checks,
 }

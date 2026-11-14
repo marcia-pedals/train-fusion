@@ -30,6 +30,7 @@ below for exactly those service dates (`train_fusion/build.py`, run with `python
 |---|---|---|
 | static | `just build` | `data/derived/static/<feed_version>/`: trips, trip_stops, shapes, stations, shape_stations, platforms, calendar, calendar_dates |
 | decode | `just build` | `data/derived/<date>/`: fetches, vp, tu |
+| tu_checks | `just build` | `data/derived/<date>/tu_checks.parquet` |
 | linearize | `just build` | `data/derived/<date>/vp_lin.parquet` |
 | timetable | `just build` | `data/derived/static/<feed_version>/timetable.parquet` |
 | reference | `just build` | `data/derived/reference/`: ref_segments, ref_knots, ref_limits, ref_cruise, ref_fit, reference.json; `<date>/`: ref_trips, ref_fixes, ref_pairs |
@@ -43,6 +44,14 @@ below for exactly those service dates (`train_fusion/build.py`, run with `python
   `content_exact = false` means the time may be up to 15 s late. Snapshots repeating
   earlier content are dropped. `fetches` keeps every request (status, content time,
   exactness, whether it was a duplicate) for the Pipeline health page.
+- **tu_checks**: checks what we assume about how a trip's trip updates evolve (all in terms
+  of departures): H1, it's seen 10-15 min before its scheduled departure listing every stop
+  but the terminus; H2, from then on its stops only drop off the front (dropouts allowed);
+  H3, no departure is in the past; H4, every stop has a departure, and an arrival only at
+  departure - 60 s. H3 and H4 have always held: a violation stops the build. H1 and H2 fail
+  for a few trips a day: each trip's outcome is written for the Pipeline health page. Stop
+  lists are compared up to 90 min ahead (511's listing horizon); missing or failed fetches
+  never count as failures. Details in the stage's docstring.
 - **linearize**: each VP fix is projected onto its trip's shape (UTM 10N), giving s (m
   along the shape, matching the stops' `shape_dist_traveled`) and its distance from it.
 - **timetable**: every scheduled departure as an interval [`dep_lo_s`, `dep_hi_s`]
@@ -84,4 +93,6 @@ entry there. Pages:
   (the raw stamp only), failed, or missing. *Data presence* (`explorer_data.data_presence`):
   the time with a successful fetch by whether the feed had any entities against whether it
   was expected to (VP is empty from just after midnight; everything else should have data),
-  judged per fetch by its content time.
+  judged per fetch by its content time. *Trip-update hypotheses* (`explorer_data.tu_checks`):
+  stage tu_checks' H1 and H2, a card each, by scheduled trip: the share that held, failed or
+  couldn't be checked, or a dot per trip at its check (H2: its first failure).

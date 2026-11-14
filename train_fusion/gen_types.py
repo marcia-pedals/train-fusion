@@ -7,11 +7,12 @@ from train_fusion.stages.linearize import schemas as linearize
 from train_fusion.stages.reference import schemas as reference
 from train_fusion.stages.static import schemas as static
 from train_fusion.stages.timetable import schemas as timetable
+from train_fusion.stages.tu_checks import schemas as tu_checks
 
 
 def all_tables() -> list[Table]:
     """Every table the pipeline writes, in stage order."""
-    return [t for m in (static, decode, linearize, timetable, reference)
+    return [t for m in (static, decode, tu_checks, linearize, timetable, reference)
             for t in vars(m).values() if isinstance(t, Table)]
 
 
