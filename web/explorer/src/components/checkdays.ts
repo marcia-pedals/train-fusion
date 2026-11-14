@@ -69,6 +69,8 @@ function timePlot(rows: TuCheck[], dates: string[], {title, ...common}: Record<s
     // hours after the service-day origin; 3 to 27 is the fetcher's 03:00-03:00 service day
     x: {domain: [3, 27], ticks: d3.range(3, 28, 3), tickFormat: (h: number) => `${h % 24}:00`, label: null, grid: true, axis: "top"},
     marks: [
+      // a faint line along each day, to tell which day a lone dot is on
+      Plot.ruleY(dates, {y: (d) => d, stroke: "currentColor", strokeOpacity: 0.15}),
       Plot.dot(rows.filter((r) => r.outcome === "failed"), {x: (r) => r.at_s / 3600, y: "date", fill: "outcome", r: 4,
         stroke: "var(--theme-background)", strokeWidth: 1, title, tip: true}),
       Plot.axisY({tickFormat: dayLabel, tickSize: 0, label: null, fontWeight: 600}),
