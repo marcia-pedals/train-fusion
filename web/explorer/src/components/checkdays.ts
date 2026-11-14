@@ -69,11 +69,12 @@ function timePlot(rows: TuCheck[], dates: string[], {title, ...common}: Record<s
   const failed = (r: TuCheck) => r.outcome === "failed";
   return Plot.plot({
     ...common,
-    height: 20 + dates.length * 46,
+    height: 20 + dates.length * 56,
     // hours after the service-day origin; 3 to 27 is the fetcher's 03:00-03:00 service day
     x: {domain: [3, 27], ticks: d3.range(3, 28, 3), tickFormat: (h: number) => `${h % 24}:00`, label: null, grid: true, axis: "top"},
-    fy: {domain: dates, axis: null, padding: 0.25},
-    y: {domain: DIRS, label: null, padding: 0.1},
+    fy: {domain: dates, axis: null, padding: 0.15},
+    // points, not bands: a day's NB and SB sit close together, well apart from the next day's
+    y: {type: "point", domain: DIRS, label: null, padding: 1},
     marks: [
       // failures last, on top
       Plot.dot(d3.sort(rows, failed), {x: (r) => r.at_s / 3600, y: (r) => DIRS[r.direction_id], fy: "date",
