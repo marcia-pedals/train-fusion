@@ -288,7 +288,7 @@ def check_listed(x: Trip, snaps: list[Snap], expected_t: np.ndarray, expected_i:
     gaps = ", ".join(f"{local_hms(snaps[r[0]].t)}" + (f"–{local_hms(snaps[r[-1]].t)} ({len(r)})" if len(r) > 1 else "")
                      for r in runs[:6]) + (", …" if len(runs) > 6 else "")
     return row | {"outcome": "failed", "failure": kind, "at_epoch": snaps[missing[0]].t,
-                  "detail": f"missing from {len(missing)} of {len(expected)} trip updates it was expected in: {gaps}"}
+                  "detail": f"missing from {len(missing)} of {len(expected)}: {gaps}"}
 
 
 def check(dates: list[str]) -> tuple[pl.DataFrame, dict]:

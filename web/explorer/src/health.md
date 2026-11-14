@@ -69,7 +69,7 @@ display(checkCard(checks.filter((r) => r.check === "listed").map((r) => ({...r, 
   colors: ["#1c5cab", "#f2b705", "#f28c28", "#9e1b1b"],
   labels: {ok: "in all", "missing 1-10": "missing from 1 to 10", "missing more": "missing from more than 10, listed at least once",
     "never listed": "missing from all"},
-  caption: "Expected until 2 min before the scheduled departure of its last listed stop (the trip leaves the list once it has left it, which can be a little early). Each trip update counted once, at its first appearance; completely empty ones aren't counted (see Data presence). When: a dot per trip that went missing, at the first trip update it's missing from.",
+  caption: "Expected until 2 min before the scheduled departure of its last listed stop (the trip leaves the list once it has left it, which can be a little early). Each trip update counted once, at its first appearance; completely empty ones aren't counted (see Data presence). When: a dot per trip update at least one trip first went missing from, with how many trips if more than one.",
 }));
 ```
 
@@ -79,7 +79,7 @@ display(checkCard(checks.filter((r) => r.check === "H1"), {
   subtitle: "When seen 10 to 15 min before its scheduled departure, it lists every stop but the terminus at least once",
   toggle: h1ViewInput, view: h1View, width, unit: "trips", at: "window from",
   outcomes: ["ok", "failed"], colors: CHECK_COLORS, labels: {ok: "held", failed: "failed"},
-  caption: "Stops are compared up to 90 min after the snapshot, about as far ahead as 511 lists them. When: a dot per failed trip at the start of its window, 15 min before departure.",
+  caption: "Stops are compared up to 90 min after the snapshot, about as far ahead as 511 lists them. When: a dot at the start of a failing trip's window (15 min before its departure), with how many trips if more than one.",
 }));
 ```
 
@@ -95,6 +95,6 @@ display(checkCard(checks.filter((r) => r.check === "H2").map((r) => ({...r, outc
   colors: ["#1c5cab", "#f2b705", "#f28c28", "#dc4f1e", "#9e1b1b"],
   labels: {ok: "held", "first two swapped": "failed: first two stops swapped", "other two swapped": "failed: two other stops swapped",
     "ends early": "failed: list ends early", other: "failed: other"},
-  caption: "One count per snapshot of a trip (each content once, at its first appearance); stops are compared up to 90 min after it. When: a dot per failed snapshot.",
+  caption: "One count per snapshot of a trip (each content once, at its first appearance); stops are compared up to 90 min after it. When: a dot per snapshot (and kind) where trips failed, with how many trips if more than one.",
 }));
 ```

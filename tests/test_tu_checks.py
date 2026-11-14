@@ -99,7 +99,7 @@ def test_listed_counts_the_trip_updates_a_trip_is_missing_from():
     assert _listed_case([True] * 24)["outcome"] == "ok"
     r = _listed_case([True] * 5 + [False] * 3 + [True] * 16)
     assert (r["failure"], r["at_epoch"]) == ("missing 1-10", T0 + 300)
-    assert "missing from 3 of 24" in r["detail"]
+    assert r["detail"].startswith("missing from 3 of 24: ") and r["detail"].endswith("(3)")
     assert _listed_case([True] + [False] * 23)["failure"] == "missing more"
     assert _listed_case([False] * 24)["failure"] == "never listed"
     assert _listed_case([True] * 24 + [False] * 3)["outcome"] == "ok"  # after it's due to leave: not expected
