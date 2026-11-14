@@ -43,17 +43,34 @@ display(statusCard(presence, {
 
 ## Trip-update hypotheses
 
-What the pipeline assumes about how 511's trip updates for one trip evolve (stage `tu_checks`). Two have always held and stop the build if they don't: no predicted departure is in the past, and every stop has a departure, with an arrival only at departure − 60 s. The two below sometimes fail, so they're shown here. Only trip updates are judged: a trip without one while the check applies isn't counted, so missing, failed or empty fetches never count.
+What the pipeline assumes about how 511's trip updates for one trip evolve (stage `tu_checks`). Two have always held and stop the build if they don't: no predicted departure is in the past, and every stop has a departure, with an arrival only at departure − 60 s. Two more sometimes fail, so they're shown below (H1, H2). They only judge trip updates that have the trip, so missing, failed or empty fetches never count against them; the first card shows when trips are missing from the trip updates.
 
 ```js
 import {checkCard} from "./components/checkdays.js";
 const checks = rows(await FileAttachment("data/tu_checks.parquet").parquet());
 const h1ViewInput = viewToggle();
 const h1View = Generators.input(h1ViewInput);
+const listedViewInput = viewToggle();
+const listedView = Generators.input(listedViewInput);
 const h2ViewInput = viewToggle();
 const h2View = Generators.input(h2ViewInput);
 // blue 700, status critical
 const CHECK_COLORS = ["#1c5cab", "#d03b3b"];
+```
+
+```js
+// each failure by how many trip updates the trip is missing from (stage tu_checks' LISTED_FAILURES)
+display(checkCard(checks.filter((r) => r.check === "listed").map((r) => ({...r, outcome: r.failure ?? r.outcome})), {
+  title: "Trips listed in trip updates",
+  subtitle: "Each trip in every non-empty trip update from 15 min before its scheduled departure until it's due to leave its last listed stop",
+  toggle: listedViewInput, view: listedView, width, unit: "trips", at: "first missing at",
+  outcomes: ["ok", "missing 1-10", "missing more", "never listed"],
+  // blue 700, then yellow to dark red as more is missing
+  colors: ["#1c5cab", "#f2b705", "#f28c28", "#9e1b1b"],
+  labels: {ok: "in all", "missing 1-10": "missing from 1 to 10", "missing more": "missing from more than 10, listed at least once",
+    "never listed": "missing from all"},
+  caption: "Expected until 2 min before the scheduled departure of its last listed stop (the trip leaves the list once it has left it, which can be a little early). Each trip update counted once, at its first appearance; completely empty ones aren't counted (see Data presence). When: a dot per trip that went missing, at the first trip update it's missing from.",
+}));
 ```
 
 ```js

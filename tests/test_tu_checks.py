@@ -1,6 +1,7 @@
+import numpy as np
 import pytest
 
-from train_fusion.stages.tu_checks.stage import (HORIZON_S, Snap, Trip, TuHypothesisViolation, check_h1, check_h2, check_h3_h4)
+from train_fusion.stages.tu_checks.stage import (HORIZON_S, check_listed, Snap, Trip, TuHypothesisViolation, check_h1, check_h2, check_h3_h4)
 
 T0 = 1_800_000_000.0  # a snapshot time
 STOPS = ["a", "b", "c", "d"]
@@ -83,3 +84,22 @@ def test_h2_failure_kinds():
     snaps = [_snap(T0 + k, {"101": _listed(x, s)}) for k, s in enumerate(lists)]
     x.obs = [(k, s.trips["101"]) for k, s in enumerate(snaps)]
     assert [r["failure"] for r in check_h2(x, snaps, {})] == ["other two swapped", "ends early"]
+
+
+def _listed_case(present: list[bool]):
+    """A trip expected in one snapshot a minute from dep - 15 min on, present in those marked."""
+    x = _trip(dep0=T0 + 900)  # due to leave c (its last listed stop) at T0 + 1500, expected until T0 + 1380
+    snaps = [_snap(T0 + 60 * k, {"101": _listed(x, STOPS[1:-1])} if p else {"other": []}) for k, p in enumerate(present)]
+    x.obs = [(k, s.trips["101"]) for k, s in enumerate(snaps) if "101" in s.trips]
+    i = np.arange(len(snaps))
+    return check_listed(x, snaps, np.array([s.t for s in snaps]), i)
+
+
+def test_listed_counts_the_trip_updates_a_trip_is_missing_from():
+    assert _listed_case([True] * 24)["outcome"] == "ok"
+    r = _listed_case([True] * 5 + [False] * 3 + [True] * 16)
+    assert (r["failure"], r["at_epoch"]) == ("missing 1-10", T0 + 300)
+    assert "missing from 3 of 24" in r["detail"]
+    assert _listed_case([True] + [False] * 23)["failure"] == "missing more"
+    assert _listed_case([False] * 24)["failure"] == "never listed"
+    assert _listed_case([True] * 24 + [False] * 3)["outcome"] == "ok"  # after it's due to leave: not expected

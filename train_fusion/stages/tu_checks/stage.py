@@ -12,6 +12,14 @@ H2  From dep - 15 min on, every snapshot listing the trip lists, within the hori
 H3  No departure is in the past (before the snapshot's content time).
 H4  Every stop has a departure, and an arrival only at exactly departure - 60 s.
 
+Since H1 and H2 only judge trip updates that have the trip, a third check ("listed") says when
+a trip is missing from them: each trip is expected in every trip update (each content once, at
+its first appearance) that isn't completely empty (that's the Pipeline health page's Data
+presence), from dep - 15 min until LISTED_END_S before the scheduled departure of its last
+listed stop (the one before the terminus; the trip leaves the list when it departs that, which
+can be a little early). Its outcome: listed in all of them, or missing from 1 to
+LISTED_FEW of them, from more but not all, or from all.
+
 H3 and H4 have held on all data so far: a violation raises TuHypothesisViolation, which stops
 the build. H1 and H2 sometimes fail: each trip's H1 outcome and each snapshot's H2 outcome go
 to <date>/tu_checks.parquet, for the Pipeline health page. (Exploration that led here: branch
@@ -62,6 +70,8 @@ HORIZON_S = 5400.0  # 511 lists stops up to ~90 min ahead
 BOUNDARY_S = 120.0
 GHOST_S = 3600.0
 INEXACT_S = 15.0
+LISTED_END_S = 120.0  # "listed": expected until this long before the last listed stop's departure
+LISTED_FEW = 10  # "listed": up to this many misses are "missing 1-10"
 MAX_EXAMPLES = 5  # in a TuHypothesisViolation's message
 
 Stops = list[tuple[str, int | None, int | None]]  # [(stop_id, arr_epoch, dep_epoch)] in listed order
@@ -253,6 +263,34 @@ def check_h2(x: Trip, snaps: list[Snap], names: dict[str, str]) -> list[dict]:
     return rows
 
 
+def check_listed(x: Trip, snaps: list[Snap], expected_t: np.ndarray, expected_i: np.ndarray) -> dict | None:
+    """Whether x is in every trip update it's expected in (None: it's expected in none, e.g. its
+    time is outside the archive or every fetch then failed or was empty). expected_i: the
+    indices of the non-empty first-appearance snapshots, expected_t their content times."""
+    lo, hi = x.dep0 - H2_FROM_S, x.sched[x.stops[-2]] - LISTED_END_S
+    expected = expected_i[(expected_t >= lo) & (expected_t <= hi)]
+    if not len(expected):
+        return None
+    seen = {i for i, _ in x.obs}
+    missing = [int(i) for i in expected if i not in seen]
+    row = {"check": "listed", "at_epoch": lo, "failure": None, "detail": ""}
+    if not missing:
+        return row | {"outcome": "ok"}
+    runs: list[list[int]] = []  # consecutive expected trip updates it's missing from
+    pos = {int(i): k for k, i in enumerate(expected)}
+    for i in missing:
+        if runs and pos[i] == pos[runs[-1][-1]] + 1:
+            runs[-1].append(i)
+        else:
+            runs.append([i])
+    kind = ("never listed" if len(missing) == len(expected)
+            else "missing 1-10" if len(missing) <= LISTED_FEW else "missing more")
+    gaps = ", ".join(f"{local_hms(snaps[r[0]].t)}" + (f"–{local_hms(snaps[r[-1]].t)} ({len(r)})" if len(r) > 1 else "")
+                     for r in runs[:6]) + (", …" if len(runs) > 6 else "")
+    return row | {"outcome": "failed", "failure": kind, "at_epoch": snaps[missing[0]].t,
+                  "detail": f"missing from {len(missing)} of {len(expected)} trip updates it was expected in: {gaps}"}
+
+
 def check(dates: list[str]) -> tuple[pl.DataFrame, dict]:
     """H1 outcomes of every scheduled trip of these dates and H2 outcomes of their snapshots; raises
     on H3 / H4."""
@@ -269,13 +307,16 @@ def check(dates: list[str]) -> tuple[pl.DataFrame, dict]:
             x.obs.append((i, stops))
             obs.append((i, stops, x))
     info = check_h3_h4(snaps, obs, names)
+    expected_i = np.array([i for i, s in enumerate(snaps) if s.first and s.n_entities > 0], dtype=int)
+    expected_t = np.array([snaps[i].t for i in expected_i])
     rows = []
     for x in sorted((x for v in trips.values() for x in v), key=lambda x: x.dep0):
         h1 = check_h1(x, snaps, names)
-        for r in ([h1] if h1 else []) + check_h2(x, snaps, names):
+        listed = check_listed(x, snaps, expected_t, expected_i)
+        for r in [r for r in (h1, listed) if r] + check_h2(x, snaps, names):
             rows.append({"date": x.date, "trip_id": x.trip_id, "dep0_epoch": x.dep0} | r)
     df = TU_CHECKS.conform(pl.DataFrame(rows))
-    for h in ("H1", "H2"):
+    for h in ("H1", "H2", "listed"):
         c = df.filter(pl.col("check") == h)["outcome"].value_counts()
         info[h] = dict(c.iter_rows())
     return df, info

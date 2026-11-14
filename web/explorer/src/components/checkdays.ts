@@ -34,7 +34,7 @@ export function checkDays(rows: TuCheck[], {outcomes, colors, labels, view, capt
   for (const r of totals) r.share = r.n / whole.get(r.date)!;
   const color = {domain: outcomes, range: colors, tickFormat: (k: string) => labels[k]};
   const common = {
-    width, marginLeft: 110, marginRight: 70, marginTop: 20, height: 20 + dates.length * 34,
+    width, marginLeft: 110, marginRight: 20, marginTop: 20, height: 20 + dates.length * 34,
     caption: Object.assign(document.createElement("div"), {style: "font-size: 11px; margin-top: 4px"}),
     y: {domain: dates, tickFormat: dayLabel, tickSize: 0, label: null, padding: 0.3},
     color,
@@ -51,9 +51,6 @@ export function checkDays(rows: TuCheck[], {outcomes, colors, labels, view, capt
           title: (r) => `${dayLabel(r.date)}: ${labels[r.outcome]}\n${r.n} of ${whole.get(r.date)} ${unit} (${(100 * r.share).toFixed(1)}%)`
             + (failed(r.outcome) ? `\ntrips ${r.trips.join(", ")}` : ""),
           tip: true})),
-        // the failure count beside its row, so a thin sliver is still read
-        Plot.text(dates, {x: 1, y: (d) => d, dx: 8, textAnchor: "start", fill: "currentColor",
-          text: (d) => `${d3.sum(totals, (r) => (r.date === d && failed(r.outcome) ? r.n : 0))} failed`}),
         yAxis,
       ],
     })
