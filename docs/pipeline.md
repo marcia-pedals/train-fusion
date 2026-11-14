@@ -45,11 +45,11 @@ below for exactly those service dates (`train_fusion/build.py`, run with `python
   earlier content are dropped. `fetches` keeps every request (status, content time,
   exactness, whether it was a duplicate) for the Pipeline health page.
 - **tu_checks**: checks what we assume about how a trip's trip updates evolve (all in terms
-  of departures): H2, from 15 min before its scheduled departure each snapshot of a trip
+  of departures): H1, from 15 min before its scheduled departure each snapshot of a trip
   lists a suffix of its scheduled stops but the terminus, from the origin until 10 min
-  before; H3, no departure is in the past; H4, every stop has a departure, and an arrival
-  only at departure - 60 s. H3 and H4 have always held: a violation stops the build. H2
-  sometimes fails: each snapshot's H2 outcome is written for the Pipeline health page, along
+  before; H2, no departure is in the past; H3, every stop has a departure, and an arrival
+  only at departure - 60 s. H2 and H3 have always held: a violation stops the build. H1
+  sometimes fails: each snapshot's H1 outcome is written for the Pipeline health page, along
   with whether each trip was missing from any non-empty trip update it was expected in
   ("listed") and which trip-update entities the checks discard ("kept": 03:00 ghosts, trips
   not in the static schedule; South County isn't counted). Stop lists are compared up to 90
@@ -97,5 +97,5 @@ entry there. Pages:
   the time with a successful fetch by whether the feed had any entities against whether it
   was expected to (VP is empty from just after midnight; everything else should have data),
   judged per fetch by its content time. *Trip-update hypotheses* (`explorer_data.tu_checks`):
-  stage tu_checks' kept, listed and H2, a card each (kept by entity, listed by trip, H2 by
+  stage tu_checks' kept, listed and H1, a card each (kept by entity, listed by trip, H1 by
   snapshot; failures by kind): the share that held or failed, or a dot per failure.

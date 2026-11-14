@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from train_fusion.stages.tu_checks.stage import (HORIZON_S, check_listed, kept_row, Snap, Trip, TuHypothesisViolation, check_h2, check_h3_h4)
+from train_fusion.stages.tu_checks.stage import (HORIZON_S, check_listed, kept_row, Snap, Trip, TuHypothesisViolation, check_h1, check_h2_h3)
 
 T0 = 1_800_000_000.0  # a snapshot time
 STOPS = ["a", "b", "c", "d"]
@@ -20,44 +20,44 @@ def _listed(x, stops, delay=0):
     return [(s, int(x.sched[s] + delay - 60), int(x.sched[s] + delay)) for s in stops]
 
 
-def test_h3_h4_pass_on_good_updates():
+def test_h2_h3_pass_on_good_updates():
     x = _trip()
     snaps = [_snap(T0, {"101": _listed(x, STOPS[:-1])})]
-    assert check_h3_h4(snaps, [(0, snaps[0].trips["101"], x)], {}) == {"stops": 3}
+    assert check_h2_h3(snaps, [(0, snaps[0].trips["101"], x)], {}) == {"stops": 3}
 
 
 @pytest.mark.parametrize("stops, match", [
-    ([("a", None, int(T0) - 30)], "H3: .* 30 s in the past"),
-    ([("a", int(T0) + 100, int(T0) + 130)], "H4: .* arrival"),
-    ([("a", int(T0) + 100, None)], "H4: .* has no departure"),
+    ([("a", None, int(T0) - 30)], "H2: .* 30 s in the past"),
+    ([("a", int(T0) + 100, int(T0) + 130)], "H3: .* arrival"),
+    ([("a", int(T0) + 100, None)], "H3: .* has no departure"),
 ])
-def test_h3_h4_violations_stop_the_build(stops, match):
+def test_h2_h3_violations_stop_the_build(stops, match):
     snaps = [_snap(T0, {"101": stops})]
     with pytest.raises(TuHypothesisViolation, match=match):
-        check_h3_h4(snaps, [(0, stops, _trip())], {})
+        check_h2_h3(snaps, [(0, stops, _trip())], {})
 
 
-def test_h3_allows_an_inexact_content_time_to_be_late():
+def test_h2_allows_an_inexact_content_time_to_be_late():
     stops = [("a", None, int(T0) - 10)]
     snaps = [_snap(T0, {"101": stops}, exact=False)]
-    check_h3_h4(snaps, [(0, stops, _trip())], {})
+    check_h2_h3(snaps, [(0, stops, _trip())], {})
 
 
-def test_h2_wants_the_origin_up_to_10_min_before_departure():
+def test_h1_wants_the_origin_up_to_10_min_before_departure():
     x = _trip(dep0=T0 + 840)  # snapshots at T0 (dep - 14 min) and T0 + 300 (dep - 9 min)
     snaps = [_snap(T0, {"101": _listed(x, STOPS[1:-1])}), _snap(T0 + 300, {"101": _listed(x, STOPS[1:-1])})]
     x.obs = [(k, s.trips["101"]) for k, s in enumerate(snaps)]
-    rows = check_h2(x, snaps, {})
+    rows = check_h1(x, snaps, {})
     assert [(r["outcome"], r["failure"]) for r in rows] == [("failed", "not from origin"), ("ok", None)]
     assert "starts at b, leaving out a" in rows[0]["detail"]
 
 
-def test_h2_wants_a_suffix_of_the_schedule_up_to_the_horizon():
+def test_h1_wants_a_suffix_of_the_schedule_up_to_the_horizon():
     x = _trip(dep0=T0)  # stops a..d at T0 + 0, 300, 600, 900; d is the terminus
     lists = [STOPS[:-1], STOPS[1:-1], ["c"], ["a", "c"], ["b", "a", "c"], ["d"]]
     snaps = [_snap(T0 + k, {"101": _listed(x, s)}) for k, s in enumerate(lists)]
     x.obs = [(k, s.trips["101"]) for k, s in enumerate(snaps)]
-    rows = check_h2(x, snaps, {})
+    rows = check_h1(x, snaps, {})
     assert [r["outcome"] for r in rows] == ["ok", "ok", "ok", "failed", "failed", "failed"]
     assert "missing b" in rows[3]["detail"]
     assert [r["failure"] for r in rows] == [None, None, None, "other", "first two swapped", "other"]
@@ -66,22 +66,22 @@ def test_h2_wants_a_suffix_of_the_schedule_up_to_the_horizon():
                T0 + 600)  # c is beyond the horizon
     snaps = [_snap(T0, {"101": _listed(far, ["a", "b"])}), _snap(T0 + 60, {"101": _listed(far, ["a"])})]
     far.obs = [(0, snaps[0].trips["101"]), (1, snaps[1].trips["101"])]
-    assert [r["outcome"] for r in check_h2(far, snaps, {})] == ["ok", "failed"]
+    assert [r["outcome"] for r in check_h1(far, snaps, {})] == ["ok", "failed"]
 
 
-def test_h2_judges_each_content_once():
+def test_h1_judges_each_content_once():
     x = _trip(dep0=T0)
     snaps = [_snap(T0, {"101": _listed(x, ["b", "a"])}), _snap(T0 + 60, {"101": _listed(x, ["b", "a"])}, first=False)]
     x.obs = [(0, snaps[0].trips["101"]), (1, snaps[1].trips["101"])]
-    assert len(check_h2(x, snaps, {})) == 1
+    assert len(check_h1(x, snaps, {})) == 1
 
 
-def test_h2_failure_kinds():
+def test_h1_failure_kinds():
     x = _trip(dep0=T0)
     lists = [["a", "c", "b"], ["a", "b"]]  # a later swap; ends at b though c is well within the horizon
     snaps = [_snap(T0 + k, {"101": _listed(x, s)}) for k, s in enumerate(lists)]
     x.obs = [(k, s.trips["101"]) for k, s in enumerate(snaps)]
-    assert [r["failure"] for r in check_h2(x, snaps, {})] == ["other two swapped", "ends early"]
+    assert [r["failure"] for r in check_h1(x, snaps, {})] == ["other two swapped", "ends early"]
 
 
 def _listed_case(present: list[bool]):

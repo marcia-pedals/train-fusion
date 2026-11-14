@@ -41,9 +41,9 @@ display(statusCard(presence, {
 }));
 ```
 
-## Trip-update hypotheses
+## Trip updates
 
-What the pipeline assumes about how 511's trip updates for one trip evolve (stage `tu_checks`). Two have always held and stop the build if they don't: no predicted departure is in the past, and every stop has a departure, with an arrival only at departure − 60 s. One more sometimes fails, so it's shown below (H2). It only judges trip updates that have the trip, so missing, failed or empty fetches never count against it; the first two cards show which trip updates the checks discard, and when trips are missing from them.
+How 511's trip updates hold up, trip by trip (stage `tu_checks`).
 
 ```js
 import {checkCard} from "./components/checkdays.js";
@@ -52,21 +52,21 @@ const keptViewInput = viewToggle();
 const keptView = Generators.input(keptViewInput);
 const listedViewInput = viewToggle();
 const listedView = Generators.input(listedViewInput);
-const h2ViewInput = viewToggle();
-const h2View = Generators.input(h2ViewInput);
+const h1ViewInput = viewToggle();
+const h1View = Generators.input(h1ViewInput);
 ```
 
 ```js
 // each discarded entity by why (stage tu_checks' KEPT_FAILURES)
 display(checkCard(checks.filter((r) => r.check === "kept").map((r) => ({...r, outcome: r.failure ?? r.outcome})), {
   title: "Discarded trip updates",
-  subtitle: "Trip-update entities the checks below leave out",
+  subtitle: "Left out of the checks below",
   toggle: keptViewInput, view: keptView, width, unit: "trip updates", at: "at",
   outcomes: ["ok", "ghost", "not in schedule"],
   // blue 700, then yellow (expected: 511's nightly ghosts) and dark red (not expected)
   colors: ["#1c5cab", "#f2b705", "#9e1b1b"],
-  labels: {ok: "kept", ghost: "discarded: ghost (every time over 1 h old)", "not in schedule": "discarded: trip not in the static schedule"},
-  caption: "One count per trip in each trip update (each content once, at its first appearance). Ghosts: late-night trips 511 brings back around 03:00 with times from before. South County trips are out of the project's scope and not counted at all. When: a dot per trip update with discarded trips, with how many if more than one.",
+  labels: {ok: "kept", ghost: "ghost (all times over 1 h old)", "not in schedule": "trip not in schedule"},
+  caption: "South County not counted.",
 }));
 ```
 
@@ -74,30 +74,28 @@ display(checkCard(checks.filter((r) => r.check === "kept").map((r) => ({...r, ou
 // each failure by how many trip updates the trip is missing from (stage tu_checks' LISTED_FAILURES)
 display(checkCard(checks.filter((r) => r.check === "listed").map((r) => ({...r, outcome: r.failure ?? r.outcome})), {
   title: "Trips listed in trip updates",
-  subtitle: "Each trip in every non-empty trip update from 15 min before its scheduled departure until it's due to leave its last listed stop",
+  subtitle: "In every non-empty trip update from 15 min before departure until its last stop",
   toggle: listedViewInput, view: listedView, width, unit: "trips", at: "first missing at",
   outcomes: ["ok", "missing 1-10", "missing more", "never listed"],
   // blue 700, then yellow to dark red as more is missing
   colors: ["#1c5cab", "#f2b705", "#f28c28", "#9e1b1b"],
-  labels: {ok: "in all", "missing 1-10": "missing from 1 to 10", "missing more": "missing from more than 10, listed at least once",
-    "never listed": "missing from all"},
-  caption: "Expected until 2 min before the scheduled departure of its last listed stop (the trip leaves the list once it has left it, which can be a little early). Each trip update counted once, at its first appearance; completely empty ones aren't counted (see Data presence). When: a dot per trip update at least one trip first went missing from, with how many trips if more than one.",
+  labels: {ok: "in all", "missing 1-10": "missing from 1–10", "missing more": "missing from over 10", "never listed": "missing from all"},
+  caption: "",
 }));
 ```
 
 ```js
-// each failure by its kind (stage tu_checks' H2_FAILURES)
-display(checkCard(checks.filter((r) => r.check === "H2").map((r) => ({...r, outcome: r.failure ?? r.outcome})), {
-  title: "H2: a snapshot lists the rest of the trip",
-  subtitle: "From 15 min before departure, each snapshot of a trip lists its scheduled stops from some stop on, but the terminus; until 10 min before, from the origin",
-  toggle: h2ViewInput, view: h2View, width, unit: "snapshots", at: "snapshot at",
+// each failure by its kind (stage tu_checks' H1_FAILURES)
+display(checkCard(checks.filter((r) => r.check === "H1").map((r) => ({...r, outcome: r.failure ?? r.outcome})), {
+  title: "H1: each trip update lists the rest of the trip",
+  subtitle: "Remaining stops in schedule order; until 10 min before departure, from the origin",
+  toggle: h1ViewInput, view: h1View, width, unit: "snapshots", at: "snapshot at",
   outcomes: ["ok", "first two swapped", "other two swapped", "ends early", "not from origin", "other"],
   // blue 700, then failures from yellow (the most expected: the train is at one of the two stops) to
   // dark red (the least), lightness falling with severity
   colors: ["#1c5cab", "#f2b705", "#f29a2e", "#e8712a", "#cf4520", "#9e1b1b"],
-  labels: {ok: "held", "first two swapped": "failed: first two stops swapped", "other two swapped": "failed: two other stops swapped",
-    "ends early": "failed: list ends early", "not from origin": "failed: not from the origin early on",
-    other: "failed: other"},
-  caption: "One count per snapshot of a trip (each content once, at its first appearance); stops are compared up to 90 min after it. When: a dot per snapshot (and kind) where trips failed, with how many trips if more than one.",
+  labels: {ok: "held", "first two swapped": "first two swapped", "other two swapped": "other two swapped",
+    "ends early": "ends early", "not from origin": "not from origin", other: "other"},
+  caption: "",
 }));
 ```

@@ -1,19 +1,19 @@
 """Stage `tu_checks`: check what we assume about how 511's trip updates (TU) for one trip
-evolve, on every date being built. All in terms of departure times (H4 is why that's safe).
+evolve, on every date being built. All in terms of departure times (H3 is why that's safe).
 
-H2  From dep - 15 min on (dep: its scheduled first departure), every snapshot listing the
+H1  From dep - 15 min on (dep: its scheduled first departure), every snapshot listing the
     trip lists, within the horizon (below), a suffix of its scheduled stops but the terminus:
     from some stop on, every one of them, in order; and up to dep - 10 min that suffix starts
     at the origin (all of them). Judged per snapshot (each content once, at its first
-    appearance). A failure is one of H2_FAILURES: the first two listed stops swapped, two other
+    appearance). A failure is one of H1_FAILURES: the first two listed stops swapped, two other
     adjacent ones swapped, the list ending short of the horizon, not starting at the origin
-    by dep - 10 min, or anything else. (It used to be two: H1, that the trip was seen at least
-    once in [dep - 15 min, dep - 10 min] listing every stop but the terminus, was folded in.
-    Before dep - 15 min, about 3% of a trip's snapshots start one stop or so in, routinely.)
-H3  No departure is in the past (before the snapshot's content time).
-H4  Every stop has a departure, and an arrival only at exactly departure - 60 s.
+    by dep - 10 min, or anything else. (A separate check that the trip was seen at least once
+    in [dep - 15 min, dep - 10 min] listing every stop but the terminus is folded in. Before
+    dep - 15 min, about 3% of a trip's snapshots start one stop or so in, routinely.)
+H2  No departure is in the past (before the snapshot's content time).
+H3  Every stop has a departure, and an arrival only at exactly departure - 60 s.
 
-Since H2 only judges trip updates that have the trip, a third check ("listed") says when
+Since H1 only judges trip updates that have the trip, another check ("listed") says when
 a trip is missing from them: each trip is expected in every trip update (each content once, at
 its first appearance) that isn't completely empty (that's the Pipeline health page's Data
 presence), from dep - 15 min until LISTED_END_S before the scheduled departure of its last
@@ -21,18 +21,19 @@ listed stop (the one before the terminus; the trip leaves the list when it depar
 can be a little early). Its outcome: listed in all of them, or missing from 1 to
 LISTED_FEW of them, from more but not all, or from all.
 
-And a fourth ("kept") says which trip-update entities the checks discard: each entity (each
+And one more ("kept") says which trip-update entities the checks discard: each entity (each
 content once, at its first appearance) is kept, or discarded as a ghost (below) or as a trip
 that isn't in the static schedule of the dates built. South County trips (dropped project-wide,
 see the static stage) are neither: they're left out of everything, this too.
 
-H3 and H4 have held on all data so far: a violation raises TuHypothesisViolation, which stops
-the build. H2 sometimes fails: each snapshot's H2 outcome goes to <date>/tu_checks.parquet, for the Pipeline health page. (Exploration that led here: branch
+H2 and H3 have held on all data so far: a violation raises TuHypothesisViolation, which stops
+the build. H1 sometimes fails: each snapshot's H1 outcome goes to <date>/tu_checks.parquet,
+for the Pipeline health page. (Exploration that led here: branch
 tu-exploration, experiments/tu_hypotheses.py.)
 
 The horizon: 511 lists a trip's stops only up to ~90 min after now, but before departure
 sometimes lists all of them (every stop but the terminus) instead, alternating between the
-two. So H2 compares stop lists only up to HORIZON_S after the snapshot. An expected stop a
+two. So H1 compares stop lists only up to HORIZON_S after the snapshot. An expected stop a
 snapshot doesn't list is placed at its scheduled time plus the delay of the nearest listed stop
 before it. A difference that goes
 away when stops within BOUNDARY_S of the cut are ignored isn't a failure.
@@ -41,15 +42,15 @@ Ghosts are discarded before any check: entities whose departures are all more th
 before the snapshot (late-night trips 511 brings back around 03:00 with ~95 min old times).
 
 Missing / failed fetches never count against a hypothesis:
-- H2 only judges snapshots that have the trip: a trip never seen when the check applies
+- H1 only judges snapshots that have the trip: a trip never seen when the check applies
   (whether its fetches failed, were empty or just didn't list it, or it's outside the
   archive) isn't judged, and has no row for that check ("listed" covers it).
-- H3: an inexact content time (the raw stamp, up to INEXACT_S late) only puts a departure
+- H2: an inexact content time (the raw stamp, up to INEXACT_S late) only puts a departure
   definitely in the past when it's more than INEXACT_S before the stamp.
 
 Snapshots are every successful TU fetch, including those whose content repeats an earlier
 fetch (decode drops those from tu.parquet; here they take the content of the first fetch with
-the same digest), so an A, B, A flip-flop is seen. H3 and H4 are judged once per content, at
+the same digest), so an A, B, A flip-flop is seen. H2 and H3 are judged once per content, at
 its first appearance. An entity is assigned to the scheduled trip (trip_id, service date)
 whose times are nearest its predictions; trip_ids not in the static feed (South County) are
 ignored.
@@ -68,9 +69,9 @@ from train_fusion.stages.decode.schemas import FETCHES, TU
 from train_fusion.stages.static.stage import Static, excluded_trip_ids
 from train_fusion.stages.tu_checks.schemas import TU_CHECKS
 
-H2_FROM_S = 900.0  # H2 applies from dep - 15 min
-H2_ORIGIN_UNTIL_S = 600.0  # and up to dep - 10 min the list starts at the origin
-DWELL_S = 60  # H4
+H1_FROM_S = 900.0  # H1 applies from dep - 15 min
+H1_ORIGIN_UNTIL_S = 600.0  # and up to dep - 10 min the list starts at the origin
+DWELL_S = 60  # H3
 HORIZON_S = 5400.0  # 511 lists stops up to ~90 min ahead
 BOUNDARY_S = 120.0
 GHOST_S = 3600.0
@@ -84,7 +85,7 @@ Timed = list[tuple[str, float]]  # [(stop_id, time)]
 
 
 class TuHypothesisViolation(ValueError):
-    """511's trip updates broke a hypothesis that has always held (H3 or H4)."""
+    """511's trip updates broke a hypothesis that has always held (H2 or H3)."""
 
 
 @dataclass
@@ -182,8 +183,8 @@ def within(lst: Timed, cut: float, margin: float = 0.0) -> list[str]:
     return [s for s, t in lst if t <= cut and not abs(t - cut) <= margin]
 
 
-def check_h3_h4(snaps: list[Snap], obs: list[tuple[int, Stops, Trip]], names: dict[str, str]) -> dict:
-    """Raises TuHypothesisViolation on any H3 or H4 failure; counts what was checked."""
+def check_h2_h3(snaps: list[Snap], obs: list[tuple[int, Stops, Trip]], names: dict[str, str]) -> dict:
+    """Raises TuHypothesisViolation on any H2 or H3 failure; counts what was checked."""
     bad: list[str] = []
     n = 0
     for i, stops, x in obs:
@@ -196,20 +197,20 @@ def check_h3_h4(snaps: list[Snap], obs: list[tuple[int, Stops, Trip]], names: di
             where = (f"{x.date} trip {x.trip_id} snapshot {local_hms(s.t)}{'' if s.exact else ' (inexact)'} "
                      f"stop #{pos} {names.get(stop, stop)}")
             if dep is None:
-                bad.append(f"H4: {where} has no departure")
+                bad.append(f"H3: {where} has no departure")
             elif arr is not None and dep - arr != DWELL_S:
-                bad.append(f"H4: {where}: arrival {local_hms(arr)}, departure {local_hms(dep)}")
+                bad.append(f"H3: {where}: arrival {local_hms(arr)}, departure {local_hms(dep)}")
             if dep is not None and s.t - dep > slack:
-                bad.append(f"H3: {where}: departure {local_hms(dep)}, {s.t - dep:.0f} s in the past")
+                bad.append(f"H2: {where}: departure {local_hms(dep)}, {s.t - dep:.0f} s in the past")
     if bad:
-        raise TuHypothesisViolation(f"{len(bad)} trip-update stops break H3 / H4, e.g.\n  "
+        raise TuHypothesisViolation(f"{len(bad)} trip-update stops break H2 / H3, e.g.\n  "
                                     + "\n  ".join(bad[:MAX_EXAMPLES]))
     return {"stops": n}
 
 
 def _not_a_suffix(got: list[str], want: list[str], names: dict[str, str]) -> tuple[str, str]:
     """How a stop list that isn't a suffix of `want` differs from the nearest one: its kind (an
-    H2 failure kind) and in words."""
+    H1 failure kind) and in words."""
     name = lambda n: names.get(n, n)
     if bad := [n for n in got if n not in want]:
         return "other", f"lists {', '.join(map(name, bad))}, not a scheduled stop before the terminus"
@@ -227,21 +228,21 @@ def _not_a_suffix(got: list[str], want: list[str], names: dict[str, str]) -> tup
                                   + ([f"out of order: {name(inv[0])} before {name(inv[1])}"] if inv else []))
 
 
-def check_h2(x: Trip, snaps: list[Snap], names: dict[str, str]) -> list[dict]:
+def check_h1(x: Trip, snaps: list[Snap], names: dict[str, str]) -> list[dict]:
     """One row per snapshot of the trip from dep - 15 min on (each content once)."""
     want = x.stops[:-1]
     rows = []
     for i, st in x.obs:
         s = snaps[i]
-        if s.t < x.dep0 - H2_FROM_S or not s.first or not st:
+        if s.t < x.dep0 - H1_FROM_S or not s.first or not st:
             continue
-        row = {"check": "H2", "at_epoch": s.t, "failure": None, "detail": ""}
+        row = {"check": "H1", "at_epoch": s.t, "failure": None, "detail": ""}
         got, cut = timed(st), s.t + HORIZON_S
         first = got[0][0]
         if first in want:  # the suffix from the first listed stop (from the origin, up to dep - 10 min)
             suffix = expected(x, st)[want.index(first):]
             if any(within(got, cut, m) == within(suffix, cut, m) for m in (0.0, BOUNDARY_S)):
-                if first == want[0] or s.t > x.dep0 - H2_ORIGIN_UNTIL_S:
+                if first == want[0] or s.t > x.dep0 - H1_ORIGIN_UNTIL_S:
                     rows.append(row | {"outcome": "ok"})
                     continue
                 k = want.index(first)
@@ -261,7 +262,7 @@ def check_listed(x: Trip, snaps: list[Snap], expected_t: np.ndarray, expected_i:
     """Whether x is in every trip update it's expected in (None: it's expected in none, e.g. its
     time is outside the archive or every fetch then failed or was empty). expected_i: the
     indices of the non-empty first-appearance snapshots, expected_t their content times."""
-    lo, hi = x.dep0 - H2_FROM_S, x.sched[x.stops[-2]] - LISTED_END_S
+    lo, hi = x.dep0 - H1_FROM_S, x.sched[x.stops[-2]] - LISTED_END_S
     expected = expected_i[(expected_t >= lo) & (expected_t <= hi)]
     if not len(expected):
         return None
@@ -299,8 +300,8 @@ def kept_row(s: Snap, trip_id: str, stops: Stops, x: Trip | None, kind: str | No
 
 
 def check(dates: list[str]) -> tuple[pl.DataFrame, dict]:
-    """H2 outcomes of the snapshots of every scheduled trip of these dates, the trips' "listed"
-    outcomes and every entity's "kept"; raises on H3 / H4."""
+    """H1 outcomes of the snapshots of every scheduled trip of these dates, the trips' "listed"
+    outcomes and every entity's "kept"; raises on H2 / H3."""
     snaps = load_snaps(dates)
     trips, names, excluded = load_trips(dates)
     obs = []  # (snapshot index, stops, trip) of every non-ghost entity of a scheduled trip
@@ -321,17 +322,17 @@ def check(dates: list[str]) -> tuple[pl.DataFrame, dict]:
             if kind is None:
                 x.obs.append((i, stops))
                 obs.append((i, stops, x))
-    info = check_h3_h4(snaps, obs, names)
+    info = check_h2_h3(snaps, obs, names)
     expected_i = np.array([i for i, s in enumerate(snaps) if s.first and s.n_entities > 0], dtype=int)
     expected_t = np.array([snaps[i].t for i in expected_i])
     rows = []
     for x in sorted((x for v in trips.values() for x in v), key=lambda x: x.dep0):
         listed = check_listed(x, snaps, expected_t, expected_i)
-        for r in ([listed] if listed else []) + check_h2(x, snaps, names):
+        for r in ([listed] if listed else []) + check_h1(x, snaps, names):
             rows.append({"date": x.date, "trip_id": x.trip_id, "dep0_epoch": x.dep0} | r)
     rows += [r for r in kept if r["date"] in dates]
     df = TU_CHECKS.conform(pl.DataFrame(rows))
-    for h in ("H2", "listed", "kept"):
+    for h in ("H1", "listed", "kept"):
         c = df.filter(pl.col("check") == h)["outcome"].value_counts()
         info[h] = dict(c.iter_rows())
     return df, info
