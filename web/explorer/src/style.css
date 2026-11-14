@@ -1,0 +1,57 @@
+/* The explorer's stylesheet: what `theme: ["air", "near-midnight"]` generates, then a fix. */
+@import url("observablehq:default.css");
+@import url("observablehq:theme-air.css") (prefers-color-scheme: light);
+@import url("observablehq:theme-near-midnight.css") (prefers-color-scheme: dark);
+
+/* Framework makes <main> a size container, for .grid's container queries. With one on the
+   page, Safari lays the page out the moment a <style> element is removed from it, and every
+   chart and most components carry one. A cell that re-runs removes its old output before
+   adding the new, so that layout sees a page without it, often shorter than the window, and
+   the scroll position is lost: every click on a control scrolled the page to the top.
+   So <main> is no container here, and .grid's breakpoints are media queries instead. */
+#observablehq-main {
+  container-type: normal;
+}
+
+/* Framework's breakpoints are widths of <main>: 640px, 720px, 1080px. <main> is the viewport
+   less 4rem, and less another 19rem beside the sidebar, which is docked from 1008px up unless
+   it has been collapsed. */
+@media (min-width: 704px) {  /* main >= 640px, sidebar or not */
+  .grid-cols-2,
+  .grid-cols-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .grid-cols-2 .grid-colspan-2,
+  .grid-cols-2 .grid-colspan-3,
+  .grid-cols-2 .grid-colspan-4,
+  .grid-cols-4 .grid-colspan-2,
+  .grid-cols-4 .grid-colspan-3,
+  .grid-cols-4 .grid-colspan-4 {
+    grid-column: span 2;
+  }
+}
+/* main >= 720px: below the sidebar's breakpoint, and again once there's room beside it (a
+   sidebar collapsed by hand in between stays at one column) */
+@media (min-width: 784px) and (max-width: 1007.98px), (min-width: 1088px) {
+  .grid-cols-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .grid-cols-3 .grid-colspan-2 {
+    grid-column: span 2;
+  }
+  .grid-cols-3 .grid-colspan-3 {
+    grid-column: span 3;
+  }
+}
+/* main >= 1080px: only with the sidebar collapsed (beside it, <main> stops at 1072px) */
+@media (min-width: 1144px) {
+  #observablehq-sidebar-toggle:not(:checked, :indeterminate) ~ #observablehq-center .grid-cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  #observablehq-sidebar-toggle:not(:checked, :indeterminate) ~ #observablehq-center .grid-cols-4 .grid-colspan-3 {
+    grid-column: span 3;
+  }
+  #observablehq-sidebar-toggle:not(:checked, :indeterminate) ~ #observablehq-center .grid-cols-4 .grid-colspan-4 {
+    grid-column: span 4;
+  }
+}

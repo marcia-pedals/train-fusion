@@ -11,7 +11,7 @@ export default {
     {name: "Timetables", path: "/timetables"},
     {name: "Pipeline health", path: "/health"}
   ],
-  theme: ["air", "near-midnight"],
+  style: "style.css",  // the air / near-midnight themes, plus a fix for scroll jumps in Safari
   // Python loaders need the project's environment (nix shell, or $PYTHON if set)
   interpreters: {".py": [process.env.PYTHON ?? "python3"]},
   footer: "",
