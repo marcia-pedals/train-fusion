@@ -1,13 +1,13 @@
 // How each day's scheduled trips fared against one trip-update hypothesis (stage tu_checks,
 // served as data/tu_checks.parquet by train_fusion.explorer_data.tu_checks), a row per date:
 // the share of trips by outcome ("aggregate") or a dot per trip at when it was checked, or
-// first failed, on the 03:00-03:00 time-of-day axis of the other health cards ("time").
+// first failed, northbound and southbound apart, on the 03:00-03:00 time-of-day axis of the other health cards ("time").
 import * as d3 from "npm:d3";
 import * as Plot from "npm:@observablehq/plot";
 import {toggleCard, type StatusView} from "./statusdays.js";
 
 export interface TuCheck {date: string; trip_id: string; check: string; outcome: string; dep0_epoch: number;
-  at_epoch: number; at_s: number; n_failures: number; detail: string}
+  at_epoch: number; at_s: number; n_failures: number; detail: string; direction_id: number}
 
 const dayLabel = (d: string) => new Date(`${d}T12:00`).toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"});
 const hhmm = (s: number) => new Date(s * 1000).toLocaleTimeString("en-US", {hour: "2-digit", minute: "2-digit", hour12: false});
@@ -59,46 +59,27 @@ export function checkDays(rows: TuCheck[], {outcomes, colors, labels, view, capt
         + (r.detail ? `\n${r.detail}` : `\nfrom ${hhmm(r.at_epoch)}`)});
 }
 
-const R = 4;  // dot radius, px
-const LANE = 2 * R + 1;  // px between lanes, and the least gap between dots in a lane
+const DIRS = ["NB", "SB"];  // direction_id 0, 1
 
-/** A dot per trip on a 03:00-03:00 axis, a row per date. Dots that would overlap are spread
- *  over lanes (0, then +1, -1, +2, ...) around the row's middle. */
+/** A dot per trip on a 03:00-03:00 axis, a row per date, split into northbound and
+ *  southbound (as the other cards split VP and TU). */
 function timePlot(rows: TuCheck[], dates: string[], {title, ...common}: Record<string, any> & {
-  width: number; marginLeft: number; marginRight: number; marginTop: number; title: (r: TuCheck) => string;
+  title: (r: TuCheck) => string;
 }) {
-  const pxPerHour = (common.width - common.marginLeft - common.marginRight) / 24;
-  const hour = (r: TuCheck) => r.at_s / 3600;
-  const lane = new Map<TuCheck, number>();
-  for (const date of dates) {
-    const last = new Map<number, number>();  // lane -> x (px) of its last dot
-    for (const r of d3.sort(rows.filter((r) => r.date === date), hour)) {
-      const x = hour(r) * pxPerHour;
-      let k = 0;
-      for (let j = 0; ; j++) {
-        k = j % 2 ? (j + 1) / 2 : -j / 2;
-        if (!last.has(k) || x - last.get(k)! >= LANE) break;
-      }
-      last.set(k, x);
-      lane.set(r, k);
-    }
-  }
-  const half = Math.max(0, ...[...lane.values()].map(Math.abs)) + 0.5;  // lanes each side of a row's middle
-  const step = 2 * half + 1;  // a row's lanes and a lane's gap between rows
-  const row = new Map(dates.map((d, i) => [d, i * step]));
-  const [lo, hi] = [-half - 0.5, (dates.length - 1) * step + half + 0.5];
   const failed = (r: TuCheck) => r.outcome === "failed";
   return Plot.plot({
     ...common,
-    height: common.marginTop + (hi - lo) * LANE + 4,
+    height: 20 + dates.length * 46,
     // hours after the service-day origin; 3 to 27 is the fetcher's 03:00-03:00 service day
     x: {domain: [3, 27], ticks: d3.range(3, 28, 3), tickFormat: (h: number) => `${h % 24}:00`, label: null, grid: true, axis: "top"},
-    y: {domain: [lo, hi], reverse: true, axis: null},
+    fy: {domain: dates, axis: null, padding: 0.25},
+    y: {domain: DIRS, label: null, padding: 0.1},
     marks: [
-      Plot.text(dates, {x: 3, y: (d) => row.get(d), text: dayLabel, textAnchor: "end", dx: -10, fontWeight: 600}),
       // failures last, on top
-      Plot.dot(d3.sort(rows, failed), {x: hour, y: (r) => row.get(r.date)! + lane.get(r)!, fill: "outcome", r: R,
-        stroke: "var(--theme-background)", strokeWidth: 1, title, tip: true}),
+      Plot.dot(d3.sort(rows, failed), {x: (r) => r.at_s / 3600, y: (r) => DIRS[r.direction_id], fy: "date",
+        fill: "outcome", r: 4, stroke: "var(--theme-background)", strokeWidth: 1, title, tip: true}),
+      // the date on the left, outside the NB / SB labels
+      Plot.axisFy({anchor: "left", tickFormat: dayLabel, tickSize: 0, dx: -30, label: null, fontWeight: 600}),
     ],
   });
 }
