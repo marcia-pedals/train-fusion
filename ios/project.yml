@@ -1,0 +1,42 @@
+# Source of truth for the Xcode project. Regenerate with `just ios` (xcodegen) after
+# adding/removing files or changing settings; don't edit the .xcodeproj by hand.
+name: TrainRecorder
+options:
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: 4Q3J7GB2S8
+targets:
+  TrainRecorder:
+    type: application
+    platform: iOS
+    # TrainRecorder/uploader-key.json (gitignored, from `just ios-key`) is bundled when present.
+    sources: [TrainRecorder]
+    info:
+      path: TrainRecorder/Info.plist
+      properties:
+        CFBundleDisplayName: Train Recorder
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # Recording keeps the app running when backgrounded or locked.
+        UIBackgroundModes: [audio]
+        NSMicrophoneUsageDescription: Records audio on the train (door chimes, traction motor).
+        NSMotionUsageDescription: Records accelerometer and gyroscope measurements on the train.
+        # Recordings show up in the Files app and in Finder, as a fallback to uploading.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        # Only standard HTTPS is used, which is exempt from export compliance.
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.marcia-pedals.TrainRecorder
+        # iPhone only (XcodeGen's iOS preset sets "1,2" per target).
+        TARGETED_DEVICE_FAMILY: "1"
+    scheme: {}

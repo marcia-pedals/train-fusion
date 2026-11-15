@@ -27,3 +27,4 @@ just fetch                         # run the archiver locally (the real one runs
 - [docs/deploy.md](docs/deploy.md): the GCP deployment (terraform), the bucket, secrets, alerts
 - [docs/pipeline.md](docs/pipeline.md): stages, tables, commands
 - [docs/reference.md](docs/reference.md): the reference, how it's fitted and evaluated
+- [docs/recorder.md](docs/recorder.md): the iPhone app (`ios/`) for recording audio + motion on a train, and its file format

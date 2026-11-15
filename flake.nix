@@ -34,7 +34,7 @@
       {
         devShells.default = pkgs.mkShell {
           packages = [ python pkgs.curl pkgs.jq pkgs.just pkgs.nodejs_22
-                       pkgs.google-cloud-sdk pkgs.terraform pkgs.gh ];
+                       pkgs.google-cloud-sdk pkgs.terraform pkgs.gh pkgs.xcodegen ];
         };
       });
 }

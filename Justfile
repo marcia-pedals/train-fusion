@@ -42,5 +42,14 @@ pull-secrets:
 migrate dir:
     python -m fetchers.cloud migrate --data-dir {{dir}} --bucket train-fusion-archive
 
+# generate the phone recorder's Xcode project (ios/) and open it: docs/recorder.md
+ios:
+    cd ios && xcodegen && open TrainRecorder.xcodeproj
+
+# one-off: create the upload-only key the app bundles (gitignored). Then `just ios` and rebuild.
+ios-key:
+    gcloud iam service-accounts keys create ios/TrainRecorder/uploader-key.json \
+        --iam-account "$(terraform -chdir=infra output -raw recorder_service_account)" --project train-fusion
+
 test:
     python -m pytest -q tests

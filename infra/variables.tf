@@ -24,3 +24,9 @@ variable "alert_email" {
   description = "Where alerts go. Set in infra/terraform.tfvars (gitignored)."
   type        = string
 }
+
+variable "recordings_bucket" {
+  description = "Phone recordings. Must match GCSUploader.bucket in ios/TrainRecorder/GCSUploader.swift."
+  type        = string
+  default     = "train-fusion-recordings"
+}
