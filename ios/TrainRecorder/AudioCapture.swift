@@ -33,6 +33,7 @@ final class AudioCapture: @unchecked Sendable {  // see `control` and `lock`
     private var lastBufferUptime = 0.0
     private var firstBufferLatency: Double?
     private var lastError: String?
+    private var route: [String: Any] = [:]
 
     init(dir: URL) {
         self.dir = dir
@@ -99,7 +100,8 @@ final class AudioCapture: @unchecked Sendable {  // see `control` and `lock`
     }
 
     private func startEngine() throws {
-        try AVAudioSession.sharedInstance().setActive(true)
+        let session = AVAudioSession.sharedInstance()
+        try session.setActive(true)
         // A fresh engine each time: one that lived through a route change can hold on to
         // the old hardware format.
         let engine = AVAudioEngine()
@@ -115,6 +117,19 @@ final class AudioCapture: @unchecked Sendable {  // see `control` and `lock`
             throw error
         }
         self.engine = engine
+
+        // Noted now: once the session is deactivated at the end, the route is gone.
+        let input = session.currentRoute.inputs.first
+        let route: [String: Any] = [
+            "input_port": input?.portName ?? NSNull(),
+            "input_port_type": input?.portType.rawValue ?? NSNull(),
+            "input_data_source": input?.selectedDataSource?.dataSourceName ?? NSNull(),
+            "input_latency_s": session.inputLatency,
+            "io_buffer_duration_s": session.ioBufferDuration,
+        ]
+        lock.lock()
+        self.route = route
+        lock.unlock()
     }
 
     private func stopEngine() {
@@ -203,19 +218,12 @@ final class AudioCapture: @unchecked Sendable {  // see `control` and `lock`
     }
 
     var meta: [String: Any] {
-        let session = AVAudioSession.sharedInstance()
-        let input = session.currentRoute.inputs.first
         lock.lock()
         defer { lock.unlock() }
         return [
             "codec": "AAC-LC in MPEG-4 (.m4a)",
             "bit_rate_per_channel": Self.bitRatePerChannel,
             "session_mode": "measurement",
-            "input_port": input?.portName ?? NSNull(),
-            "input_port_type": input?.portType.rawValue ?? NSNull(),
-            "input_data_source": input?.selectedDataSource?.dataSourceName ?? NSNull(),
-            "input_latency_s": session.inputLatency,
-            "io_buffer_duration_s": session.ioBufferDuration,
             "first_buffer_latency_s": firstBufferLatency ?? NSNull(),
             "segments": segments.map { s -> [String: Any] in
                 [
@@ -226,6 +234,6 @@ final class AudioCapture: @unchecked Sendable {  // see `control` and `lock`
                     "first_frame_uptime_s": s.firstUptime ?? NSNull(),
                 ]
             },
-        ]
+        ].merging(route) { a, _ in a }
     }
 }
