@@ -41,8 +41,9 @@ METRIC = "custom.googleapis.com/train_fusion/fetches"
 
 class Uploader:
     def __init__(self, data_dir: Path, bucket: str, instance: str = INSTANCE,
-                 delete_local: bool = True, client=None):
+                 delete_local: bool = True, client=None, tops: tuple[str, ...] = ("rt", "gtfs")):
         self.data_dir = data_dir
+        self.tops = tops  # the data dir's subdirectories this uploader owns
         self.bucket = (client or storage.Client()).bucket(bucket)
         self.instance = instance
         self.delete_local = delete_local
@@ -66,7 +67,7 @@ class Uploader:
 
     def candidates(self, final: bool) -> list[Path]:
         out = []
-        for top in ("rt", "gtfs"):
+        for top in self.tops:
             root = self.data_dir / top
             if root.is_dir():
                 out += [p for p in sorted(root.rglob("*"))
@@ -107,7 +108,7 @@ class Uploader:
                     self.uploaded.discard(p)
             if self.delete_local:
                 # emptied directories (old days); a young one may be about to get its first file
-                for top in ("rt", "gtfs"):
+                for top in self.tops:
                     for d in sorted((self.data_dir / top).glob("**/"), reverse=True):
                         if (d != self.data_dir / top and not any(d.iterdir())
                                 and time.time() - d.stat().st_mtime > KEEP_LOCAL_S):

@@ -24,6 +24,10 @@ explore: types
 fetch:
     python -m fetchers.gtfs.fetch
 
+# run the webcam archiver locally, into data/cams (docs/cams.md; pass windows need fresh trip updates in data/rt)
+fetch-cams *args:
+    python -m fetchers.cams.fetch {{args}}
+
 # terraform in infra/, e.g. `just tf plan`, `just tf apply` (deploys the fetcher)
 tf *args:
     terraform -chdir=infra {{args}}
