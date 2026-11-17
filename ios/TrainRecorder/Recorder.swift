@@ -13,6 +13,7 @@ final class Recorder {
         var gyroSamples = 0
         var magSamples = 0
         var baroSamples = 0
+        var fusedSamples = 0
         var ntp: NTPSample?
     }
 
@@ -117,7 +118,7 @@ final class Recorder {
         guard let audio, let motion else { return }
         live = Live(audio: audio.status, accelSamples: motion.accelCount,
                     gyroSamples: motion.gyroCount, magSamples: motion.magCount,
-                    baroSamples: motion.baroCount, ntp: clock?.latestNTP)
+                    baroSamples: motion.baroCount, fusedSamples: motion.fusedCount, ntp: clock?.latestNTP)
     }
 
     private func writeMeta(ended: (uptime: Double, unix: Double)?) {
