@@ -27,7 +27,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Records audio on the train (door chimes, traction motor).</string>
 	<key>NSMotionUsageDescription</key>
-	<string>Records accelerometer and gyroscope measurements on the train.</string>
+	<string>Records motion sensor and barometer measurements on the train.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

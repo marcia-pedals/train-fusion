@@ -28,7 +28,7 @@ targets:
         # Recording keeps the app running when backgrounded or locked.
         UIBackgroundModes: [audio]
         NSMicrophoneUsageDescription: Records audio on the train (door chimes, traction motor).
-        NSMotionUsageDescription: Records accelerometer and gyroscope measurements on the train.
+        NSMotionUsageDescription: Records motion sensor and barometer measurements on the train.
         # Recordings show up in the Files app and in Finder, as a fallback to uploading.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true

@@ -1,8 +1,9 @@
 import CoreMotion
 import Foundation
 
-/// Raw accelerometer and gyroscope samples (not the fused "device motion"), each to its
-/// own .csv.gz, stamped with the sensor's own sample time (uptime seconds).
+/// Raw accelerometer, gyroscope and magnetometer samples (not the fused "device motion")
+/// and the barometer, each to its own .csv.gz, stamped with the sensor's own sample time
+/// (uptime seconds).
 final class MotionCapture {
     static let rateHz = 100.0  // the most iOS gives without a special entitlement
 
@@ -19,8 +20,8 @@ final class MotionCapture {
             queue.maxConcurrentOperationCount = 1
         }
 
-        func add(timestamp: Double, _ x: Double, _ y: Double, _ z: Double) {
-            writer.write(String(format: "%.6f,%.6f,%.6f,%.6f\n", timestamp, x, y, z))
+        func add(timestamp: Double, _ values: Double...) {
+            writer.write(String(format: "%.6f", timestamp) + values.map { String(format: ",%.6f", $0) }.joined() + "\n")
             lock.lock()
             if _count == 0 { _firstLatency = Clock.uptime() - timestamp }
             _count += 1
@@ -39,17 +40,23 @@ final class MotionCapture {
     }
 
     private let manager = CMMotionManager()
+    private let altimeter = CMAltimeter()
     private let accel: Stream
     private let gyro: Stream
+    private let mag: Stream
+    private let baro: Stream
 
     init(dir: URL) throws {
         accel = try Stream(url: dir.appendingPathComponent("accel.csv.gz"), header: "uptime_s,x_g,y_g,z_g\n")
         gyro = try Stream(url: dir.appendingPathComponent("gyro.csv.gz"), header: "uptime_s,x_rad_s,y_rad_s,z_rad_s\n")
+        mag = try Stream(url: dir.appendingPathComponent("mag.csv.gz"), header: "uptime_s,x_ut,y_ut,z_ut\n")
+        baro = try Stream(url: dir.appendingPathComponent("baro.csv.gz"), header: "uptime_s,pressure_kpa,relative_altitude_m\n")
     }
 
     func start() {
         manager.accelerometerUpdateInterval = 1 / Self.rateHz
         manager.gyroUpdateInterval = 1 / Self.rateHz
+        manager.magnetometerUpdateInterval = 1 / Self.rateHz
         manager.startAccelerometerUpdates(to: accel.queue) { [accel] data, _ in
             guard let d = data else { return }
             accel.add(timestamp: d.timestamp, d.acceleration.x, d.acceleration.y, d.acceleration.z)
@@ -58,25 +65,41 @@ final class MotionCapture {
             guard let d = data else { return }
             gyro.add(timestamp: d.timestamp, d.rotationRate.x, d.rotationRate.y, d.rotationRate.z)
         }
+        // The raw field at the sensor: the earth's plus the phone's own and whatever is
+        // nearby (iOS's calibrated field only comes with the fused device motion).
+        manager.startMagnetometerUpdates(to: mag.queue) { [mag] data, _ in
+            guard let d = data else { return }
+            mag.add(timestamp: d.timestamp, d.magneticField.x, d.magneticField.y, d.magneticField.z)
+        }
+        // About one sample a second. Asks for "Motion & Fitness" access the first time;
+        // if that's refused, baro.csv.gz stays empty.
+        if CMAltimeter.isRelativeAltitudeAvailable() {
+            altimeter.startRelativeAltitudeUpdates(to: baro.queue) { [baro] data, _ in
+                guard let d = data else { return }
+                baro.add(timestamp: d.timestamp, d.pressure.doubleValue, d.relativeAltitude.doubleValue)
+            }
+        }
     }
 
     func stop() {
         manager.stopAccelerometerUpdates()
         manager.stopGyroUpdates()
-        accel.close()
-        gyro.close()
+        manager.stopMagnetometerUpdates()
+        altimeter.stopRelativeAltitudeUpdates()
+        for stream in [accel, gyro, mag, baro] { stream.close() }
     }
 
     var accelCount: Int { accel.count }
     var gyroCount: Int { gyro.count }
+    var magCount: Int { mag.count }
+    var baroCount: Int { baro.count }
 
     var meta: [String: Any] {
-        [
-            "requested_rate_hz": Self.rateHz,
-            "accel_samples": accel.count,
-            "gyro_samples": gyro.count,
-            "accel_first_sample_latency_s": accel.firstLatency as Any? ?? NSNull(),
-            "gyro_first_sample_latency_s": gyro.firstLatency as Any? ?? NSNull(),
-        ]
+        var meta: [String: Any] = ["requested_rate_hz": Self.rateHz]
+        for (name, stream) in [("accel", accel), ("gyro", gyro), ("mag", mag), ("baro", baro)] {
+            meta["\(name)_samples"] = stream.count
+            meta["\(name)_first_sample_latency_s"] = stream.firstLatency ?? NSNull()
+        }
+        return meta
     }
 }

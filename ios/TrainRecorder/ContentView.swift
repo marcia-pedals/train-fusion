@@ -88,6 +88,10 @@ private struct LiveStatus: View {
                 item("Accel", "\(live.accelSamples)", ok: live.accelSamples > 0)
                 item("Gyro", "\(live.gyroSamples)", ok: live.gyroSamples > 0)
             }
+            HStack(spacing: 14) {
+                item("Mag", "\(live.magSamples)", ok: live.magSamples > 0)
+                item("Baro", "\(live.baroSamples)", ok: live.baroSamples > 0)
+            }
             if let ntp = live.ntp {
                 Text(String(format: "Phone clock is %+.0f ms from NTP (±%.0f ms)", -ntp.offset * 1000, ntp.roundTrip * 500))
             } else {

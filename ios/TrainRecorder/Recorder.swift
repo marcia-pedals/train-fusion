@@ -2,7 +2,7 @@ import AVFoundation
 import Observation
 import UIKit
 
-/// One recording at a time: audio + accelerometer + gyroscope + clock log, into
+/// One recording at a time: audio + motion sensors + barometer + clock log, into
 /// Documents/recordings/<id>/. docs/recorder.md describes the files.
 @MainActor
 @Observable
@@ -11,6 +11,8 @@ final class Recorder {
         var audio = AudioCapture.Status()
         var accelSamples = 0
         var gyroSamples = 0
+        var magSamples = 0
+        var baroSamples = 0
         var ntp: NTPSample?
     }
 
@@ -114,7 +116,8 @@ final class Recorder {
     private func refreshLive() {
         guard let audio, let motion else { return }
         live = Live(audio: audio.status, accelSamples: motion.accelCount,
-                    gyroSamples: motion.gyroCount, ntp: clock?.latestNTP)
+                    gyroSamples: motion.gyroCount, magSamples: motion.magCount,
+                    baroSamples: motion.baroCount, ntp: clock?.latestNTP)
     }
 
     private func writeMeta(ended: (uptime: Double, unix: Double)?) {

@@ -1,7 +1,8 @@
 # The phone recorder (`ios/`)
 
 A one-screen iPhone app for recording a train ride from the inside: audio (to hear the
-door chimes and the traction motors) plus raw accelerometer and gyroscope samples, all
+door chimes and the traction motors) plus raw accelerometer, gyroscope and magnetometer
+samples and the barometer, all
 with timestamps that convert to exact clock time. One button starts and stops a recording;
 each recording in the list can be uploaded to `gs://train-fusion-recordings` or deleted.
 Recording carries on with the app in the background and the phone locked.
@@ -36,6 +37,8 @@ the start time in UTC, e.g. `20261115T181502Z`.
 | `audio_timing.csv.gz` | `segment,frame,frames,uptime_s`: one row per captured buffer (~0.1 s): frame `frame` of `audio_<segment>.m4a` was captured at `uptime_s` |
 | `accel.csv.gz` | `uptime_s,x_g,y_g,z_g`: raw accelerometer, 100 Hz, in g (gravity included) |
 | `gyro.csv.gz` | `uptime_s,x_rad_s,y_rad_s,z_rad_s`: raw gyroscope, 100 Hz |
+| `mag.csv.gz` | `uptime_s,x_ut,y_ut,z_ut`: raw magnetometer, 100 Hz, in µT. Uncalibrated: the earth's field plus the phone's own bias and anything magnetic nearby |
+| `baro.csv.gz` | `uptime_s,pressure_kpa,relative_altitude_m`: barometer, about 1 Hz. The altitude is iOS's, relative to the start of the recording. Empty if "Motion & Fitness" access was refused |
 | `clock.csv` | `uptime_s,unix_s,ntp_offset_s,ntp_round_trip_s`: how uptime maps to clock time (below) |
 | `meta.json` | device, app version, start/end, audio format and input, sample counts. Uploaded last: if it's in the bucket, everything is |
 
