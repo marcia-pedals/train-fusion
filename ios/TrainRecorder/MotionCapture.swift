@@ -1,5 +1,6 @@
 import CoreMotion
 import Foundation
+import simd
 
 /// Raw accelerometer, gyroscope and magnetometer samples, the barometer, and iOS's own
 /// fusion of the motion sensors ("device motion"), each to its own .csv.gz, stamped with
@@ -47,6 +48,8 @@ final class MotionCapture {
     private let baro: Stream
     private let fused: Stream
     private var referenceFrame = "none"
+    /// Also gets the samples the model uses, as they arrive. Set before `start`.
+    var inference: LiveInference?
 
     init(dir: URL) throws {
         accel = try Stream(url: dir.appendingPathComponent("accel.csv.gz"), header: "uptime_s,x_g,y_g,z_g\n")
@@ -63,13 +66,16 @@ final class MotionCapture {
         manager.accelerometerUpdateInterval = 1 / Self.rateHz
         manager.gyroUpdateInterval = 1 / Self.rateHz
         manager.magnetometerUpdateInterval = 1 / Self.rateHz
+        let inference = inference
         manager.startAccelerometerUpdates(to: accel.queue) { [accel] data, _ in
             guard let d = data else { return }
             accel.add(timestamp: d.timestamp, d.acceleration.x, d.acceleration.y, d.acceleration.z)
+            inference?.accel(d.timestamp, d.acceleration.x, d.acceleration.y, d.acceleration.z)
         }
         manager.startGyroUpdates(to: gyro.queue) { [gyro] data, _ in
             guard let d = data else { return }
             gyro.add(timestamp: d.timestamp, d.rotationRate.x, d.rotationRate.y, d.rotationRate.z)
+            inference?.gyro(d.timestamp, d.rotationRate.x, d.rotationRate.y, d.rotationRate.z)
         }
         // The raw field at the sensor: the earth's plus the phone's own and whatever is
         // nearby (iOS's calibrated field only comes with the fused device motion).
@@ -95,6 +101,7 @@ final class MotionCapture {
             let (r, g, a, m) = (d.rotationRate, d.gravity, d.userAcceleration, d.magneticField)
             fused.add(timestamp: d.timestamp, q.x, q.y, q.z, q.w, r.x, r.y, r.z, g.x, g.y, g.z, a.x, a.y, a.z,
                       m.field.x, m.field.y, m.field.z, Double(m.accuracy.rawValue), d.heading)
+            inference?.attitude(d.timestamp, simd_quatd(ix: q.x, iy: q.y, iz: q.z, r: q.w), gravity: SIMD3(g.x, g.y, g.z))
         }
         // About one sample a second. Asks for "Motion & Fitness" access the first time;
         // if that's refused, baro.csv.gz stays empty.
@@ -102,6 +109,7 @@ final class MotionCapture {
             altimeter.startRelativeAltitudeUpdates(to: baro.queue) { [baro] data, _ in
                 guard let d = data else { return }
                 baro.add(timestamp: d.timestamp, d.pressure.doubleValue, d.relativeAltitude.doubleValue)
+                inference?.baro(d.timestamp, kPa: d.pressure.doubleValue)
             }
         }
     }

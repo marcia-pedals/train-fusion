@@ -29,12 +29,15 @@
           pytest
           google-cloud-storage
           tqdm
+          # phone-sensor-fusion/
+          matplotlib
         ]);
       in
       {
         devShells.default = pkgs.mkShell {
           packages = [ python pkgs.curl pkgs.jq pkgs.just pkgs.nodejs_22
-                       pkgs.google-cloud-sdk pkgs.terraform pkgs.gh pkgs.xcodegen ];
+                       pkgs.google-cloud-sdk pkgs.terraform pkgs.gh pkgs.xcodegen
+                       pkgs.ffmpeg pkgs.whisper-cpp ];  # phone-sensor-fusion/: audio decoding, transcripts
         };
       });
 }

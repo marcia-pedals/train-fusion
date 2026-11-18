@@ -8,7 +8,13 @@ struct Recording: Identifiable {
     let started: Date?
     let duration: Double?  // nil if it was never stopped properly
     let bytes: Int64
-    let uploaded: Bool
+    var uploaded: Bool
+    var ride: RideInfo?  // as typed in by the rider
+    /// The first and last stations the model heard the doors open at, and whether it was
+    /// confident of them (meta.json's `inferred`).
+    var origin: String?
+    var destination: String?
+    var stationsSure = true
 }
 
 /// A recording's id is its start time in UTC, e.g. 20261115T181502Z.
@@ -55,11 +61,21 @@ final class RecordingStore {
             if let start = meta?["started_uptime_s"] as? Double, let end = meta?["ended_uptime_s"] as? Double {
                 duration = end - start
             }
-            return Recording(
+            var recording = Recording(
                 id: dir.lastPathComponent, url: dir,
                 started: RecordingID.date(dir.lastPathComponent),
                 duration: duration, bytes: bytes,
                 uploaded: fm.fileExists(atPath: dir.appendingPathComponent(Self.uploadedMarker).path))
+            if let ride = meta?["ride"] as? [String: Any], let trip = ride["trip_number"] as? Int, let car = ride["car_number"] as? Int {
+                recording.ride = RideInfo(trip: trip, car: car,
+                                          position: (ride["car_position"] as? String).flatMap(RideInfo.Position.init) ?? .unspecified)
+            }
+            if let inferred = meta?["inferred"] as? [String: Any], let stops = inferred["stops"] as? [[String: Any]] {
+                recording.origin = stops.first?["station"] as? String
+                recording.destination = stops.count > 1 ? stops.last?["station"] as? String : nil
+                recording.stationsSure = (inferred["station_confidence"] as? Double ?? 0) > 0.9
+            }
+            return recording
         }.sorted { $0.id > $1.id }
     }
 
@@ -87,9 +103,7 @@ final class RecordingStore {
                 atPath: recording.url.appendingPathComponent(Self.uploadedMarker).path, contents: nil)
             uploads[recording.id] = nil
             if let i = recordings.firstIndex(where: { $0.id == recording.id }) {
-                let r = recordings[i]
-                recordings[i] = Recording(id: r.id, url: r.url, started: r.started, duration: r.duration,
-                                          bytes: r.bytes, uploaded: true)
+                recordings[i].uploaded = true
             }
         } catch {
             uploads[recording.id] = .failed(error.localizedDescription)

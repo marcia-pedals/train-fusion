@@ -1,0 +1,40 @@
+#!/bin/sh
+# Try the app's online inference off the train: build it for the simulator, put the
+# recordings from data/app-recordings into the simulator's copy of the app, replay them
+# through the model as fast as it goes, and compare what the app computed with the Python
+# pipeline (features) and with the labels and the map (speed, leg distances, stations).
+#
+#   bin/ios-sim-replay                      # every labelled recording
+#   bin/ios-sim-replay <recording id> ...   # some
+#
+# Needs Xcode and, once, `just ios` (generates the Xcode project) and
+# `cd phone-sensor-fusion && python -m app.export` (model.json and the reference features).
+# Run it outside the nix shell (xcodebuild wants the system toolchain); it enters the shell
+# itself for the Python part.
+set -e
+cd "$(dirname "$0")/.."
+BID=io.github.marcia-pedals.TrainRecorder
+DEV=${IOS_SIM_DEVICE:-"iPhone 17"}
+
+xcodebuild -project ios/TrainRecorder.xcodeproj -scheme TrainRecorder -configuration Release \
+  -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build \
+  CODE_SIGNING_ALLOWED=NO build 2>&1 | grep -E "error:|BUILD" | sort -u
+xcrun simctl boot "$DEV" 2>/dev/null || true
+xcrun simctl bootstatus "$DEV" >/dev/null
+xcrun simctl terminate "$DEV" $BID 2>/dev/null || true
+xcrun simctl install "$DEV" ios/build/Build/Products/Release-iphonesimulator/TrainRecorder.app
+C=$(xcrun simctl get_app_container "$DEV" $BID data)
+mkdir -p "$C/Documents/recordings"
+[ $# -gt 0 ] || set -- $(ls data/phone-sensor-fusion-labels)
+rm -rf "$C/Documents/replay_dump"
+for r in "$@"; do
+  [ -d "$C/Documents/recordings/$r" ] || cp -R "data/app-recordings/$r" "$C/Documents/recordings/"
+  xcrun simctl launch "$DEV" $BID -autoreplay "$r" -replayspeed max -dump >/dev/null
+  f="$C/Documents/replay_dump/$r.jsonl"; prev=-1
+  while :; do  # done when the dump stops growing
+    sleep 3; n=$(wc -l < "$f" 2>/dev/null || echo 0)
+    [ "$n" = "$prev" ] && [ "$n" -gt 100 ] && break; prev=$n
+  done
+  xcrun simctl terminate "$DEV" $BID
+done
+bin/psf-dev python -m app.compare "$C"/Documents/replay_dump/*.jsonl 2>&1 | grep -v "^warning"

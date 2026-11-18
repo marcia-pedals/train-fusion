@@ -1,0 +1,68 @@
+"""Read the label files (labels/README.md describes them)."""
+
+from __future__ import annotations
+
+import csv
+import tomllib
+from dataclasses import dataclass
+
+import numpy as np
+
+from common import paths
+
+
+def _f(v: str) -> float:
+    return float(v) if v else np.nan
+
+
+@dataclass
+class Stop:
+    station: str
+    t_arrive: float  # wheels stop (nan = not labelled)
+    t_open: float  # door-open chime starts
+    t_open_end: float
+    t_close: float  # door-close chime starts
+    t_close_end: float
+    t_depart: float  # wheels start
+
+
+def journey(rid: str) -> dict:
+    return tomllib.loads((paths.LABELS / rid / "journey.toml").read_text())
+
+
+def stops(rid: str) -> list[Stop]:
+    rows = csv.DictReader((paths.LABELS / rid / "stops.csv").open())
+    return [Stop(r["station"], *(_f(r[k]) for k in
+                 ("t_arrive", "t_open", "t_open_end", "t_close", "t_close_end", "t_depart")))
+            for r in rows]
+
+
+def phone(rid: str) -> list[tuple[float, float, str]]:
+    rows = csv.DictReader((paths.LABELS / rid / "phone.csv").open())
+    return [(float(r["t0"]), float(r["t1"]), r["state"]) for r in rows]
+
+
+def presence(rid: str) -> list[tuple[float, float, str]]:
+    """Intervals of where the phone's owner is: "train", "platform" (or any other place off
+    the train), "unknown" (boarding / alighting somewhere in the interval)."""
+    rows = csv.DictReader((paths.LABELS / rid / "presence.csv").open())
+    return [(float(r["t0"]), float(r["t1"]), r["where"]) for r in rows]
+
+
+def table(rid: str, name: str) -> dict[str, np.ndarray]:
+    """A numeric/str CSV in <labels>/<id>/ as columns."""
+    rows = list(csv.DictReader((paths.LABELS / rid / name).open()))
+    out = {}
+    for k in rows[0]:
+        col = [r[k] for r in rows]
+        try:
+            out[k] = np.array([float(v) for v in col])
+        except ValueError:
+            out[k] = np.array(col)
+    return out
+
+
+def station_s() -> dict[str, float]:
+    """Station -> distance along the line (m), from the map."""
+    rows = csv.DictReader((paths.HERE / "maps" / "data" / "stations.csv").open())
+    return {r["station"]: float(r["s_m"]) for r in rows}

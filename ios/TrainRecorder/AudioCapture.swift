@@ -18,6 +18,9 @@ final class AudioCapture: @unchecked Sendable {  // see `control` and `lock`
     }
 
     private let dir: URL
+    /// Called on Core Audio's thread with every captured buffer and the uptime of its first
+    /// frame (the live inference listens here). Set before `start`.
+    var onBuffer: ((AVAudioPCMBuffer, Double?) -> Void)?
     /// start/stop/restart all run here; the tap callback runs on Core Audio's thread and
     /// shares the state below through `lock`.
     private let control = DispatchQueue(label: "audio-control")
@@ -185,6 +188,7 @@ final class AudioCapture: @unchecked Sendable {  // see `control` and `lock`
             timing.write("\(index),\(segments[index].frames),\(buffer.frameLength),"
                 + (uptime.map { String(format: "%.6f", $0) } ?? "") + "\n")
             try file?.write(from: buffer)
+            onBuffer?(buffer, uptime)
             if segments[index].frames == 0 { segments[index].firstUptime = uptime }
             segments[index].frames += Int64(buffer.frameLength)
             if firstBufferLatency == nil, let uptime { firstBufferLatency = arrived - uptime }

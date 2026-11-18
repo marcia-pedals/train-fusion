@@ -7,7 +7,110 @@ with timestamps that convert to exact clock time. One button starts and stops a 
 each recording in the list can be uploaded to `gs://train-fusion-recordings` or deleted.
 Recording carries on with the app in the background and the phone locked.
 
-Nothing in the pipeline reads the recordings yet.
+The recordings are used by [phone-sensor-fusion/](../phone-sensor-fusion/README.md), which infers the
+train's stops, speed and position from them. Put them in `data/app-recordings/<id>/`.
+
+## Screens
+
+Three, behind a tab bar:
+
+- **Measure**: what the model believes right now (next section), under a thin header.
+  Normally the header has the elapsed time, in the middle the train ("Enter trip and car
+  number"; tap for a sheet with trip number, car number and upper / lower / vestibule,
+  whose Save refuses numbers that can't be right; tap again to edit or clear; it goes into
+  `meta.json` and the model doesn't use it) and, on the right, the record button. When a recording is being
+  replayed it has two lines: a progress bar with elapsed / total time and which recording
+  it is; and previous stop, play / pause, next stop and the replay speed (1× to 64×, or as
+  fast as it goes). "Stop" means a door opening the model heard; with none left in that
+  direction the buttons go to the beginning or the end. The model only runs forwards, so
+  going back replays from the start, flat out, to the place (a second or two). Tapping the
+  Measure tab again leaves replay.
+
+  The beliefs are shown for a rider, not a statistician, in four compact cards. Each
+  keeps its size whether or not it has anything to show yet (a greyed-out skeleton stands
+  in), so the screen doesn't jump as fixes arrive:
+  1. one line for what the train is doing: "Listening for door to start tracking…" until
+     the first door chime (before that the model can't tell a platform from a train), then
+     the speed with its 90 % interval and the acceleration over the last 3 s (always
+     m/s²), or the doors' state, or "Train stopped";
+  2. where it is: north- or southbound, the last station and the next with the train
+     between them and the distance from each, and how sure it is in a word, with the
+     runner-up segment beside it while it isn't confident. Once the doors have opened at a
+     station the line slides to show the train at that station, between the one before and
+     the one after, without distances; when the train is clearly moving again it slides
+     back to the two-station view;
+  3. the last four stops, newest first: station, and when the doors opened and closed (the
+     start of each chime). Stations are named by working back from the current fix along
+     the measured leg lengths, so the table stays a skeleton until the fix is confident;
+  4. icons for how good the information is: the phone (lying still / held / being moved),
+     the motor tone, the along-track acceleration, and the wheel vibration. Green good,
+     yellow fair, red missing, grey not in play. Tap for each one's state and a number.
+
+  Every probability is still there under "Details".
+- **Settings**: miles and mph, or kilometres and km/h.
+- **History**: the recordings on the phone, each with upload and replay; swipe a row left to delete it. A row is
+  titled by where the model heard the ride start and end ("Millbrae → San Jose Diridon";
+  "Unknown trip" if it named no stop), then the date, length and size, then the trip and car
+  if they were typed in. Replay
+  (not offered while recording) plays a finished recording back through the model, to watch
+  the beliefs without being on a train.
+
+## Online inference (experimental)
+
+While recording, the app runs `phone-sensor-fusion`'s model on the live sensors and shows
+its belief about the last second, using only the past: speed (a number and the whole
+distribution), what the train is doing (moving, or where in the stop cycle), what the phone
+is doing (resting / held / handled), and where on the line it thinks it is (station and
+direction after each door opening, and distance since).
+
+The belief is about the second that has just ended. One measurement arrives late: the
+accelerometer's line spectrum (wheel-rotation lines) uses a 5 s window centred on its
+second, so it is ~3 s behind. The engine therefore keeps a *settled* belief, 3 s back, that
+has every measurement, and each second steps a copy of it forward through the seconds
+since with everything else that is already in; that copy is what is shown. Stops, leg
+distances and the station layer advance with the settled belief, so a door opening shows
+at once as "door-open chime" but is counted, and the station updated, about 3 s later.
+
+`ios/TrainRecorder/Inference/` is a Swift re-implementation: `Features.swift` (per-second
+measurements, with Accelerate for the FFTs), `Engine.swift` (phone state, along-track
+acceleration, the HMM's forward step, distance, and the station layer), `Drivers.swift`
+(live and replay). The fitted model and the track come from `model.json` in the bundle,
+written by `just ios-model`. Nothing else is shared with the Python code, on purpose (see
+AGENTS.md).
+
+Cost: one second of data takes a few milliseconds to process (a replay runs at several
+hundred times real time on a Mac), done once a second on a utility-priority queue; the
+sensor callbacks only append to buffers.
+
+What the online version can't do like the offline pipeline, and does instead:
+
+- the along-track axis of a resting phone, and gravity, are re-estimated every second from
+  the stretch so far;
+- which way to read the acceleration, and its zero, come from a station stop inside the
+  stretch when there has been one (zero = the level while the doors are open; the train
+  braked into the stop and pulls away from it), otherwise from how the acceleration goes
+  with the filter's own speed changes; until one of those is clear the accelerometer isn't
+  used;
+- a stop is the settled probability of the door-open chime crossing ½;
+- distance is the expected distance given everything so far, carried forward with the
+  filter (not the sum of filtered speeds).
+
+### Trying it in the simulator
+
+```sh
+just ios-model            # in the nix shell: model.json + reference features
+just ios                  # generate the Xcode project
+bin/ios-sim-replay        # outside the nix shell: build, load data/app-recordings, replay, compare
+```
+
+`bin/ios-sim-replay` copies the recordings into the simulator's copy of the app, replays
+each flat out (launch arguments `-autoreplay <id> -replayspeed max -dump`), and runs
+`python -m app.compare` on the dumps: feature-by-feature agreement with the Python
+pipeline, then the app's online speed, leg distances and stations against the labels and
+the map. To watch instead, open the app in the simulator and press a recording's replay button in History.
+
+The model isn't on the phone-loading path yet: `model.json` is simply built into the app,
+and replay only sees recordings that are in the app's own Documents folder.
 
 ## Setup
 
@@ -41,7 +144,15 @@ the start time in UTC, e.g. `20261115T181502Z`.
 | `baro.csv.gz` | `uptime_s,pressure_kpa,relative_altitude_m`: barometer, about 1 Hz. The altitude is iOS's, relative to the start of the recording. Empty if "Motion & Fitness" access was refused |
 | `device_motion.csv.gz` | iOS's own fusion of the motion sensors, 100 Hz (below) |
 | `clock.csv` | `uptime_s,unix_s,ntp_offset_s,ntp_round_trip_s`: how uptime maps to clock time (below) |
-| `meta.json` | device, app version, start/end, audio format and input, sample counts. Uploaded last: if it's in the bucket, everything is |
+| `meta.json` | device, app version, start/end, audio format and input, sample counts, and `ride`: what the rider typed in about the train (`trip_number`, `car_number`, `car_position`: `unspecified` / `upper` / `lower` / `vestibule`), or null; and `inferred` (below). Uploaded last: if it's in the bucket, everything is |
+
+`meta.json`'s `inferred` is what the app's model believed when the recording was stopped
+(null if it wasn't stopped properly, or the model never ran): `stops`, one per door opening
+it heard, each with `doors_opened_uptime_s`, `doors_closed_uptime_s` (the start of each
+chime; closed may be null) and `station`, its best guess; `direction`; and
+`station_confidence`, the probability it gave the last stop's station and the direction.
+It's a convenience (History's titles come from it), not ground truth: the model in the app
+changes, and the recording can always be replayed through a newer one.
 
 `device_motion.csv.gz` is what iOS itself makes of the motion sensors (`CMDeviceMotion`).
 It isn't just a function of the raw files: iOS has been estimating the gyroscope's and the

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone sensor fusion viewer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Phone sensor fusion</h1>
+  <select id="rec" title="recording"></select>
+  <div class="group">
+    <button id="back" title="back 10 s (←)">−10 s</button>
+    <button id="play" class="primary" title="play / pause (space)">Play</button>
+    <button id="fwd" title="forward 10 s (→)">+10 s</button>
+    <select id="rate" title="playback speed">
+      <option>1</option><option>2</option><option>4</option><option>8</option><option>16</option>
+    </select><span class="unit">× speed</span>
+  </div>
+  <div class="group">
+    <span class="unit">show</span>
+    <button data-span="0">whole ride</button><button data-span="300">5 min</button>
+    <button data-span="60">1 min</button><button data-span="20">20 s</button>
+    <label><input type="checkbox" id="follow" checked> follow playhead</label>
+  </div>
+  <div class="group">
+    <label>behind speed
+      <select id="heat">
+        <option value="smooth">smoothed posterior</option>
+        <option value="filt">filtered posterior</option>
+        <option value="tone">motor-tone likelihood</option>
+        <option value="wheel">wheel-line likelihood</option>
+        <option value="none">nothing</option>
+      </select></label>
+    <label><input type="checkbox" id="toneline" checked> lines at model speed</label>
+  </div>
+</header>
+<p id="summary"></p>
+<main>
+  <section id="left">
+    <canvas id="mini" height="44"></canvas>
+    <div id="tracks">
+      <div id="playhead"></div><div id="hover"><span id="hovert"></span></div>
+    </div>
+    <p class="hint">Click to move the playhead · drag to pan · pinch or ⌘/ctrl + scroll to zoom · space to play.
+      Filtered = what the model believes using only the past; smoothed = using the whole recording.</p>
+  </section>
+  <aside id="now">
+    <div class="clock"><span id="clock">0:00</span><span id="clocksub"></span></div>
+    <div class="tiles">
+      <div class="tile"><div class="k"><i class="sw s-smooth"></i>speed, smoothed</div><div class="v" id="vS">–</div><div class="sub" id="vSsub"></div></div>
+      <div class="tile"><div class="k"><i class="sw s-filt"></i>speed, filtered</div><div class="v" id="vF">–</div><div class="sub" id="vFsub"></div></div>
+    </div>
+    <h2>Belief over speed, this second</h2>
+    <canvas id="dist" height="120"></canvas>
+    <p class="note">Each curve is scaled to its own peak; the bar at 0 is "standing". Tick: labelled speed.</p>
+    <h2>Mode</h2>
+    <div id="modes"></div>
+    <h2>Phone</h2>
+    <div id="phone"></div>
+    <h2>Where on the line</h2>
+    <p class="note" id="linenote"></p>
+    <canvas id="line"></canvas>
+  </aside>
+</main>
+<audio id="audio" preload="auto"></audio>
+<script src="app.js"></script>
+</body>
+</html>

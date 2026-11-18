@@ -39,4 +39,12 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.marcia-pedals.TrainRecorder
         # iPhone only (XcodeGen's iOS preset sets "1,2" per target).
         TARGETED_DEVICE_FAMILY: "1"
-    scheme: {}
+schemes:
+  TrainRecorder:
+    build:
+      targets:
+        TrainRecorder: all
+    # Run builds Release: the inference is tight loops over arrays, some 30× slower
+    # unoptimised (replay crawls). Switch to Debug in Xcode when you need the debugger.
+    run:
+      config: Release

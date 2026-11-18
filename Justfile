@@ -46,10 +46,25 @@ migrate dir:
 ios:
     cd ios && xcodegen && open TrainRecorder.xcodeproj
 
+# write the fitted model where the app bundles it (ios/TrainRecorder/model.json), and the
+# reference features that bin/ios-sim-replay compares the app against
+ios-model:
+    cd phone-sensor-fusion && python -m app.export
+
 # one-off: create the upload-only key the app bundles (gitignored). Then `just ios` and rebuild.
 ios-key:
     gcloud iam service-accounts keys create ios/TrainRecorder/uploader-key.json \
         --iam-account "$(terraform -chdir=infra output -raw recorder_service_account)" --project train-fusion
 
+# phone-sensor-fusion: features -> fit -> infer -> evaluate, leaving each recording out in turn
+# (phone-sensor-fusion/README.md); e.g. `just psf --ablate`, `just psf --final`
+psf *args:
+    cd phone-sensor-fusion && python -m pipeline {{args}}
+
+# phone-sensor-fusion viewer at http://127.0.0.1:3040: features, filtered and smoothed inference, audio
+psf-view:
+    cd phone-sensor-fusion && python -m viewer.export && python -m viewer.serve
+
 test:
     python -m pytest -q tests
+    cd phone-sensor-fusion && python -m pytest -q tests
