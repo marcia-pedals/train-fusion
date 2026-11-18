@@ -61,7 +61,7 @@ private struct StatusCard: View {
     private var look: (text: String, icon: String, color: Color) {
         if let waiting { return (waiting, "ear", .secondary) }
         // before the first door chime the model can't tell a platform from a train
-        guard belief.stops > 0 else { return ("Listening for door to start tracking…", "ear", .secondary) }
+        guard belief.stops > 0 else { return ("Waiting for the first stop…", "ear", .secondary) }
         switch mode {
         case 0:
             // 90 % of the belief lies within 1.645 sd
@@ -95,6 +95,7 @@ private struct StatusCard: View {
 private struct PlaceCard: View {
     fileprivate let belief: Belief
     @AppStorage(Units.key) private var metric = false
+    @ScaledMetric(relativeTo: .subheadline) private var labelHeight: CGFloat = 38  // as in StationBar
 
     var body: some View {
         let u = Units(metric: metric)
@@ -106,7 +107,7 @@ private struct PlaceCard: View {
                         Text(p.southbound ? "Southbound" : "Northbound").font(.subheadline.weight(.medium))
                         Spacer(minLength: 6)
                         if let other = p.alternative, p.confidence <= 0.9 {
-                            Text("or \(other)").font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.6)
+                            Text("or \(stationShortName(other))").font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.6)
                         }
                         Text(p.confidence > 0.9 ? "confident" : p.confidence > 0.6 ? "fairly sure" : "a guess")
                             .font(.caption.weight(.medium))
@@ -124,15 +125,20 @@ private struct PlaceCard: View {
                                moving: belief.modeP.first.map { $0 > 0.5 } ?? false, units: u)
                 } else {
                     SegmentBar(progress: 0, moving: false, skeleton: true)
-                    HStack(spacing: 6) {
-                        Text("Station name").font(.subheadline.weight(.semibold))
-                        Text(u.distance(0)).font(.subheadline)
+                    // the same two lines as the station bar's labels
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Station name").font(.subheadline.weight(.semibold))
+                            Text(u.distance(0)).font(.footnote)
+                        }
                         Spacer(minLength: 8)
-                        Text(u.distance(0)).font(.subheadline)
-                        Text("Station name").font(.subheadline.weight(.semibold))
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text("Station name").font(.subheadline.weight(.semibold))
+                            Text(u.distance(0)).font(.footnote)
+                        }
                     }
                     .lineLimit(1)
-                    .frame(height: 20)
+                    .frame(height: labelHeight, alignment: .top)
                     .redacted(reason: .placeholder)
                 }
             }
@@ -178,6 +184,7 @@ private struct StationBar: View {
     let phase: PlacePhase
     let moving: Bool
     let units: Units
+    @ScaledMetric(relativeTo: .subheadline) private var labelHeight: CGFloat = 38  // a name, a distance under it
 
     private struct Node: Identifiable {
         let id: String  // the station's name
@@ -243,23 +250,27 @@ private struct StationBar: View {
             }
             .frame(height: 28)
             GeometryReader { g in
-                ZStack(alignment: .leading) {
+                ZStack(alignment: .topLeading) {
                     ForEach(nodes) { node in
                         let side = phase == .station && node.x != 0.5
-                        HStack(spacing: 6) {
-                            if node.x > 0.5, let d = node.distance { distance(d) }
-                            Text(node.id)
+                        let edge = min(max(node.x, 0), 1)
+                        let align: HorizontalAlignment = edge == 0 ? .leading : edge == 1 ? .trailing : .center
+                        // the name, and under it the distance to it
+                        VStack(alignment: align, spacing: 1) {
+                            Text(stationShortName(node.id))
                                 .font(side ? .footnote : .subheadline.weight(.semibold))
                                 .foregroundStyle(side ? .secondary : .primary)
-                            if node.x <= 0.5, let d = node.distance { distance(d) }
+                                .minimumScaleFactor(0.6)
+                            if let d = node.distance { distance(d) }
                         }
                         .lineLimit(1)
-                        .fixedSize()
+                        // each station gets its own share of the width, so names never overlap
+                        .frame(width: g.size.width * labelShare(node) - 4, alignment: Alignment(horizontal: align, vertical: .top))
                         // left-aligned at 0, centred at 0.5, right-aligned at 1
                         // (a station off the card is laid out at the edge and then pushed out
                         // with an offset: laid out beyond the edge it would shift all the others)
-                        .alignmentGuide(.leading) { d in -min(max(node.x, 0), 1) * (g.size.width - d.width) }
-                        .offset(x: (node.x - min(max(node.x, 0), 1)) * g.size.width * 0.5)
+                        .alignmentGuide(.leading) { d in -edge * (g.size.width - d.width) }
+                        .offset(x: (node.x - edge) * g.size.width * 0.5)
                         .opacity(node.visible ? 1 : 0)
                     }
                     if place.next == nil, phase == .between {
@@ -267,18 +278,34 @@ private struct StationBar: View {
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                 }
-                .frame(width: g.size.width, height: 20, alignment: .leading)
+                .frame(width: g.size.width, height: labelHeight, alignment: .topLeading)
             }
-            .frame(height: 20)
+            .frame(height: labelHeight)
         }
         // only a change of phase is animated: the train's own progress, or a jump to
         // another station, is not
         .animation(.easeInOut(duration: 0.7), value: phase)
     }
 
-    private func distance(_ text: String) -> some View {
-        Text(text).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary).transition(.opacity)
+    /// How much of the card's width a station's label may take: half each for the two ends
+    /// of a leg, and when standing at a station a little more for it than for its neighbours.
+    private func labelShare(_ node: Node) -> CGFloat {
+        phase == .station ? (node.x == 0.5 ? 0.4 : 0.3) : 0.5
     }
+
+    private func distance(_ text: String) -> some View {
+        Text(text).font(.footnote.monospacedDigit()).foregroundStyle(.secondary).transition(.opacity)
+    }
+}
+
+/// The names that don't fit on a small screen, shortened.
+func stationShortName(_ name: String) -> String {
+    [
+        "San Francisco 4th & King Street": "San Francisco",
+        "South San Francisco": "South SF",
+        "California Avenue": "California Ave",
+        "San Jose Diridon": "San Jose",
+    ][name] ?? name
 }
 
 /// The stops so far: when the doors opened and closed at each (the start of each chime).
@@ -309,7 +336,7 @@ private struct StopsCard: View {
                 ForEach(0..<Self.rows, id: \.self) { k in
                     GridRow {
                         if k < stops.count {
-                            Text(stops[k].station ?? "?").font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
+                            Text(stops[k].station.map(stationShortName) ?? "?").font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
                             Text(time(stops[k].opened))
                             Text(time(stops[k].closed))
                         } else {
@@ -342,9 +369,6 @@ private struct SensorRow: View {
         let color: Color
         let state: String
         var number: String?
-
-        /// One word for under the badge.
-        var caption: String { ["Motor tone": "Tone", "Wheel vibration": "Vibration"][id] ?? id }
     }
 
     private static func pen(_ size: CGFloat) -> StrokeStyle {
@@ -386,23 +410,23 @@ private struct SensorRow: View {
         let phone = b.phoneP.indices.max { b.phoneP[$0] < b.phoneP[$1] } ?? 2
         let moving = b.stops > 0 && (b.modeP.first ?? 0) > 0.5
         var out = [Item(id: "Steadiness", icon: "iphone", color: [.green, .yellow, .red][phone],
-                        state: ["lying still", "held", "being moved"][phone],
+                        state: ["lying still", "held", "moving"][phone],
                         number: String(format: "%.0f %%", b.phoneP[phone] * 100))]
 
-        let idle = b.stops > 0 ? "not needed (stopped)" : "waiting for tracking"
+        let idle = b.stops > 0 ? "stopped" : "waiting"
         if phone != 0 {
-            out.append(Item(id: "Acceleration", icon: "spring", color: .gray, state: "off (phone not still)"))
+            out.append(Item(id: "Acceleration", icon: "spring", color: .gray, state: "needs phone still"))
         } else if let a = b.accelReading {
             out.append(Item(id: "Acceleration", icon: "spring", color: .green, state: "in use",
                             number: String(format: "%+.2f m/s²", a)))
         } else {
-            out.append(Item(id: "Acceleration", icon: "spring", color: .yellow, state: "finding which way is forward"))
+            out.append(Item(id: "Acceleration", icon: "spring", color: .yellow, state: "finding forward"))
         }
 
         if !moving {
             out.append(Item(id: "Motor tone", icon: "waveform", color: .gray, state: idle))
         } else if b.speedMean < 10 {
-            out.append(Item(id: "Motor tone", icon: "waveform", color: .gray, state: "too slow to hear"))
+            out.append(Item(id: "Motor tone", icon: "waveform", color: .gray, state: "too slow"))
         } else if let e = b.toneEvidence {
             let (c, word, number) = Self.grade(e)
             out.append(Item(id: "Motor tone", icon: "waveform", color: c, state: word, number: number))
@@ -411,7 +435,7 @@ private struct SensorRow: View {
         if !moving {
             out.append(Item(id: "Wheel vibration", icon: "wheel", color: .gray, state: idle))
         } else if phone == 2 {
-            out.append(Item(id: "Wheel vibration", icon: "wheel", color: .gray, state: "off (phone being moved)"))
+            out.append(Item(id: "Wheel vibration", icon: "wheel", color: .gray, state: "phone moving"))
         } else if let e = b.wheelEvidence {
             let (c, word, number) = Self.grade(e)
             out.append(Item(id: "Wheel vibration", icon: "wheel", color: c, state: word, number: number))
@@ -427,10 +451,7 @@ private struct SensorRow: View {
                 Button { withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() } } label: {
                     HStack(spacing: 0) {
                         ForEach(items) { item in
-                            VStack(spacing: 3) {
-                                badge(item, size: 34)
-                                Text(item.caption).font(.caption2).foregroundStyle(.secondary)
-                            }
+                            badge(item, size: 34)
                             .frame(maxWidth: .infinity)
                             .accessibilityElement(children: .ignore)
                             .accessibilityLabel("\(item.id): \(item.state)")

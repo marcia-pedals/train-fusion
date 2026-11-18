@@ -166,8 +166,8 @@ private struct TrackScreen: View {
         let total = Int(recording.duration ?? 0)
         return VStack(spacing: 6) {
             HStack(spacing: 10) {
-                ProgressView(value: Double(min(replay.position, total)), total: Double(max(total, 1)))
                 Text("\(clock(replay.position)) / \(clock(total))").font(.footnote.monospacedDigit())
+                Spacer(minLength: 0)
                 Text(recording.started?.formatted(.dateTime.month(.abbreviated).day().hour().minute()) ?? recording.id)
                     .font(.footnote).foregroundStyle(.secondary).lineLimit(1)
             }
