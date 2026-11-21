@@ -1,15 +1,18 @@
-"""The service's web pages: universal links, the email sign-in landing page, the privacy
-policy, and the health check."""
+"""The service's web pages: the email sign-in landing page, the privacy policy, and the
+health check."""
 from __future__ import annotations
 
 import html
+from urllib.parse import urlencode
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from .config import Settings
 
 APP_NAME = "Train Fusion"
+# the app's own URL scheme (CFBundleURLTypes in ios/project.yml)
+APP_SCHEME = "trainfusion"
 
 STYLE = """
 :root { color-scheme: light dark; }
@@ -27,26 +30,21 @@ def page(title: str, body: str) -> HTMLResponse:
         f"<body>{body}</body></html>")
 
 
-def aasa(s: Settings) -> dict:
-    return {
-        "applinks": {
-            "details": [{
-                "appIDs": [s.apple_app_id],
-                "components": [{"/": "/auth/*", "comment": "emailed sign-in links"}],
-                # the older format, for iOS before 13
-                "appID": s.apple_app_id,
-                "paths": ["/auth/*"],
-            }],
-        },
-    }
-
-
-EMAIL_LINK = f"""
+def email_link(code: str | None) -> str:
+    """Where an emailed sign-in link ends up: Identity Platform's link goes through its own
+    domain (which can't be changed) and redirects here with the one-time code, so this page
+    hands the code to the app through the app's URL scheme."""
+    if not code:
+        return f"""
 <h1>Sign in to {APP_NAME}</h1>
-<p>This sign-in link has to be opened by the {APP_NAME} app.</p>
-<p>Open it <strong>on the phone where you asked to sign in</strong>, with the app installed:
-tap the link in the email there. If it opened this page instead, make sure the app is
-installed, then long-press the link in the email and choose to open it in {APP_NAME}.</p>
+<p>This sign-in link isn't complete. Ask for a new one in the app.</p>
+"""
+    link = html.escape(f"{APP_SCHEME}://auth/email-link?" + urlencode({"mode": "signIn", "oobCode": code}))
+    return f"""
+<h1>Sign in to {APP_NAME}</h1>
+<p><a href="{link}" style="display:inline-block; padding:.7rem 1.4rem; border-radius:.6rem;
+   background:#0a66d8; color:#fff; text-decoration:none; font-weight:600">Open in {APP_NAME}</a></p>
+<p>Do this <strong>on the phone where you asked to sign in</strong>, with the app installed.</p>
 <p>If you asked on another device, or the link has expired, ask for a new link in the app.</p>
 """
 
@@ -129,13 +127,9 @@ data: {contact}.</p>
 
 
 def add_routes(app: FastAPI, s: Settings) -> None:
-    @app.get("/.well-known/apple-app-site-association", include_in_schema=False)
-    def apple_app_site_association():
-        return JSONResponse(aasa(s), media_type="application/json")
-
     @app.get("/auth/email-link", include_in_schema=False)
-    def email_link():
-        return page(f"Sign in to {APP_NAME}", EMAIL_LINK)
+    def email_link_page(request: Request):
+        return page(f"Sign in to {APP_NAME}", email_link(request.query_params.get("oobCode")))
 
     @app.get("/privacy", include_in_schema=False)
     def privacy_page():

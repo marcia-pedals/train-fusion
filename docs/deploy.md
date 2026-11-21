@@ -158,7 +158,6 @@ the output that `just ios-config` reads.
        -target=google_artifact_registry_repository_iam_member.api_builder_push \
        -target=google_project_iam_member.api_builder_logs
    just api-deploy                # build backend/ and deploy it; ends by checking /health
-   just auth-email-link-setup     # emailed sign-in links land on <api_url>/auth/email-link
    ```
 
    (Check from outside with `/health`: Cloud Run's front end answers `/healthz` itself.)
@@ -181,7 +180,10 @@ the output that `just ios-config` reads.
      Key ID and the `.p8`'s contents. The code flow settings let Identity Platform revoke
      a user's Apple tokens when they delete their account (Apple requires that), and are
      what web and Android sign-in will use later.
-   - **Email link** is on already (terraform: email, no password).
+   - **Email link** is on already (terraform: email, no password). The emailed link goes
+     through `train-fusion.firebaseapp.com` (Identity Platform won't let this project change
+     that) and lands on `<api_url>/auth/email-link`, whose "Open in Train Fusion" button
+     opens the app (`trainfusion://`).
 5. `just ios-config` (writes `ios/Config.xcconfig`, gitignored: the API host, the API key,
    the Google client ids), `just ios`, build, and install on every phone that records.
    The bundle id changed (`…TrainRecorder` → `…TrainFusion`), so this installs as a second

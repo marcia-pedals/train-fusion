@@ -13,8 +13,6 @@ class Settings:
     anon_uploads_per_day: int = 24
     user_uploads_per_day: int = 12
     signups_per_day: int = 24
-    # <team id>.<bundle id>, for the apple-app-site-association file
-    apple_app_id: str = "4Q3J7GB2S8.io.github.marcia-pedals.TrainFusion"
     # shown on /privacy; set from terraform.tfvars (gitignored), never in git
     contact_email: str = ""
 
@@ -36,6 +34,5 @@ class Settings:
             anon_uploads_per_day=get("ANON_UPLOADS_PER_DAY", d.anon_uploads_per_day),
             user_uploads_per_day=get("USER_UPLOADS_PER_DAY", d.user_uploads_per_day),
             signups_per_day=get("SIGNUPS_PER_DAY", d.signups_per_day),
-            apple_app_id=get("APPLE_APP_ID", d.apple_app_id),
             contact_email=get("CONTACT_EMAIL", d.contact_email),
         )

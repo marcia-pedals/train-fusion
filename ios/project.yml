@@ -25,12 +25,15 @@ targets:
       path: TrainRecorder/TrainRecorder.entitlements
       properties:
         com.apple.developer.applesignin: [Default]
-        # emailed sign-in links (https://<backend>/auth/...) open the app
-        com.apple.developer.associated-domains: ["applinks:$(API_HOST)"]
     info:
       path: TrainRecorder/Info.plist
       properties:
         CFBundleDisplayName: Train Fusion
+        # trainfusion://auth/email-link?oobCode=…: the backend's /auth/email-link page hands
+        # an emailed sign-in link to the app with this (Account.handle(url:))
+        CFBundleURLTypes:
+          - CFBundleURLName: io.github.marcia-pedals.TrainFusion
+            CFBundleURLSchemes: [trainfusion]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}

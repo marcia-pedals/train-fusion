@@ -450,13 +450,13 @@ def test_deletion_request(env):
 # ------------------------------------------------------------------ pages
 
 def test_pages(env):
+    r = env.client.get("/auth/email-link?apiKey=k&mode=signIn&oobCode=a%26b<c&lang=en")
+    assert r.status_code == 200
+    assert 'href="trainfusion://auth/email-link?mode=signIn&amp;oobCode=a%26b%3Cc"' in r.text
+    r = env.client.get("/auth/email-link")
+    assert r.status_code == 200 and "trainfusion://" not in r.text and "new one" in r.text
     r = env.client.get("/.well-known/apple-app-site-association")
-    assert r.status_code == 200 and r.headers["content-type"] == "application/json"
-    details = r.json()["applinks"]["details"][0]
-    assert details["appIDs"] == ["4Q3J7GB2S8.io.github.marcia-pedals.TrainFusion"]
-    assert details["components"][0]["/"] == "/auth/*"
-    r = env.client.get("/auth/email-link?mode=signIn&oobCode=x")
-    assert r.status_code == 200 and "phone" in r.text
+    assert r.status_code == 404
     r = env.client.get("/privacy")
     assert r.status_code == 200 and "contact@example.com" in r.text and "30 days" in r.text
     for path in ["/healthz", "/health"]:

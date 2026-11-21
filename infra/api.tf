@@ -6,13 +6,11 @@
 # alone). Settings (env vars) are changed here, with `just tf apply`.
 #
 # Done by hand, once (docs/deploy.md): the Google OAuth clients, the Apple and Google
-# providers in Identity Platform, and the emailed links' landing page
-# (`just auth-email-link-setup`).
+# providers in Identity Platform.
 
 locals {
   api_host     = trimprefix(google_cloud_run_v2_service.api.uri, "https://")
   ios_bundle   = "io.github.marcia-pedals.TrainFusion"
-  apple_app_id = "4Q3J7GB2S8.${local.ios_bundle}" # DEVELOPMENT_TEAM in ios/project.yml
 }
 
 # ------------------------------------------------------------------ the service
@@ -58,7 +56,6 @@ resource "google_cloud_run_v2_service" "api" {
           ANON_UPLOADS_PER_DAY = "24"
           USER_UPLOADS_PER_DAY = "12"
           SIGNUPS_PER_DAY      = "24"
-          APPLE_APP_ID         = local.apple_app_id
           CONTACT_EMAIL        = var.contact_email
         }
         content {

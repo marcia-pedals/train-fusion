@@ -86,19 +86,6 @@ api-deploy:
     gcloud run services update api --project train-fusion --region us-west1 --image "$image"
     curl -fsS "$(tf api_url)/health" && echo " <- $(tf api_url)"
 
-# once (and whenever the API's URL changes): emailed sign-in links land on the API's
-# /auth/email-link, which the app opens as a universal link
-auth-email-link-setup:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    url=$(terraform -chdir=infra output -raw api_url)
-    curl -fsS -X PATCH \
-        "https://identitytoolkit.googleapis.com/admin/v2/projects/train-fusion/config?updateMask=notification.sendEmail.callbackUri" \
-        -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-        -H "X-Goog-User-Project: train-fusion" -H "Content-Type: application/json" \
-        -d "{\"notification\": {\"sendEmail\": {\"callbackUri\": \"$url/auth/email-link\"}}}" \
-        | jq '.notification.sendEmail.callbackUri'
-
 # recordings people asked to have deleted, with the commands to delete each by hand;
 # `just recording-deletions --done <request id>` once you have (backend/admin.py)
 recording-deletions *args:

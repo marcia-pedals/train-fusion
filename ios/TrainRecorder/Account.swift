@@ -158,11 +158,11 @@ final class Account {
         }
     }
 
-    /// An emailed sign-in link, opened on this phone (a universal link to the backend's
-    /// /auth/…). Returns whether it was one.
+    /// An emailed sign-in link, handed over by the backend's /auth/email-link page as
+    /// trainfusion://auth/email-link?oobCode=… Returns whether it was one.
     @discardableResult
     func handle(url: URL) -> Bool {
-        guard url.host == BackendConfig.host, url.path.hasPrefix("/auth/") else { return false }
+        guard url.scheme == "trainfusion", url.host == "auth" else { return false }
         guard let code = Self.oobCode(in: url) else {
             error = "That sign-in link isn't complete. Ask for a new one."
             return true

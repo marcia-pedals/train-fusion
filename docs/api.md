@@ -156,10 +156,10 @@ developer (`just recording-deletions`). `200 {"requested": n}` (0 if there was n
 
 ## Pages
 
-- `GET /.well-known/apple-app-site-association`: universal links for `/auth/*` (the
-  emailed sign-in link opens the app).
-- `GET /auth/email-link`: where an emailed sign-in link lands when it isn't opened by the
-  app (no app installed, another device): says to open it on the phone that asked.
+- `GET /auth/email-link`: where an emailed sign-in link lands. The link goes through
+  Identity Platform's own domain (`<project>.firebaseapp.com`; this project can't change
+  that), which redirects here with `oobCode`. The page's "Open in Train Fusion" button
+  hands the code to the app: `trainfusion://auth/email-link?mode=signIn&oobCode=…`.
 - `GET /privacy`: the privacy policy.
 - `GET /healthz`: `200 ok`.
 
