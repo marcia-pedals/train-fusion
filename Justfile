@@ -56,6 +56,11 @@ ios-key:
     gcloud iam service-accounts keys create ios/TrainRecorder/uploader-key.json \
         --iam-account "$(terraform -chdir=infra output -raw recorder_service_account)" --project train-fusion
 
+# phone recordings: download new ones from the bucket's raw/, sync labels/ both ways
+# (phone-sensor-fusion/common/sync.py); e.g. `just sync-recordings --dry-run`
+sync-recordings *args:
+    cd phone-sensor-fusion && python -m common.sync {{args}}
+
 # phone-sensor-fusion: features -> fit -> infer -> evaluate, leaving each recording out in turn
 # (phone-sensor-fusion/README.md); e.g. `just psf --ablate`, `just psf --final`
 psf *args:

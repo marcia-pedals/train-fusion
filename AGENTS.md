@@ -51,8 +51,9 @@ commit messages.
 
 Everything of that kind lives under the gitignored `data/`:
 
-- recordings (`data/app-recordings`) and whisper transcripts;
-- labels (`data/phone-sensor-fusion-labels`): made by hand, not rebuildable;
+- recordings (`data/recordings/raw`) and whisper transcripts;
+- labels (`data/recordings/labels`): made by hand, not rebuildable. Backed up both ways
+  with the bucket's `labels/` by `just sync-recordings`: sync after labelling;
 - anything named after a recording or drawn from one: the leave-one-out parameters
   (`data/phone-sensor-fusion/params`), plots, viewer exports, replay dumps.
 
@@ -64,7 +65,7 @@ In files git sees:
   no named station in connection with a ride ("the leg into X"). Station names as facts
   about the line (the map, the model's station list, a made-up example) are fine.
 - **Rides are called A, B, C, …** in docs and comments. The key is
-  `data/phone-sensor-fusion-labels/RIDES.md`; add to it when a ride gets labelled.
+  `data/recordings/labels/RIDES.md`; add to it when a ride gets labelled.
 - **No quotes from transcripts**, of announcements or of people.
 - **No figures made from a recording.** Say which command draws it instead.
 - Only `phone-sensor-fusion/params/all.json` is checked in: it is fitted on every ride

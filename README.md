@@ -12,6 +12,7 @@ scipy, …), just, node, gcloud and terraform, puts `bin/` on PATH, and loads `.
 
 ```sh
 just sync                          # download what's new from the GCS archive into data/
+just sync-recordings               # phone recordings and their labels <-> gs://train-fusion-recordings
 just build 2026-11-07 2026-11-08   # derive everything (incl. the reference) for these dates
 just build --last-week             # ... for every archived date among the last 7 days
 just explore                       # explorer at http://127.0.0.1:3030

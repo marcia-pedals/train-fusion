@@ -94,7 +94,7 @@ final class RecordingStore {
         do {
             let files = try FileManager.default.contentsOfDirectory(at: recording.url, includingPropertiesForKeys: nil)
                 .filter { !$0.lastPathComponent.hasPrefix(".") }
-            try await GCSUploader.shared.upload(files: files, prefix: recording.id + "/") { fraction in
+            try await GCSUploader.shared.upload(files: files, prefix: GCSUploader.prefix + recording.id + "/") { fraction in
                 Task { @MainActor in
                     if case .uploading = self.uploads[recording.id] { self.uploads[recording.id] = .uploading(fraction) }
                 }

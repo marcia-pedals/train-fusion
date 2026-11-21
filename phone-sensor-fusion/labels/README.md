@@ -2,9 +2,10 @@
 
 Ground truth for the four recordings: for fitting the features and the model, and for
 scoring them. The labels themselves are **not checked in**: they live in the repo's gitignored data
-directory, `data/phone-sensor-fusion-labels/<recording>/` (`common/paths.py`: `LABELS`),
+directory, `data/recordings/labels/<recording>/` (`common/paths.py`: `LABELS`),
 because which train someone took when is private. They are made by hand and can't be
-rebuilt, so back that directory up along with the recordings. Times are seconds since the start
+rebuilt, so `just sync-recordings` after labelling: it backs them up to the recordings bucket
+(`labels/`), and brings them back on another checkout. Times are seconds since the start
 of the recording.
 
 | file | what | how it was made | good to |

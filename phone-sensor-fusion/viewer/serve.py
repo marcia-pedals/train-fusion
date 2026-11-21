@@ -5,7 +5,7 @@
 
 /            viewer/static/
 /data/...    data/phone-sensor-fusion/viewer/   (what viewer/export.py wrote)
-/audio/<id>  the recording's audio, straight from data/app-recordings
+/audio/<id>  the recording's audio, straight from data/recordings/raw
 
 A small server of its own because the browser needs HTTP range requests to seek in the
 audio, which python's http.server doesn't do.

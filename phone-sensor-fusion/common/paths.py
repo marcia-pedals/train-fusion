@@ -6,9 +6,15 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent  # phone-sensor-fusion/
 REPO = HERE.parent
-RECORDINGS = REPO / "data" / "app-recordings"  # raw, as uploaded by the phone
+# data/recordings/ mirrors the recordings bucket: raw/ is what the phone uploaded, labels/
+# what we made by hand. `just sync-recordings` (common/sync.py) keeps the two in step.
+BUCKET = "train-fusion-recordings"  # GCSUploader.bucket in the app, var.recordings_bucket in infra/
+RAW_PREFIX = "raw/"  # the app uploads to raw/<id>/ (GCSUploader.prefix)
+LABELS_PREFIX = "labels/"
+RECORDINGS_DATA = REPO / "data" / "recordings"
+RECORDINGS = RECORDINGS_DATA / "raw"  # raw, as uploaded by the phone: bucket -> laptop only
+LABELS = RECORDINGS_DATA / "labels"  # manual labels: not rebuildable, not checked in, synced both ways
 DERIVED = REPO / "data" / "phone-sensor-fusion"  # caches and outputs, rebuildable
-LABELS = REPO / "data" / "phone-sensor-fusion-labels"  # manual labels: not rebuildable, and not checked in
 PARAMS = HERE / "params"  # all.json: fitted on every labelled recording (checked in)
 CV_PARAMS = DERIVED / "params"  # leave-one-out fits, named after recordings (not checked in)
 

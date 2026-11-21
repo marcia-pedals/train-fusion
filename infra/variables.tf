@@ -26,7 +26,7 @@ variable "alert_email" {
 }
 
 variable "recordings_bucket" {
-  description = "Phone recordings. Must match GCSUploader.bucket in ios/TrainRecorder/GCSUploader.swift."
+  description = "Phone recordings. Must match GCSUploader.bucket in ios/TrainRecorder/GCSUploader.swift and BUCKET in phone-sensor-fusion/common/paths.py."
   type        = string
   default     = "train-fusion-recordings"
 }

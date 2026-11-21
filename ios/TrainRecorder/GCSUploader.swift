@@ -3,10 +3,13 @@ import Security
 
 /// Uploads files to the recordings bucket as the `recorder` service account, whose key
 /// (uploader-key.json, from `just ios-key`) is bundled into the app. That account can only
-/// create objects in this one bucket: it can't read, replace or delete anything.
+/// create objects under `raw/` in this one bucket: it can't read, replace or delete anything.
 final class GCSUploader {
     static let shared = GCSUploader()
     static let bucket = "train-fusion-recordings"
+    /// Recordings go to `raw/<id>/`; the rest of the bucket (`labels/`) is the laptop's.
+    /// The service account may only create objects under this prefix (infra/recordings.tf).
+    static let prefix = "raw/"
 
     struct Failure: LocalizedError {
         let errorDescription: String?

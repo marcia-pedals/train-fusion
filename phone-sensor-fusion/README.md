@@ -125,7 +125,7 @@ The pipeline is five folders, each with its own README, used in this order:
 |---|---|---|
 | [`exploration/`](exploration/README.md) | scripts that look at the raw recordings, and what they found | nothing downstream imports it |
 | [`maps/`](maps/README.md) | the Caltrain line as a 1-D track model from OpenStreetMap: stations, curvature, switches, crossings | `maps/data/` checked in |
-| [`labels/`](labels/README.md) | manual and semi-automatic ground truth: stations, door chimes, wheel stop/start, on/off the train, phone handling, speed | the labels themselves are in `../data/phone-sensor-fusion-labels/<recording>/`, not checked in |
+| [`labels/`](labels/README.md) | manual and semi-automatic ground truth: stations, door chimes, wheel stop/start, on/off the train, phone handling, speed | the labels themselves are in `../data/recordings/labels/<recording>/`, not checked in |
 | [`features/`](features/README.md) | measurements per second, from deterministic signal processing to small learned classifiers | cached in `data/phone-sensor-fusion/features/` |
 | [`model/`](model/README.md) | the HMM over (mode, speed), the station layer on top, fitting, evaluation | `params/all.json` (fitted on every ride) checked in; the cross-validation fits go to `data/` |
 
@@ -148,7 +148,8 @@ maps ─────────────────────────
 ## Running it
 
 Inside the repo's nix shell (`direnv allow`; or prefix commands with `bin/psf-dev`), from
-this directory. Recordings go in `../data/app-recordings/<id>/`.
+this directory. Recordings are in `../data/recordings/raw/<id>/` and labels in `../data/recordings/labels/<id>/`:
+`just sync-recordings` fetches both from the bucket (and uploads new labels).
 
 ```sh
 python -m pipeline              # features if missing, then leave-one-recording-out: fit, infer, evaluate

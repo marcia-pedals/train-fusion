@@ -1,6 +1,6 @@
 #!/bin/sh
 # Try the app's online inference off the train: build it for the simulator, put the
-# recordings from data/app-recordings into the simulator's copy of the app, replay them
+# recordings from data/recordings/raw into the simulator's copy of the app, replay them
 # through the model as fast as it goes, and compare what the app computed with the Python
 # pipeline (features) and with the labels and the map (speed, leg distances, stations).
 #
@@ -25,10 +25,10 @@ xcrun simctl terminate "$DEV" $BID 2>/dev/null || true
 xcrun simctl install "$DEV" ios/build/Build/Products/Release-iphonesimulator/TrainRecorder.app
 C=$(xcrun simctl get_app_container "$DEV" $BID data)
 mkdir -p "$C/Documents/recordings"
-[ $# -gt 0 ] || set -- $(ls data/phone-sensor-fusion-labels)
+[ $# -gt 0 ] || set -- $(cd data/recordings/labels && ls -d */ | tr -d /)
 rm -rf "$C/Documents/replay_dump"
 for r in "$@"; do
-  [ -d "$C/Documents/recordings/$r" ] || cp -R "data/app-recordings/$r" "$C/Documents/recordings/"
+  [ -d "$C/Documents/recordings/$r" ] || cp -R "data/recordings/raw/$r" "$C/Documents/recordings/"
   xcrun simctl launch "$DEV" $BID -autoreplay "$r" -replayspeed max -dump >/dev/null
   f="$C/Documents/replay_dump/$r.jsonl"; prev=-1
   while :; do  # done when the dump stops growing

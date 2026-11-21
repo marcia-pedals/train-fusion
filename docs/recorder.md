@@ -4,11 +4,12 @@ A one-screen iPhone app for recording a train ride from the inside: audio (to he
 door chimes and the traction motors) plus raw accelerometer, gyroscope and magnetometer
 samples and the barometer, all
 with timestamps that convert to exact clock time. One button starts and stops a recording;
-each recording in the list can be uploaded to `gs://train-fusion-recordings` or deleted.
+each recording in the list can be uploaded to `gs://train-fusion-recordings/raw/` or deleted.
 Recording carries on with the app in the background and the phone locked.
 
 The recordings are used by [phone-sensor-fusion/](../phone-sensor-fusion/README.md), which infers the
-train's stops, speed and position from them. Put them in `data/app-recordings/<id>/`.
+train's stops, speed and position from them. `just sync-recordings` downloads them to
+`data/recordings/raw/<id>/` (and syncs their labels, `data/recordings/labels/`, both ways).
 
 ## Screens
 
@@ -100,7 +101,7 @@ What the online version can't do like the offline pipeline, and does instead:
 ```sh
 just ios-model            # in the nix shell: model.json + reference features
 just ios                  # generate the Xcode project
-bin/ios-sim-replay        # outside the nix shell: build, load data/app-recordings, replay, compare
+bin/ios-sim-replay        # outside the nix shell: build, load data/recordings/raw, replay, compare
 ```
 
 `bin/ios-sim-replay` copies the recordings into the simulator's copy of the app, replays
@@ -131,7 +132,7 @@ can do is add objects there. Don't distribute the app beyond your own devices.
 ## A recording
 
 `Documents/recordings/<id>/` on the phone (also visible in the Files app, and in Finder
-with the phone plugged in), uploaded as `gs://train-fusion-recordings/<id>/`. `<id>` is
+with the phone plugged in), uploaded as `gs://train-fusion-recordings/raw/<id>/`. `<id>` is
 the start time in UTC, e.g. `20261115T181502Z`.
 
 | File | |
