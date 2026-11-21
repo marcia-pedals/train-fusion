@@ -14,8 +14,49 @@ struct UploadConsent: Identifiable {
 
     struct Answer {
         let upload: Bool
-        /// Stop asking after each ride (Settings: "Ask to share after each ride" off).
+        /// Stop asking after each ride (Settings: Full Recordings, Share: "Don't ask").
         let stopAsking: Bool
+    }
+}
+
+/// What each kind of sharing is, as icon lines: in the questions, and behind Settings' ?
+/// (`SharingInfoSheet`), so the two always say the same.
+enum SharingInfo {
+    static let recordingPurpose = "To improve the localizer"
+    static let recordingRows: [ConsentSheet.Row] = [
+        .init("waveform", "Audio, including nearby voices"),
+        .init("sensor", "Motion, compass, barometer"),
+        .init("lock", "Only this app's devs get it"),
+    ]
+
+    static let measurementsPurpose = "For train operations research"
+    static let measurementsRows: [ConsentSheet.Row] = [
+        .init("tram", "Position, speed, stops, times"),
+        .init("waveform.slash", "No audio"),
+        .init("person.2", "Anyone who asks gets it",
+              more: "We remove your account and device IDs first. They must agree to use the data only for train operations research, and only publish aggregated statistics, but we cannot guarantee what they do after they receive the data."),
+    ]
+
+    static let deleteRow = ConsentSheet.Row("trash", "Delete any time in Settings")
+}
+
+/// Settings' ?: what's shared, laid out like the question, with just an OK.
+struct SharingInfoSheet: View, Identifiable {
+    enum Kind { case measurements, recordings }
+
+    let kind: Kind
+    var id: Kind { kind }
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        switch kind {
+        case .measurements:
+            ConsentSheet(title: "Sharing Train Measurements", subtitle: SharingInfo.measurementsPurpose,
+                         rows: SharingInfo.measurementsRows, choices: [.init("OK", primary: true) { dismiss() }])
+        case .recordings:
+            ConsentSheet(title: "Sharing full recordings", subtitle: SharingInfo.recordingPurpose,
+                         rows: SharingInfo.recordingRows, choices: [.init("OK", primary: true) { dismiss() }])
+        }
     }
 }
 
@@ -26,13 +67,8 @@ struct UploadConsentSheet: View {
     var body: some View {
         ConsentSheet(
             title: "Share full recording?",
-            subtitle: "To improve the localizer · " + ByteCountFormatter.string(fromByteCount: request.bytes, countStyle: .file),
-            rows: [
-                .init("waveform", "Audio, including nearby voices"),
-                .init("sensor", "Motion, compass, barometer"),
-                .init("lock", "Only this app's devs get it"),
-                .init("trash", "Delete any time in Settings"),
-            ],
+            subtitle: SharingInfo.recordingPurpose + " · " + ByteCountFormatter.string(fromByteCount: request.bytes, countStyle: .file),
+            rows: SharingInfo.recordingRows + [SharingInfo.deleteRow],
             choices: [
                 .init("Share", primary: true) { answer(.init(upload: true, stopAsking: false)) },
                 .init("Don't share") { answer(.init(upload: false, stopAsking: false)) },
@@ -54,14 +90,8 @@ struct MeasurementsConsentSheet: View {
     var body: some View {
         ConsentSheet(
             title: "Share Train Measurements?",
-            subtitle: "For train operations research",
-            rows: [
-                .init("tram", "Position, speed, stops, exact times"),
-                .init("waveform.slash", "No audio"),
-                .init("person.2", "Anyone who asks gets it",
-                      more: "We remove your account and device IDs first. They must agree to use the data only for train operations research, and only publish aggregated statistics, but we cannot guarantee what they do after they receive the data."),
-                .init("trash", "Delete any time in Settings"),
-            ],
+            subtitle: SharingInfo.measurementsPurpose,
+            rows: SharingInfo.measurementsRows + [SharingInfo.deleteRow],
             choices: [
                 .init("Always share", primary: true) { answer(.always) },
                 .init("Share just this ride") { answer(.thisRide) },

@@ -72,7 +72,7 @@ the bucket without limit; anyone with a build could extract it.)
   device secret (below); when signed in, they're also linked to the account.
 - When a recording starts, once it has started (it keeps recording meanwhile), the app asks
   "Share Train Measurements?" ("For train operations research"), one line each:
-  "Position, speed, stops, exact times"; "No audio"; "**Anyone who asks gets it**" (with
+  "Position, speed, stops, times"; "No audio"; "**Anyone who asks gets it**" (with
   details behind an ⓘ: "We remove your account and device IDs first. They must agree to use the data only for train
   operations research, and only publish aggregated statistics, but we cannot guarantee
   what they do after they receive the data."); delete any time in Settings. It's asked at
@@ -83,12 +83,11 @@ the bucket without limit; anyone with a build could extract it.)
   - **No, and don't ask again**: leaves the setting off; not asked again;
   - dismissing it (swiping it down, tapping outside it) answers nothing: this ride isn't
     shared, and it's asked again next recording.
-- Settings, **Train Measurement Sharing** section (headed by the same lines as the
-  question):
-  - **Always share**: on / off (default off until
-    the question is answered). When on, each ride's measurements are shared when its
-    recording stops (retried when the app is next opened if there's no network). Rides
-    recorded while it was off aren't shared later.
+- Settings, **Train Measurements** section:
+  - **Share** (with a ? that shows the question's lines, with just OK): **Ask each ride**
+    (the default: the question above) / **Always share** / **Don't ask** (nothing shared). The question's answers set it the same way. With Always share, each ride's
+    measurements are shared when its recording stops (retried when the app is next opened
+    if there's no network). Rides recorded while it wasn't on aren't shared later.
   - **Delete shared measurements** (confirmed first): deletes, at once, every ride's
     measurements shared from this phone and every one linked to the signed-in account.
     They stay on the phone.
@@ -108,8 +107,8 @@ the bucket without limit; anyone with a build could extract it.)
   - "Motion, compass, barometer";
   - "Only this app's devs get it";
   - delete any time in Settings.
-- "Don't ask again" declines this one and turns off the **Ask to share
-  after each ride** setting (Settings). With the setting off, new recordings count as declined
+- "Don't ask again" declines this one and sets Settings' Full Recordings **Share** (with
+  a ? like the one above) from **Ask each ride** to **Don't ask** (nothing shared). With the setting off, new recordings count as declined
   (they can still be shared from History). Nothing in the question pairs "Share" with
   remembering, so nothing can read as "share from now on".
 - A recording over the size limit isn't offered; History says it's too large.

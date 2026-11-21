@@ -1,6 +1,21 @@
 import AuthenticationServices
 import SwiftUI
 
+/// Settings' choices for sharing Train Measurements (AppSettings' two flags).
+enum MeasurementSharing: CaseIterable, Identifiable {
+    case ask, always, never
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .ask: return "Ask each ride"
+        case .always: return "Always share"
+        case .never: return "Don't ask"
+        }
+    }
+}
+
 struct SettingsScreen: View {
     let store: RideStore
     let protecting: Set<String>
@@ -8,6 +23,8 @@ struct SettingsScreen: View {
     @AppStorage(AppSettings.askToUploadKey) private var askToUpload = true
     @AppStorage(AppSettings.keepRecordingsKey) private var keep = KeepRecordings.last3.rawValue
     @AppStorage(AppSettings.shareMeasurementsKey) private var shareMeasurements = false
+    @AppStorage(AppSettings.askedShareMeasurementsKey) private var askedShare = false
+    @State private var info: SharingInfoSheet?
     @State private var confirmDeleteMeasurements = false
     @State private var deleteMeasurementsMessage: String?
     /// A "keep" setting that deletes recordings now, waiting to be confirmed.
@@ -28,29 +45,27 @@ struct SettingsScreen: View {
                     .pickerStyle(.segmented)
                 }
                 Section {
-                    Toggle("Always share", isOn: $shareMeasurements)
-                        .onChange(of: shareMeasurements) { AppSettings.askedShareMeasurements = true }
+                    shareRow(.measurements, selection: Binding(
+                        get: { shareMeasurements ? .always : askedShare ? .never : .ask },
+                        set: { (new: MeasurementSharing) in
+                            shareMeasurements = new == .always
+                            askedShare = new != .ask
+                        }),
+                        options: MeasurementSharing.allCases.map { ($0, $0.label) })
                     Button("Delete shared measurements", role: .destructive) { confirmDeleteMeasurements = true }
                         .disabled(store.sharing || !BackendConfig.configured)
                 } header: {
-                    header("Train Measurement Sharing", "For train operations research", [
-                        ("tram", "Position, speed, stops, exact times"),
-                        ("waveform.slash", "No audio"),
-                        ("person.2", "Anyone who asks gets it"),
-                    ])
+                    Text("Train Measurements")
                 } footer: {
                     if let message = deleteMeasurementsMessage ?? store.shareMessage { Text(message) }
                 }
                 Section {
-                    Toggle("Ask to share after each ride", isOn: $askToUpload)
+                    shareRow(.recordings, selection: $askToUpload,
+                             options: [(true, "Ask each ride"), (false, "Don't ask")])
                     Button("Delete shared recordings", role: .destructive) { confirmDeleteUploads = true }
                         .disabled(working || !BackendConfig.configured)
                 } header: {
-                    header("Full Recording Sharing", "To improve the localizer", [
-                        ("waveform", "Audio, including nearby voices"),
-                        ("sensor", "Motion, compass, barometer"),
-                        ("lock", "Only this app's devs get it"),
-                    ])
+                    Text("Full Recordings")
                 } footer: {
                     if let deleteUploadsMessage { Text(deleteUploadsMessage) }
                 }
@@ -75,6 +90,7 @@ struct SettingsScreen: View {
             }
             .navigationTitle("Settings")
         }
+        .sheet(item: $info) { $0 }
         .confirmationDialog(
             "Delete \(pendingKeep?.deletes ?? 0) recording\(pendingKeep?.deletes == 1 ? "" : "s") from this phone now?",
             isPresented: Binding(get: { pendingKeep != nil }, set: { if !$0 { pendingKeep = nil } }),
@@ -107,30 +123,33 @@ struct SettingsScreen: View {
         }
     }
 
-    /// A section's title, then what it's for and what's shared as icon lines, like the
-    /// questions that ask (UploadConsent.swift).
-    private func header(_ title: String, _ subtitle: String, _ rows: [(symbol: String, text: String)]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                Text(subtitle).font(.footnote).foregroundStyle(.secondary)
+    /// "Share", with a ? that shows what's shared (like the question that asks), and the
+    /// choice as a menu on the same line (a Picker moves a long value onto a line of its own).
+    private func shareRow<V: Hashable>(_ kind: SharingInfoSheet.Kind, selection: Binding<V>,
+                                       options: [(value: V, label: String)]) -> some View {
+        HStack(spacing: 6) {
+            Text("Share")
+            Button { info = SharingInfoSheet(kind: kind) } label: {
+                Image(systemName: "questionmark.circle")
             }
-            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 8, verticalSpacing: 3) {
-                ForEach(rows, id: \.text) { row in
-                    GridRow {
-                        Image(systemName: row.symbol)
-                            .foregroundStyle(.tint)
-                            .frame(width: 18)
-                            .gridColumnAlignment(.center)
-                        Text(row.text)
-                    }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("What's shared")
+            Spacer(minLength: 12)
+            Menu {
+                Picker("Share", selection: selection) {
+                    ForEach(options, id: \.value) { Text($0.label).tag($0.value) }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(options.first { $0.value == selection.wrappedValue }?.label ?? "")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Image(systemName: "chevron.up.chevron.down").font(.footnote.weight(.medium))
                 }
             }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
+            .tint(.secondary)  // grey, like a Picker's value ("On this phone")
+            .accessibilityLabel("Share")
         }
-        .textCase(nil)
-        .padding(.bottom, 2)
     }
 
     private func choose(_ setting: KeepRecordings) {
