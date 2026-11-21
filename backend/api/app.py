@@ -34,7 +34,7 @@ FILE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
 CONTENT_TYPE = r"^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,63}/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,63}$"
 DEVICE_SECRET = re.compile(r"[A-Za-z0-9_-]{32,128}")
 URL_LIFETIME = timedelta(hours=12)
-MAX_RIDE_BODY = 64 * 1024
+MAX_MEASUREMENT_BODY = 64 * 1024
 MAX_UPLOAD_BODY = 64 * 1024
 
 
@@ -103,7 +103,7 @@ class Stop(Strict):
     doors_closed_unix_s: float | None = None
 
 
-class Ride(Strict):
+class Measurement(Strict):
     started_unix_s: float
     ended_unix_s: float | None = None
     app_version: str = Field(max_length=64)
@@ -308,53 +308,86 @@ def create_app(deps: Deps | None = None) -> FastAPI:
 
     @app.delete("/v1/account")
     def delete_account(uid: str = Depends(account)):
-        rides = docs.query(f"users/{uid}/rides")
-        for ride_id, _ in rides:
-            docs.delete(f"users/{uid}/rides/{ride_id}")
+        measurements = delete_measurements(None, uid)
         uploads = [i for i, u in docs.query("uploads", "uid", uid) if u.get("deletion_requested_at") is None]
         request_deletion(uploads, "account_deleted", uid=uid, device_hash=None)
         deps.identity.delete_user(uid)
         docs.delete(f"users/{uid}")
-        log.info("deleted an account (%d rides, %d uploads to delete)", len(rides), len(uploads))
-        return {"deleted_rides": len(rides), "uploads_pending_deletion": len(uploads)}
+        log.info("deleted an account (%d measurements, %d uploads to delete)", measurements, len(uploads))
+        return {"deleted_measurements": measurements, "uploads_pending_deletion": len(uploads)}
 
-    # -------------------------------------------------------------- rides
+    @app.post("/v1/claim")
+    def claim(uid: str = Depends(account), device_hash: str = Depends(device)):
+        """Links what this device shared before signing in (uploads and measurements) to the
+        account."""
+        counts = {}
+        for collection in ("uploads", "measurements"):
+            n = 0
+            for doc_id, d in docs.query(collection, "device_hash", device_hash):
+                if d.get("uid") is None:
+                    docs.update(f"{collection}/{doc_id}", {"uid": uid})
+                    n += 1
+            counts[collection] = n
+        return counts
 
-    def ride_path(uid: str, ride_id: str) -> str:
+    # -------------------------------------------------------------- measurements
+
+    def measurement_path(ride_id: str, device_hash: str) -> str:
         if not re.fullmatch(RECORDING_ID[1:-1], ride_id):
             raise bad_request("A ride id is a recording id, like 20000101T000000Z.")
-        return f"users/{uid}/rides/{ride_id}"
+        # one per ride per device: two phones may start a ride in the same second
+        return f"measurements/{ride_id}-{device_hash[:16]}"
 
-    @app.put("/v1/rides/{ride_id}")
-    def put_ride(ride_id: str, uid: str = Depends(account), raw: bytes = Depends(body_reader(MAX_RIDE_BODY))):
-        path = ride_path(uid, ride_id)
-        ride = parse(Ride, raw)
-        docs.set(path, {**ride.model_dump(), "synced_at": deps.now()})
-        return {"id": ride_id}
+    @app.put("/v1/measurements/{ride_id}")
+    def put_measurement(ride_id: str, device_hash: str = Depends(device),
+                        uid: str | None = Depends(optional_account),
+                        raw: bytes = Depends(body_reader(MAX_MEASUREMENT_BODY))):
+        path = measurement_path(ride_id, device_hash)
+        m = parse(Measurement, raw)
+        now = deps.now()
+        existing = docs.get(path)
+        doc = {**m.model_dump(), "ride_id": ride_id, "device_hash": device_hash,
+               "uid": (existing or {}).get("uid") or uid, "shared_at": now}
+        if existing is not None:
+            docs.set(path, doc)
+            return {"id": ride_id}
+        if uid is not None:
+            counter, limit = f"user-measurements-{uid}-{day(now)}", s.user_measurements_per_day
+        else:
+            counter, limit = f"anon-measurements-{day(now)}", s.anon_measurements_per_day
+        if not counted(deps, counter, limit, lambda tx: tx.set(path, doc)):
+            raise ApiError(429, "rate_limited", "Too many measurements shared today; they'll be shared tomorrow.",
+                           retry_after_s=seconds_to_midnight(now))
+        return JSONResponse({"id": ride_id}, status_code=201)
 
-    @app.get("/v1/rides")
-    def list_rides(uid: str = Depends(account)):
-        rides = []
-        for ride_id, d in docs.query(f"users/{uid}/rides"):
-            synced = d.pop("synced_at", None)
-            rides.append({"id": ride_id, **d, "synced_at_unix_s": unix(synced)})
-        rides.sort(key=lambda r: (r.get("started_unix_s") or 0, r["id"]), reverse=True)
-        return {"rides": rides}
+    def my_measurements(device_hash: str | None, uid: str | None) -> dict[str, dict]:
+        found: dict[str, dict] = {}
+        if device_hash is not None:
+            found.update(docs.query("measurements", "device_hash", device_hash))
+        if uid is not None:
+            found.update(docs.query("measurements", "uid", uid))
+        return found
 
-    @app.delete("/v1/rides")
-    def delete_rides(uid: str = Depends(account)):
-        rides = docs.query(f"users/{uid}/rides")
-        for ride_id, _ in rides:
-            docs.delete(f"users/{uid}/rides/{ride_id}")
-        return {"deleted": len(rides)}
+    def delete_measurements(device_hash: str | None, uid: str | None) -> int:
+        found = my_measurements(device_hash, uid)
+        for doc_id in found:
+            docs.delete(f"measurements/{doc_id}")
+        return len(found)
 
-    @app.delete("/v1/rides/{ride_id}")
-    def delete_ride(ride_id: str, uid: str = Depends(account)):
-        path = ride_path(uid, ride_id)
-        if docs.get(path) is None:
-            return {"deleted": 0}
-        docs.delete(path)
-        return {"deleted": 1}
+    @app.get("/v1/measurements")
+    def list_measurements(who: tuple = Depends(device_or_account)):
+        out = []
+        for _, d in my_measurements(*who).items():
+            d.pop("device_hash", None)
+            linked = d.pop("uid", None) is not None
+            shared = d.pop("shared_at", None)
+            out.append({"id": d.pop("ride_id"), **d, "linked": linked, "shared_at_unix_s": unix(shared)})
+        out.sort(key=lambda r: (r.get("started_unix_s") or 0, r["id"]), reverse=True)
+        return {"measurements": out}
+
+    @app.delete("/v1/measurements")
+    def delete_all_measurements(who: tuple = Depends(device_or_account)):
+        return {"deleted": delete_measurements(*who)}
 
     # -------------------------------------------------------------- uploads
 
@@ -422,15 +455,6 @@ def create_app(deps: Deps | None = None) -> FastAPI:
                              or (uid is not None and u.get("uid") == uid)):
             raise not_found()
         return u
-
-    @app.post("/v1/uploads/claim")
-    def claim(uid: str = Depends(account), device_hash: str = Depends(device)):
-        n = 0
-        for upload_id, u in docs.query("uploads", "device_hash", device_hash):
-            if u.get("uid") is None:
-                docs.update(f"uploads/{upload_id}", {"uid": uid})
-                n += 1
-        return {"claimed": n}
 
     @app.post("/v1/uploads/deletion-request")
     def ask_deletion(who: tuple = Depends(device_or_account)):

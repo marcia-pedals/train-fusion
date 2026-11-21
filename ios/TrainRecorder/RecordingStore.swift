@@ -32,8 +32,9 @@ enum RecordingID {
     static func date(_ id: String) -> Date? { format.date(from: id) }
 }
 
-/// One ride: its timings and what was typed in about the train, kept after its recording
-/// is deleted from the phone; what's synced to the account (docs/api.md, "Rides").
+/// One ride: its Train Measurements (timings, and what was typed in about the train), kept
+/// after its recording is deleted from the phone; what's shared (docs/api.md,
+/// "Measurements").
 struct Ride: Codable, Identifiable, Equatable {
     struct Stop: Codable, Equatable {
         var station: String?
@@ -67,10 +68,11 @@ struct Ride: Codable, Identifiable, Equatable {
     var stationConfidence: Double?
     var stops: [Stop] = []
     var upload = Upload.undecided
-    /// The account (uid) these timings are synced to, if any.
-    var syncedTo: String?
-    /// To be synced as soon as possible (it ended while signed in with sync on).
-    var syncWanted = false
+    /// When its Train Measurements were shared (unix seconds), if they are.
+    var sharedAt: Double?
+    /// To be shared as soon as possible (it ended with sharing on). Optional so that
+    /// rides.json from before it decodes.
+    var sharePending: Bool?
 
     var settled: Bool { [.uploaded, .declined, .tooLarge].contains(upload) }
 
@@ -82,7 +84,7 @@ struct Ride: Codable, Identifiable, Equatable {
         return origin + (destination.map { " → " + $0 } ?? "") + (sure ? "" : " (unsure)")
     }
 
-    /// The body of PUT /v1/rides/<id>.
+    /// The body of PUT /v1/measurements/<id>.
     var apiBody: [String: Any] {
         [
             "started_unix_s": started ?? NSNull(),
@@ -141,7 +143,7 @@ struct Ride: Codable, Identifiable, Equatable {
 }
 
 /// The rides on the phone (Application Support/rides.json) and their recordings: which to
-/// keep, uploading them (through `Uploader`) and syncing their timings to the account.
+/// keep, uploading them (through `Uploader`) and sharing their Train Measurements.
 @MainActor
 @Observable
 final class RideStore {
@@ -154,8 +156,8 @@ final class RideStore {
 
     private(set) var rides: [Ride] = []  // newest first
     private(set) var recordings: [String: Recording] = [:]
-    private(set) var syncing = false
-    var syncMessage: String?
+    private(set) var sharing = false
+    var shareMessage: String?
 
     init() {
         if let data = try? Data(contentsOf: Self.file), let saved = try? JSONDecoder().decode([Ride].self, from: data) {
@@ -205,15 +207,15 @@ final class RideStore {
     }
 
     /// A recording has just been stopped: make its ride, decide about uploading (the
-    /// caller asks if it's `undecided`), and sync it if signed in with sync on.
+    /// caller asks if it's `undecided`), and share its measurements if sharing is on.
     func rideEnded(_ id: String) -> Ride? {
         refresh(excluding: nil)
         guard var ride = ride(id), let recording = recordings[id] else { return nil }
         ride = Ride.read(recording.url, id: id)
         ride.upload = recording.tooLargeToUpload ? .tooLarge : AppSettings.askToUpload ? .undecided : .declined
-        if Account.shared.user != nil, AppSettings.syncRides { ride.syncWanted = true }
+        if AppSettings.shareMeasurements { ride.sharePending = true }
         update(id) { $0 = ride }
-        if ride.syncWanted { Task { await sync([id]) } }
+        if ride.sharePending == true { Task { await share([id]) } }
         return ride
     }
 
@@ -266,57 +268,57 @@ final class RideStore {
         }
     }
 
-    // MARK: syncing timings
+    // MARK: sharing Train Measurements
 
-    func unsynced(to uid: String) -> [Ride] { rides.filter { $0.syncedTo != uid } }
-
-    /// Sync these rides to the signed-in account.
-    func sync(_ ids: [String]) async {
-        guard let uid = Account.shared.user?.uid, !ids.isEmpty else { return }
-        syncing = true
-        syncMessage = nil
-        defer { syncing = false }
+    /// Share these rides' measurements (linked to the account if signed in).
+    func share(_ ids: [String]) async {
+        guard !ids.isEmpty else { return }
+        sharing = true
+        shareMessage = nil
+        defer { sharing = false }
         for id in ids {
             guard let ride = ride(id) else { continue }
             do {
-                try await API.call("PUT", "v1/rides/\(id)", json: ride.apiBody, auth: .required)
-                update(id) { $0.syncedTo = uid; $0.syncWanted = false }
+                try await API.call("PUT", "v1/measurements/\(id)", json: ride.apiBody, auth: .ifSignedIn, device: true)
+                update(id) { $0.sharedAt = Date().timeIntervalSince1970; $0.sharePending = nil }
             } catch {
-                syncMessage = "Couldn't sync: \(error.localizedDescription)"
+                // left pending: tried again when the app is next opened
+                shareMessage = "Couldn't share: \(error.localizedDescription)"
                 return
             }
         }
     }
 
-    /// Rides that ended while signed in with sync on but haven't reached the account yet.
-    func syncPending() async {
-        guard let uid = Account.shared.user?.uid, AppSettings.syncRides else { return }
-        await sync(rides.filter { $0.syncWanted && $0.syncedTo != uid }.map(\.id))
+    /// Rides that ended with sharing on but haven't been shared yet.
+    func sharePendingMeasurements() async {
+        guard AppSettings.shareMeasurements else { return }
+        await share(rides.filter { $0.sharePending == true && $0.sharedAt == nil }.map(\.id))
     }
 
-    func syncAll() async {
-        guard let uid = Account.shared.user?.uid else { return }
-        await sync(unsynced(to: uid).map(\.id))
-    }
-
-    /// Deletes every ride's timings from the account (not from the phone).
-    func deleteAllFromAccount() async -> Bool {
-        syncing = true
-        syncMessage = nil
-        defer { syncing = false }
+    /// Deletes every measurement shared from this phone or linked to the account. Returns
+    /// how many, or nil if it failed (`shareMessage` says why).
+    func deleteShared() async -> Int? {
+        sharing = true
+        shareMessage = nil
+        defer { sharing = false }
         do {
-            try await API.call("DELETE", "v1/rides", auth: .required)
-            forgetSync()
-            return true
+            let body = try await API.call("DELETE", "v1/measurements", auth: .ifSignedIn, device: true)
+            for i in rides.indices { (rides[i].sharedAt, rides[i].sharePending) = (nil, nil) }
+            save()
+            return body["deleted"] as? Int ?? 0
         } catch {
-            syncMessage = "Couldn't delete: \(error.localizedDescription)"
-            return false
+            shareMessage = "Couldn't delete: \(error.localizedDescription)"
+            return nil
         }
     }
 
-    /// Nothing is in an account any more (deleted, or its timings deleted).
-    func forgetSync() {
-        for i in rides.indices { (rides[i].syncedTo, rides[i].syncWanted) = (nil, false) }
+    /// Marks as shared exactly the rides the server still has from this phone (e.g. after
+    /// the account, and the measurements linked to it, were deleted).
+    func reconcileShared() async {
+        guard let body = try? await API.call("GET", "v1/measurements", device: true),
+              let found = body["measurements"] as? [[String: Any]] else { return }
+        let ids = Set(found.compactMap { $0["id"] as? String })
+        for i in rides.indices where !ids.contains(rides[i].id) { rides[i].sharedAt = nil }
         save()
     }
 }

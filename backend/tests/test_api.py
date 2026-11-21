@@ -22,7 +22,7 @@ def put_objects(env, upload_id, fs=None):
         env.deps.blobs.objects[f"raw/{upload_id}/{f['name']}"] = f["size"]
 
 
-RIDE = {
+MEASUREMENT = {
     "started_unix_s": 1763230502.12,
     "ended_unix_s": 1763233000.5,
     "app_version": "0.2 (3)",
@@ -36,7 +36,7 @@ RIDE = {
 # ------------------------------------------------------------------ auth
 
 def test_no_token_is_401(env):
-    for method, path in [("get", "/v1/rides"), ("delete", "/v1/account"), ("post", "/v1/account")]:
+    for method, path in [("post", "/v1/claim"), ("delete", "/v1/account"), ("post", "/v1/account")]:
         r = env.client.request(method, path)
         assert r.status_code == 401
         assert r.json()["error"] == "unauthenticated"
@@ -45,7 +45,7 @@ def test_no_token_is_401(env):
 
 def test_bad_token_is_401(env):
     for auth in ["Bearer nonsense", "Basic token:u1", "Bearer "]:
-        r = env.client.get("/v1/rides", headers={"Authorization": auth})
+        r = env.client.delete("/v1/account", headers={"Authorization": auth})
         assert r.status_code == 401, auth
         assert r.json()["error"] == "unauthenticated"
 
@@ -57,7 +57,7 @@ def test_bad_token_on_optional_account_is_401(env):
 
 
 def test_not_registered_is_403(env):
-    r = env.client.get("/v1/rides", headers=env.headers("u1"))
+    r = env.client.delete("/v1/account", headers=env.headers("u1"))
     assert r.status_code == 403
     assert r.json()["error"] == "not_registered"
     # also where the account is optional: a token that's sent must be registered
@@ -69,7 +69,7 @@ def test_not_registered_is_403(env):
 def test_blocked_is_403(env):
     env.register("u1")
     env.docs.update("users/u1", {"blocked": True})
-    r = env.client.get("/v1/rides", headers=env.headers("u1"))
+    r = env.client.delete("/v1/account", headers=env.headers("u1"))
     assert r.status_code == 403
     assert r.json()["error"] == "blocked"
     r = env.client.post("/v1/account", headers=env.headers("u1"))
@@ -130,21 +130,26 @@ def test_signup_limit(small_env):
     assert env.client.post("/v1/account", headers=env.headers("u3")).status_code == 201
 
 
+def put(env, uid=None, device=DEVICE, rec=REC, body=None):
+    return env.client.put(f"/v1/measurements/{rec}", headers=env.headers(uid, device),
+                          json=body if body is not None else MEASUREMENT)
+
+
 def test_delete_account(env):
     env.register("u1")
     env.register("u2")
     for rid in [REC, REC2]:
-        assert env.client.put(f"/v1/rides/{rid}", headers=env.headers("u1"), json=RIDE).status_code == 200
-    env.client.put(f"/v1/rides/{REC}", headers=env.headers("u2"), json=RIDE)
+        assert put(env, uid="u1", rec=rid).status_code == 201
+    put(env, uid="u2", device=OTHER_DEVICE)
+    put(env, device=OTHER_DEVICE, rec=REC2)  # not linked: stays
     linked = start(env, uid="u1").json()["upload_id"]
     anon = start(env, rec=REC2).json()["upload_id"]  # same device, not linked: not deleted
 
     r = env.client.delete("/v1/account", headers=env.headers("u1"))
     assert r.status_code == 200
-    assert r.json() == {"deleted_rides": 2, "uploads_pending_deletion": 1}
+    assert r.json() == {"deleted_measurements": 2, "uploads_pending_deletion": 1}
     assert env.docs.get("users/u1") is None
-    assert env.docs.query("users/u1/rides") == []
-    assert len(env.docs.query("users/u2/rides")) == 1
+    assert [d["uid"] for _, d in env.docs.query("measurements")] == ["u2", None]
     assert env.deps.identity.deleted == ["u1"]
     assert env.docs.get(f"uploads/{linked}")["deletion_requested_at"] is not None
     assert env.docs.get(f"uploads/{anon}")["deletion_requested_at"] is None
@@ -152,80 +157,112 @@ def test_delete_account(env):
     assert req["reason"] == "account_deleted" and req["upload_ids"] == [linked]
     assert req["uid"] == "u1" and req["done_at"] is None
     # the account is gone
-    assert env.client.get("/v1/rides", headers=env.headers("u1")).json()["error"] == "not_registered"
+    assert env.client.delete("/v1/account", headers=env.headers("u1")).json()["error"] == "not_registered"
 
 
 def test_delete_account_without_uploads_makes_no_request(env):
     env.register("u1")
     r = env.client.delete("/v1/account", headers=env.headers("u1"))
-    assert r.json() == {"deleted_rides": 0, "uploads_pending_deletion": 0}
+    assert r.json() == {"deleted_measurements": 0, "uploads_pending_deletion": 0}
     assert env.docs.query("deletion_requests") == []
 
 
-# ------------------------------------------------------------------ rides
+# ------------------------------------------------------------------ measurements
 
-def test_rides_crud(env):
-    env.register("u1")
-    h = env.headers("u1")
-    r = env.client.put(f"/v1/rides/{REC}", headers=h, json=RIDE)
-    assert r.status_code == 200 and r.json() == {"id": REC}
-    later = {**RIDE, "started_unix_s": RIDE["started_unix_s"] + 3600, "train": None, "ended_unix_s": None,
-             "direction": None, "station_confidence": None,
+def test_measurements_without_an_account(env):
+    r = put(env)
+    assert r.status_code == 201 and r.json() == {"id": REC}
+    later = {**MEASUREMENT, "started_unix_s": MEASUREMENT["started_unix_s"] + 3600, "train": None,
+             "ended_unix_s": None, "direction": None, "station_confidence": None,
              "stops": [{"station": None, "doors_opened_unix_s": 1.0, "doors_closed_unix_s": None}]}
-    assert env.client.put(f"/v1/rides/{REC2}", headers=h, json=later).status_code == 200
+    assert put(env, rec=REC2, body=later).status_code == 201
 
-    rides = env.client.get("/v1/rides", headers=h).json()["rides"]
-    assert [x["id"] for x in rides] == [REC2, REC]  # newest first
-    assert {k: v for k, v in rides[1].items() if k not in ("id", "synced_at_unix_s")} == RIDE
-    assert rides[0]["synced_at_unix_s"] == env.clock.t.timestamp()
+    found = env.client.get("/v1/measurements", headers=env.headers(device=DEVICE)).json()["measurements"]
+    assert [x["id"] for x in found] == [REC2, REC]  # newest first
+    assert {k: v for k, v in found[1].items() if k not in ("id", "linked", "shared_at_unix_s")} == MEASUREMENT
+    assert found[1]["linked"] is False and found[1]["shared_at_unix_s"] == env.clock.t.timestamp()
 
-    # replacing
-    changed = {**RIDE, "app_version": "0.3 (4)"}
-    env.client.put(f"/v1/rides/{REC}", headers=h, json=changed)
-    rides = env.client.get("/v1/rides", headers=h).json()["rides"]
-    assert len(rides) == 2 and rides[1]["app_version"] == "0.3 (4)"
+    # replacing: 200, not counted
+    assert put(env, body={**MEASUREMENT, "app_version": "0.3 (4)"}).status_code == 200
+    found = env.client.get("/v1/measurements", headers=env.headers(device=DEVICE)).json()["measurements"]
+    assert len(found) == 2 and found[1]["app_version"] == "0.3 (4)"
+    assert env.docs.get(f"counters/anon-measurements-{env.clock.t:%Y-%m-%d}")["count"] == 2
 
-    # other accounts don't see them
-    env.register("u2")
-    assert env.client.get("/v1/rides", headers=env.headers("u2")).json() == {"rides": []}
+    # the same ride id from another phone is another measurement; neither sees the other's
+    assert put(env, device=OTHER_DEVICE).status_code == 201
+    assert len(env.client.get("/v1/measurements", headers=env.headers(device=OTHER_DEVICE)).json()["measurements"]) == 1
 
-    assert env.client.delete(f"/v1/rides/{REC}", headers=h).json() == {"deleted": 1}
-    assert env.client.delete(f"/v1/rides/{REC}", headers=h).json() == {"deleted": 0}
-    assert env.client.delete("/v1/rides", headers=h).json() == {"deleted": 1}
-    assert env.client.get("/v1/rides", headers=h).json() == {"rides": []}
+    assert env.client.delete("/v1/measurements", headers=env.headers(device=DEVICE)).json() == {"deleted": 2}
+    assert env.client.get("/v1/measurements", headers=env.headers(device=DEVICE)).json() == {"measurements": []}
+    assert len(env.docs.query("measurements")) == 1  # the other phone's
 
 
-def test_ride_optional_fields_may_be_left_out(env):
+def test_measurements_with_an_account(env):
     env.register("u1")
+    assert put(env, uid="u1").status_code == 201
+    assert put(env, uid="u1", device=OTHER_DEVICE, rec=REC2).status_code == 201
+    # the account sees both, from either phone; a phone alone sees its own
+    found = env.client.get("/v1/measurements", headers=env.headers("u1")).json()["measurements"]
+    assert [x["id"] for x in found] == [REC2, REC] and all(x["linked"] for x in found)
+    assert len(env.client.get("/v1/measurements", headers=env.headers(device=DEVICE)).json()["measurements"]) == 1
+    # shared again signed out: stays linked
+    assert put(env).status_code == 200
+    assert env.docs.query("measurements", "device_hash", env.docs.query("measurements")[0][1]["device_hash"])[0][1]["uid"] == "u1"
+    # deleting signed in deletes the account's and this phone's
+    put(env, device=DEVICE, rec="20300101T140000Z")  # this phone, not linked
+    r = env.client.delete("/v1/measurements", headers=env.headers("u1", DEVICE))
+    assert r.json() == {"deleted": 3}
+    assert env.docs.query("measurements") == []
+
+
+def test_measurement_limits(small_env):
+    env = small_env
+    assert put(env, rec=REC).status_code == 201
+    assert put(env, rec=REC2).status_code == 201
+    r = put(env, rec="20300101T140000Z")
+    assert r.status_code == 429 and r.json()["error"] == "rate_limited" and r.json()["retry_after_s"] > 0
+    assert put(env, rec=REC).status_code == 200  # updating one already there isn't refused
+    env.register("u1")
+    assert put(env, uid="u1", rec="20300101T140000Z").status_code == 201  # accounts count on their own
+    assert put(env, uid="u1", rec="20300101T150000Z").status_code == 201
+    assert put(env, uid="u1", rec="20300101T160000Z").status_code == 429
+    env.clock.t += timedelta(hours=2)  # the next UTC day
+    assert put(env, rec="20300101T170000Z").status_code == 201
+
+
+def test_measurement_optional_fields_may_be_left_out(env):
     minimal = {"started_unix_s": 1.0, "app_version": "1", "stops": []}
-    assert env.client.put(f"/v1/rides/{REC}", headers=env.headers("u1"), json=minimal).status_code == 200
-    [ride] = env.client.get("/v1/rides", headers=env.headers("u1")).json()["rides"]
-    assert ride["train"] is None and ride["direction"] is None
+    assert put(env, body=minimal).status_code == 201
+    [m] = env.client.get("/v1/measurements", headers=env.headers(device=DEVICE)).json()["measurements"]
+    assert m["train"] is None and m["direction"] is None
 
 
-def test_bad_rides(env):
-    env.register("u1")
-    h = env.headers("u1")
+def test_bad_measurements(env):
+    h = env.headers(device=DEVICE)
     bad_bodies = [
-        {**RIDE, "stops": [RIDE["stops"][0]] * 201},
-        {**RIDE, "train": {**RIDE["train"], "car_position": "roof"}},
-        {**RIDE, "started_unix_s": "soon"},
-        {**RIDE, "unknown": 1},
-        {k: v for k, v in RIDE.items() if k != "started_unix_s"},
-        {**RIDE, "stops": [{"station": "X"}]},
+        {**MEASUREMENT, "stops": [MEASUREMENT["stops"][0]] * 201},
+        {**MEASUREMENT, "train": {**MEASUREMENT["train"], "car_position": "roof"}},
+        {**MEASUREMENT, "started_unix_s": "soon"},
+        {**MEASUREMENT, "unknown": 1},
+        {k: v for k, v in MEASUREMENT.items() if k != "started_unix_s"},
+        {**MEASUREMENT, "stops": [{"station": "X"}]},
     ]
     for body in bad_bodies:
-        r = env.client.put(f"/v1/rides/{REC}", headers=h, json=body)
+        r = put(env, body=body)
         assert r.status_code == 400, body
         assert r.json()["error"] == "bad_request"
-    r = env.client.put(f"/v1/rides/{REC}", headers={**h, "Content-Type": "application/json"}, content=b"{nope")
+    url = f"/v1/measurements/{REC}"
+    r = env.client.put(url, headers={**h, "Content-Type": "application/json"}, content=b"{nope")
     assert r.status_code == 400
-    big = json.dumps(RIDE).encode() + b" " * 64 * 1024
-    r = env.client.put(f"/v1/rides/{REC}", headers={**h, "Content-Type": "application/json"}, content=big)
+    big = json.dumps(MEASUREMENT).encode() + b" " * 64 * 1024
+    r = env.client.put(url, headers={**h, "Content-Type": "application/json"}, content=big)
     assert r.status_code == 400  # over 64 KB
-    r = env.client.put("/v1/rides/not-an-id", headers=h, json=RIDE)
-    assert r.status_code == 400
-    assert env.client.get("/v1/rides", headers=h).json() == {"rides": []}
+    assert env.client.put("/v1/measurements/not-an-id", headers=h, json=MEASUREMENT).status_code == 400
+    # a device secret is needed (an account alone isn't enough to put)
+    env.register("u1")
+    assert env.client.put(url, headers=env.headers("u1"), json=MEASUREMENT).status_code == 400
+    assert env.client.get("/v1/measurements").status_code == 401
+    assert env.client.get("/v1/measurements", headers=h).json() == {"measurements": []}
 
 
 # ------------------------------------------------------------------ uploads
@@ -379,7 +416,7 @@ def test_complete_ownership(env):
     assert r.status_code == 404
     assert env.client.post("/v1/uploads/nonsense/complete", headers=env.headers(device=DEVICE)).status_code == 404
     # linked to u1: the account may complete it from another device
-    env.client.post("/v1/uploads/claim", headers=env.headers("u1", DEVICE))
+    env.client.post("/v1/claim", headers=env.headers("u1", DEVICE))
     assert env.client.post(url, headers=env.headers("u1", OTHER_DEVICE)).status_code == 200
 
 
@@ -412,15 +449,18 @@ def test_claim(env):
     b = start(env, rec=REC2).json()["upload_id"]
     other = start(env, device=OTHER_DEVICE).json()["upload_id"]
     linked = start(env, uid="u2", rec="20300101T140000Z").json()["upload_id"]
-    r = env.client.post("/v1/uploads/claim", headers=env.headers("u1", DEVICE))
-    assert r.status_code == 200 and r.json() == {"claimed": 2}
+    put(env)
+    put(env, device=OTHER_DEVICE)
+    r = env.client.post("/v1/claim", headers=env.headers("u1", DEVICE))
+    assert r.status_code == 200 and r.json() == {"uploads": 2, "measurements": 1}
     assert env.docs.get(f"uploads/{a}")["uid"] == "u1" and env.docs.get(f"uploads/{b}")["uid"] == "u1"
     assert env.docs.get(f"uploads/{other}")["uid"] is None
     assert env.docs.get(f"uploads/{linked}")["uid"] == "u2"  # already linked: left alone
-    assert env.client.post("/v1/uploads/claim", headers=env.headers("u1", DEVICE)).json() == {"claimed": 0}
+    assert sorted(str(d["uid"]) for _, d in env.docs.query("measurements")) == ["None", "u1"]
+    assert env.client.post("/v1/claim", headers=env.headers("u1", DEVICE)).json() == {"uploads": 0, "measurements": 0}
     # needs both
-    assert env.client.post("/v1/uploads/claim", headers=env.headers("u1")).status_code == 400
-    assert env.client.post("/v1/uploads/claim", headers=env.headers(device=DEVICE)).status_code == 401
+    assert env.client.post("/v1/claim", headers=env.headers("u1")).status_code == 400
+    assert env.client.post("/v1/claim", headers=env.headers(device=DEVICE)).status_code == 401
 
 
 def test_deletion_request(env):

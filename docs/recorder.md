@@ -5,8 +5,9 @@ door chimes and the traction motors) plus raw accelerometer, gyroscope and magne
 samples and the barometer, all
 with timestamps that convert to exact clock time. One button starts and stops a recording;
 after each one the app asks whether to upload it (through the backend, to
-`gs://train-fusion-recordings/raw/`). Signing in is optional; it syncs each ride's timings
-to the account. What the app does about accounts, uploads, sync and keeping recordings is
+`gs://train-fusion-recordings/raw/`), and it can share each ride's Train Measurements
+(asked before the first recording). Signing in is optional; it links what's shared to the
+account. What the app does about accounts, uploads, Train Measurements and keeping recordings is
 in [accounts-and-uploads.md](accounts-and-uploads.md); the backend's API in [api.md](api.md).
 Recording carries on with the app in the background and the phone locked.
 
@@ -53,16 +54,17 @@ Three, behind a tab bar:
      yellow fair, red missing, grey not in play. Tap for each one's state and a number.
 
   Every probability is still there under "Details".
-- **Settings**: miles and mph, or kilometres and km/h; whether to ask about uploading after
-  each ride; how many full recordings to keep on the phone; deleting shared recordings (done
-  by hand, within 30 days); the account (sign in with Apple, Google or an email link; ride timings sync;
-  sign out; delete account); the privacy policy.
+- **Settings**: miles and mph, or kilometres and km/h; Train Measurements (share
+  automatically; delete what's shared); full recordings (how many to keep on the phone;
+  whether to ask about uploading after each ride; deleting shared recordings, done by
+  hand within 30 days); the account (sign in with Apple, Google or an email link; sign
+  out; delete account); the privacy policy.
 - **History**: the rides on the phone (`Application Support/rides.json`; a ride outlives its
   recording), each with upload and replay while its recording is still here; swipe a row
   left to delete it from the phone. A row is
   titled by where the model heard the ride start and end ("Millbrae → San Jose Diridon";
   "Unknown trip" if it named no stop), then the date, length and size (or "recording not
-  kept"), whether it's uploaded and synced, then the trip and car if they were typed in. Replay
+  kept"), whether it's uploaded and its measurements shared, then the trip and car if they were typed in. Replay
   (not offered while recording) plays a finished recording back through the model, to watch
   the beliefs without being on a train.
 

@@ -102,8 +102,8 @@ The first uses GCS's own request metric. If it misfires, check the `method` /
 ## The recorder API (`backend/`)
 
 The phone app's backend ([api.md](api.md); why it exists: [accounts-and-uploads.md](accounts-and-uploads.md)):
-accounts (Identity Platform: Sign in with Apple, Google, emailed link), ride sync
-(Firestore) and signed upload URLs for `gs://train-fusion-recordings/raw/`. Terraform in
+accounts (Identity Platform: Sign in with Apple, Google, emailed link), Train
+Measurements (Firestore) and signed upload URLs for `gs://train-fusion-recordings/raw/`. Terraform in
 `infra/api.tf`.
 
 ```
@@ -111,7 +111,7 @@ app ── ID token (Identity Platform) ─┐
     ── X-Device-Secret ──────────────┤
                                      ▼
 Cloud Run service `api` (scale to zero, ≤ 2 instances, SA recorder-api)
-  ├─ Firestore (default) database, us-west1: users, rides, uploads, deletion requests, counters
+  ├─ Firestore (default) database, us-west1: users, measurements, uploads, deletion requests, counters
   ├─ signs V4 PUT URLs with IAM signBlob (as itself) ──► app PUTs files to raw/<upload id>/
   ├─ lists raw/<upload id>/ (names and sizes) to check an upload is complete
   └─ deletes Identity Platform users (account deletion, refused signups)

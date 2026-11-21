@@ -65,8 +65,8 @@ project, not affiliated with any railway or transit agency.</p>
 
 <h2>What stays on your phone</h2>
 <p>Recordings are made and kept on your phone. Nothing is sent anywhere unless you choose
-to upload a recording or sign in to sync your rides, as described below. You can use the
-app without an account.</p>
+to share Train Measurements or upload a recording, as described below. You can use the app
+without an account.</p>
 
 <h2>What is collected, and why</h2>
 <ul>
@@ -75,17 +75,19 @@ history) the app asks whether to upload that ride's recording; nothing is upload
 your yes. An upload is the whole audio recording, including anything said near the phone,
 and the raw sensor data (motion, magnetometer, barometer) with their times. They are used
 only to develop and improve the app's model of trains' stops, speed and position.</li>
+<li><strong>Train Measurements, if you turn on sharing them</strong> (the app asks before
+your first recording; it's a setting). For each ride: the train's position, speed and stops
+with the exact date and time: when the ride started and ended, the train if you typed it
+in, the direction, and the stations the app detected with the times the doors opened and
+closed. They are used for research into trains' stops, speed and position.</li>
 <li><strong>A random device identifier.</strong> Each installation makes a random secret;
-we keep only a one-way hash of it with each upload, so that you can ask for your uploads to
-be deleted without an account, and link them to your account if you sign in later.</li>
+we keep only a one-way hash of it with each upload and each Train Measurement, so that you
+can delete them without an account, and link them to your account if you sign in
+later.</li>
 <li><strong>Your account, if you sign in</strong> (with Apple, Google, or an emailed link):
 an account id and your email address (with Sign in with Apple, this may be a private relay
-address). They are used to sign you in, to keep your synced rides, and to link uploads to
-your account.</li>
-<li><strong>Ride timings, if you sign in and sync is on.</strong> For each ride: when it
-started and ended, the train if you typed it in, the direction, and the stations the app
-detected with the times the doors opened and closed. They are kept in your account so you
-can see them later. You can turn syncing off in the app.</li>
+address). They are used to sign you in, and to link what you share (Train Measurements
+and uploaded recordings) to your account.</li>
 <li><strong>Technical logs.</strong> Our hosting provider (Google Cloud) keeps request logs
 (such as IP addresses and times) for operating and securing the service.</li>
 </ul>
@@ -95,19 +97,20 @@ can see them later. You can turn syncing off in the app.</li>
 rode. If you are signed in when you upload, the upload is linked to your account.</p>
 
 <h2>Who sees it</h2>
-<p>Uploaded recordings and synced rides are shared only with the app's developers, for
+<p>Train Measurements and uploaded recordings are shared only with the app's developers, for
 improving the model. They are stored on Google Cloud (in the United States), which
 processes them on our behalf. We do not sell your data, show ads, or track you across apps
 or websites, and the app contains no third-party analytics or advertising.</p>
 
 <h2>Deleting your data</h2>
 <ul>
-<li><strong>Delete your account</strong> in the app's account screen. Your account and its
-synced ride timings are deleted at once; recordings uploaded while signed in (or linked to
-the account) are deleted within 30 days.</li>
-<li><strong>Delete your synced ride timings</strong> from your account at any time in the
-account screen, without deleting the account.</li>
-<li><strong>Ask for your uploaded recordings to be deleted</strong> in the app's settings,
+<li><strong>Delete your account</strong> in the app's account screen. Your account and the
+Train Measurements linked to it are deleted at once; recordings uploaded while signed in
+(or linked to the account) are deleted within 30 days.</li>
+<li><strong>Delete your shared Train Measurements</strong> in the app's settings, with or
+without an account: every one shared from that phone, and every one linked to your
+account, is deleted at once.</li>
+<li><strong>Delete your shared recordings</strong> in the app's settings,
 with or without an account: every recording uploaded from that phone, and every one linked
 to your account, is deleted within 30 days.</li>
 <li>Recordings on your phone are yours to delete; the app can also delete them

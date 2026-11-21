@@ -6,14 +6,18 @@ enum AppSettings {
     static let askToUploadKey = "askToUpload"
     /// How many recordings to keep on the phone (`KeepRecordings`).
     static let keepRecordingsKey = "keepRecordings"
-    /// Sync each ride's timings to the account when it ends (if signed in).
-    static let syncRidesKey = "syncRides"
+    /// Share each ride's Train Measurements when it ends (linked to the account if signed in).
+    static let shareMeasurementsKey = "shareMeasurements"
+    /// Whether the rider has been asked about sharing Train Measurements (before their first
+    /// recording).
+    static let askedShareMeasurementsKey = "askedShareMeasurements"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             askToUploadKey: true,
             keepRecordingsKey: KeepRecordings.last3.rawValue,
-            syncRidesKey: true,
+            shareMeasurementsKey: false,
+            askedShareMeasurementsKey: false,
         ])
     }
 
@@ -26,7 +30,15 @@ enum AppSettings {
         KeepRecordings(rawValue: UserDefaults.standard.string(forKey: keepRecordingsKey) ?? "") ?? .last3
     }
 
-    static var syncRides: Bool { UserDefaults.standard.bool(forKey: syncRidesKey) }
+    static var shareMeasurements: Bool {
+        get { UserDefaults.standard.bool(forKey: shareMeasurementsKey) }
+        set { UserDefaults.standard.set(newValue, forKey: shareMeasurementsKey) }
+    }
+
+    static var askedShareMeasurements: Bool {
+        get { UserDefaults.standard.bool(forKey: askedShareMeasurementsKey) }
+        set { UserDefaults.standard.set(newValue, forKey: askedShareMeasurementsKey) }
+    }
 
     /// The most an upload may be, all its files together (the server enforces it too).
     static let maxUploadBytes: Int64 = 200_000_000

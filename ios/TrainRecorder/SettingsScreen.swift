@@ -7,6 +7,9 @@ struct SettingsScreen: View {
     @AppStorage(Units.key) private var metric = false
     @AppStorage(AppSettings.askToUploadKey) private var askToUpload = true
     @AppStorage(AppSettings.keepRecordingsKey) private var keep = KeepRecordings.last3.rawValue
+    @AppStorage(AppSettings.shareMeasurementsKey) private var shareMeasurements = false
+    @State private var confirmDeleteMeasurements = false
+    @State private var deleteMeasurementsMessage: String?
     /// A "keep" setting that deletes recordings now, waiting to be confirmed.
     @State private var pendingKeep: (setting: KeepRecordings, deletes: Int)?
     @State private var confirmDeleteUploads = false
@@ -25,6 +28,16 @@ struct SettingsScreen: View {
                     .pickerStyle(.segmented)
                 }
                 Section {
+                    Toggle("Automatically share Train Measurements for research", isOn: $shareMeasurements)
+                        .onChange(of: shareMeasurements) { AppSettings.askedShareMeasurements = true }
+                    Button("Delete shared measurements", role: .destructive) { confirmDeleteMeasurements = true }
+                        .disabled(store.sharing || !BackendConfig.configured)
+                } header: {
+                    header("Train Measurements", "Train position, speed, and stops, with exact time and date")
+                } footer: {
+                    if let message = deleteMeasurementsMessage ?? store.shareMessage { Text(message) }
+                }
+                Section {
                     Picker("On this phone", selection: Binding(
                         get: { KeepRecordings(rawValue: keep) ?? .last3 },
                         set: { choose($0) })
@@ -32,11 +45,7 @@ struct SettingsScreen: View {
                         ForEach(KeepRecordings.allCases) { Text($0.label).tag($0) }
                     }
                 } header: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Full Recordings")
-                        Text("Audio and sensor data from rides")
-                            .font(.footnote).textCase(nil).foregroundStyle(.secondary)
-                    }
+                    header("Full Recordings", "Audio and sensor data from rides")
                 }
                 Section {
                     Toggle("Ask to share with devs", isOn: $askToUpload)
@@ -49,7 +58,7 @@ struct SettingsScreen: View {
                     NavigationLink {
                         AccountScreen(store: store)
                     } label: {
-                        LabeledContent("Account", value: account.user.map { $0.email ?? "Signed in" } ?? "Not signed in")
+                        Text(account.user.map { $0.email ?? "Signed in" } ?? "Not signed in")
                     }
                 }
                 if let policy = BackendConfig.privacyPolicy {
@@ -68,13 +77,35 @@ struct SettingsScreen: View {
                 pendingKeep = nil
             }
         } message: {
-            Text("They're uploaded, or you chose not to upload them. Their ride timings stay.")
+            Text("They're uploaded, or you chose not to upload them. Their Train Measurements stay.")
+        }
+        .confirmationDialog("Delete your shared Train Measurements?", isPresented: $confirmDeleteMeasurements,
+                            titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                Task {
+                    if let n = await store.deleteShared() {
+                        deleteMeasurementsMessage = n == 0 ? "There were no shared measurements."
+                            : "Deleted \(n) ride\(n == 1 ? "'s" : "s'") Train Measurements."
+                    }
+                }
+            }
+        } message: {
+            Text("Every ride's Train Measurements shared from this phone" + (account.user != nil ? " or linked to your account" : "")
+                + " are deleted now. They stay on this phone.")
         }
         .confirmationDialog("Delete your shared recordings?", isPresented: $confirmDeleteUploads, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { Task { await requestDeletion() } }
         } message: {
             Text("Every recording uploaded from this phone" + (account.user != nil ? " or linked to your account" : "")
                 + " will be deleted by the developers within 30 days. Recordings on this phone stay.")
+        }
+    }
+
+    /// A section's title, with a caption under it.
+    private func header(_ title: String, _ caption: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+            Text(caption).font(.footnote).textCase(nil).foregroundStyle(.secondary)
         }
     }
 
@@ -103,15 +134,13 @@ struct SettingsScreen: View {
     }
 }
 
-/// Signing in (Apple, Google, email link), and once signed in: syncing ride timings, sign
-/// out, delete account.
+/// Signing in (Apple, Google, email link), and once signed in: the account, sign out,
+/// delete account.
 struct AccountScreen: View {
     let store: RideStore
-    @AppStorage(AppSettings.syncRidesKey) private var syncRides = true
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
     @Environment(\.colorScheme) private var colorScheme
     @State private var email = ""
-    @State private var confirmDeleteTimings = false
     @State private var confirmDeleteAccount = false
     @State private var appleDeletion = false
     private let account = Account.shared
@@ -135,7 +164,7 @@ struct AccountScreen: View {
 
     @ViewBuilder private var signedOut: some View {
         Section {
-            Text("Signing in is optional. With an account, each ride's stops and times are synced to it, and recordings you upload are linked to it, so you'll be able to see them on the web later.")
+            Text("Signing in is optional. With an account, the Train Measurements and recordings you share are linked to it, so you'll be able to see them on the web later.")
                 .font(.callout)
         }
         Section {
@@ -182,46 +211,21 @@ struct AccountScreen: View {
         Section {
             LabeledContent("Signed in", value: user.email ?? "–")
             LabeledContent("With", value: user.providerName)
-        }
-        Section {
-            Toggle("Sync ride timings to my account", isOn: $syncRides)
-            let unsynced = store.unsynced(to: user.uid).count
-            Button(unsynced == 0 ? "All rides on this phone are synced" : "Sync \(unsynced) unsynced ride\(unsynced == 1 ? "" : "s")") {
-                Task { await store.syncAll() }
-            }
-            .disabled(unsynced == 0 || store.syncing)
-            Button("Delete all ride timings from my account", role: .destructive) { confirmDeleteTimings = true }
-                .disabled(store.syncing)
-        } header: {
-            Text("Ride timings")
-        } footer: {
-            Text(store.syncMessage ?? "When sync is on, each ride's stops and times go to your account when you stop recording. Deleting them from your account leaves them on this phone.")
-        }
-        .confirmationDialog("Delete all ride timings from your account?", isPresented: $confirmDeleteTimings, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { Task { _ = await store.deleteAllFromAccount() } }
-        } message: {
-            Text("The rides stay on this phone, and can be synced again.")
-        }
-        Section {
             Button("Sign out") { account.signOut() }
-        } footer: {
-            Text("Your rides and recordings stay on this phone.")
         }
         Section {
             Button("Delete account", role: .destructive) { confirmDeleteAccount = true }
-        } footer: {
-            Text("Deletes your account and the ride timings synced to it, and the recordings you uploaded that are linked to it (the developers delete those by hand, within 30 days).")
         }
         .confirmationDialog("Delete your account?", isPresented: $confirmDeleteAccount, titleVisibility: .visible) {
             Button("Delete account", role: .destructive) {
                 if user.provider == "apple.com" {
                     appleDeletion = true
                 } else {
-                    Task { if await account.deleteAccount() { store.forgetSync() } }
+                    Task { if await account.deleteAccount() { await store.reconcileShared() } }
                 }
             }
         } message: {
-            Text("Your account and its ride timings are deleted now. Recordings you uploaded that are linked to it are deleted within 30 days. Rides and recordings on this phone stay. This can't be undone.")
+            Text("Your account and the Train Measurements linked to it are deleted now. Full recordings linked to it are deleted within 30 days. Everything on this phone stays. This can't be undone.")
         }
         .sheet(isPresented: $appleDeletion) {
             VStack(spacing: 20) {
@@ -230,7 +234,7 @@ struct AccountScreen: View {
                     .multilineTextAlignment(.center)
                 SignInWithAppleButton(.continue, onRequest: account.prepare) { result in
                     appleDeletion = false
-                    Task { if await account.deleteAccount(apple: result) { store.forgetSync() } }
+                    Task { if await account.deleteAccount(apple: result) { await store.reconcileShared() } }
                 }
                 .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
                 .frame(height: 50)

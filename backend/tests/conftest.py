@@ -57,4 +57,5 @@ def env() -> Env:
 def small_env() -> Env:
     """Small limits, to reach them quickly."""
     return Env(Settings(project="test-project", recordings_bucket="test-bucket", max_upload_bytes=1000,
-                        anon_uploads_per_day=2, user_uploads_per_day=2, signups_per_day=2))
+                        anon_uploads_per_day=2, user_uploads_per_day=2, signups_per_day=2,
+                        anon_measurements_per_day=2, user_measurements_per_day=2))

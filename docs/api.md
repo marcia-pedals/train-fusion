@@ -37,20 +37,22 @@ Auth: account token (registration not needed, obviously). Idempotent.
 
 ### `DELETE /v1/account`
 
-Auth: account. Deletes every synced ride, marks every upload linked to the account for
+Auth: account. Deletes every measurement linked to the account, marks every upload linked to it for
 deletion (a deletion request, reason `account_deleted`), deletes the user record and the
 Identity Platform user. Clients revoke provider tokens (Apple) before calling this.
 
-`200 {"deleted_rides": n, "uploads_pending_deletion": m}`
+`200 {"deleted_measurements": n, "uploads_pending_deletion": m}`
 
-## Rides
+## Measurements
 
-Auth: account, for all. Stored per user; `ride_id` is the recording id
-(`^[0-9]{8}T[0-9]{6}Z$`).
+A ride's Train Measurements. Stored per device (and linked to the account if one is
+signed in when they're put); `ride_id` is the recording id (`^[0-9]{8}T[0-9]{6}Z$`).
 
-### `PUT /v1/rides/{ride_id}`
+### `PUT /v1/measurements/{ride_id}`
 
-Creates or replaces. Body (at most 64 KB):
+Auth: device secret required; account optional (links it). Creates or replaces this
+device's measurements of that ride; once linked to an account it stays linked. Body (at
+most 64 KB):
 
 ```json
 {
@@ -68,20 +70,30 @@ Creates or replaces. Body (at most 64 KB):
 
 `ended_unix_s`, `train`, `direction`, `station_confidence`, a stop's `station` and
 `doors_closed_unix_s` may be null. `car_position`: `unspecified` / `upper` / `lower` /
-`vestibule`. At most 200 stops. `200 {"id": "<ride_id>"}`. Bad body: `400 bad_request`.
+`vestibule`. At most 200 stops. Unknown fields are refused.
 
-### `GET /v1/rides`
+- new: `201 {"id": "<ride_id>"}`, counted against today's limit: 240 without an account
+  (all devices together), 48 per account; over it, `429 rate_limited` with
+  `retry_after_s`;
+- replaced: `200 {"id": "<ride_id>"}`, not counted;
+- bad body or id: `400 bad_request`.
 
-`200 {"rides": [{"id": "...", ...the body as stored..., "synced_at_unix_s": ...}]}`, newest
-first.
+### `GET /v1/measurements`
 
-### `DELETE /v1/rides`
+Auth: device secret and/or account. This device's and the account's:
+`200 {"measurements": [{"id": "...", ...the body as stored..., "linked": bool,
+"shared_at_unix_s": ...}]}`, newest first.
 
-Deletes all of the account's rides. `200 {"deleted": n}`.
+### `DELETE /v1/measurements`
 
-### `DELETE /v1/rides/{ride_id}`
+Auth: device secret and/or account. Deletes every measurement put from this device or
+linked to the account, at once. `200 {"deleted": n}`.
 
-`200 {"deleted": 0 or 1}`.
+### `POST /v1/claim`
+
+Auth: account and device secret. Links what this device shared without an account
+(uploads and measurements not linked to any account) to this one.
+`200 {"uploads": n, "measurements": m}`.
 
 ## Uploads
 
@@ -143,11 +155,6 @@ linked to this account:
 `200 {"uploads": [{"upload_id", "recording_id", "status": "pending"|"complete",
 "linked": bool, "created_unix_s", "deletion_requested": bool}]}`
 
-### `POST /v1/uploads/claim`
-
-Auth: account and device secret. Links this device's uploads that aren't linked to any
-account to this one. `200 {"claimed": n}`.
-
 ### `POST /v1/uploads/deletion-request`
 
 Auth: device secret and/or account. Marks every upload made by this device or linked to
@@ -168,9 +175,9 @@ developer (`just recording-deletions`). `200 {"requested": n}` (0 if there was n
 | Collection | Document | Fields |
 |---|---|---|
 | `users` | `<uid>` | `created_at`, `email`, `blocked` |
-| `users/<uid>/rides` | `<ride_id>` | the ride body, `synced_at` |
+| `measurements` | `<ride_id>-<first 16 of device_hash>` | the body, `ride_id`, `device_hash`, `uid` (or null), `shared_at` |
 | `uploads` | `<upload_id>` | `recording_id`, `uid` (or null), `device_hash`, `files` [{name, size, content_type}], `total_bytes`, `status`, `created_at`, `completed_at`, `deletion_requested_at` |
 | `deletion_requests` | auto id | `requested_at`, `reason` (`requested` / `account_deleted`), `uid`, `device_hash`, `upload_ids`, `done_at` |
-| `counters` | `signups-<YYYY-MM-DD>`, `anon-uploads-<day>`, `user-uploads-<uid>-<day>` | `count` |
+| `counters` | `signups-<YYYY-MM-DD>`, `anon-uploads-<day>`, `user-uploads-<uid>-<day>`, `anon-measurements-<day>`, `user-measurements-<uid>-<day>` | `count` |
 
 Counters are incremented in a transaction with the check.

@@ -11,7 +11,6 @@ struct HistoryScreen: View {
     let onUpload: (Ride) -> Void
     @State private var deleting: Ride?
     private let uploader = Uploader.shared
-    private let account = Account.shared
 
     var body: some View {
         Group {
@@ -22,7 +21,7 @@ struct HistoryScreen: View {
                     let recording = store.recordings[ride.id]
                     RideRow(
                         ride: ride, recording: recording, state: uploader.states[ride.id],
-                        synced: ride.syncedTo != nil && ride.syncedTo == account.user?.uid,
+
                         onUpload: {
                             guard let recording else { return }
                             // already said yes: just try again
@@ -51,7 +50,7 @@ struct HistoryScreen: View {
             Text(deleting.map { ride in
                 "Its timings" + (store.recordings[ride.id] != nil ? " and recording" : "") + " are deleted from this phone."
                     + (ride.upload == .undecided && store.recordings[ride.id] != nil ? " The recording hasn't been uploaded." : "")
-                    + " Anything uploaded or synced to your account stays there."
+                    + " What's shared stays shared (delete it in Settings)."
             } ?? "")
         }
     }
@@ -68,7 +67,6 @@ struct RideRow: View {
     let ride: Ride
     let recording: Recording?
     let state: Uploader.State?
-    let synced: Bool
     let onUpload: () -> Void
     var onReplay: (() -> Void)?
 
@@ -148,7 +146,7 @@ struct RideRow: View {
             parts.append("recording not kept")
         }
         if ride.upload == .uploaded { parts.append("uploaded") }
-        if synced { parts.append("synced") }
+        if ride.sharedAt != nil { parts.append("measurements shared") }
         return parts.joined(separator: " · ")
     }
 }

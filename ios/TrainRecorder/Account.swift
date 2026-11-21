@@ -30,7 +30,7 @@ final class Account {
     var error: String?
     var notice: String?
     /// Goes up with every successful sign-in, so the app can offer what follows one
-    /// (linking earlier uploads, syncing rides already on the phone).
+    /// (linking what this phone shared before to the account).
     private(set) var signIns = 0
 
     @ObservationIgnored private var idToken: (value: String, expires: Date)?
@@ -219,7 +219,7 @@ final class Account {
         user = nil
     }
 
-    /// Deletes the account on the server (its synced rides at once; its uploads are marked
+    /// Deletes the account on the server (its Train Measurements at once; its uploads are marked
     /// for deletion), then signs out. An Apple account needs a fresh Apple authorization
     /// (`apple`), to revoke the app's Apple tokens as Apple requires. Returns whether it worked.
     func deleteAccount(apple: Result<ASAuthorization, Error>? = nil) async -> Bool {

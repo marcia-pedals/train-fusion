@@ -13,14 +13,14 @@ struct ContentView: View {
     @State private var tab = Tab.track
     /// The upload question being asked (after a ride, or from History).
     @State private var consent: UploadConsent?
-    /// What to offer after signing in, one at a time.
-    @State private var offers: [Offer] = []
+    /// After signing in: what this phone shared before (to offer linking it to the account).
+    @State private var unlinked: Unlinked?
     @Environment(\.scenePhase) private var scenePhase
     private let account = Account.shared
 
-    enum Offer {
-        case link(Int)  // uploads from this phone not linked to an account
-        case sync(Int)  // rides not synced to this account
+    struct Unlinked {
+        let measurements: Int
+        let uploads: Int
     }
 
     /// Recordings that mustn't be deleted from under the app.
@@ -69,7 +69,7 @@ struct ContentView: View {
             guard scenePhase == .active else { return }
             refresh()
             store.resumeUploads()
-            Task { await store.syncPending() }
+            Task { await store.sharePendingMeasurements() }
         }
         .sheet(item: $consent) { request in
             UploadConsentSheet(request: request) { answer in
@@ -82,30 +82,20 @@ struct ContentView: View {
             if account.handle(url: url) { tab = .settings }
         }
         .onChange(of: account.signIns) { Task { await offerAfterSignIn() } }
-        .alert(offerTitle, isPresented: Binding(get: { !offers.isEmpty }, set: { if !$0, !offers.isEmpty { offers.removeFirst() } }),
-               presenting: offers.first) { offer in
-            switch offer {
-            case .link:
-                Button("Link them") { Task { try? await API.call("POST", "v1/uploads/claim", auth: .required, device: true) } }
-                Button("Not now", role: .cancel) {}
-            case .sync(let n):
-                Button("Sync \(n == 1 ? "it" : "them")") { Task { await store.syncAll() } }
-                Button("Not now", role: .cancel) {}
-            }
-        } message: { offer in
-            switch offer {
-            case .link: Text("Link the recordings you uploaded from this phone before signing in to your account? You'll be able to see them with your account later.")
-            case .sync: Text("Sync the timings of the rides already on this phone to your account?")
-            }
+        .alert("Link to your account?", isPresented: Binding(get: { unlinked != nil }, set: { if !$0 { unlinked = nil } }),
+               presenting: unlinked) { _ in
+            Button("Link") { Task { try? await API.call("POST", "v1/claim", auth: .required, device: true) } }
+            Button("Not now", role: .cancel) {}
+        } message: { found in
+            Text("This phone shared \(Self.describe(found)) before you signed in. Link \(found.measurements + found.uploads == 1 ? "it" : "them") to your account, so you'll be able to see \(found.measurements + found.uploads == 1 ? "it" : "them") with it later?")
         }
     }
 
-    private var offerTitle: String {
-        switch offers.first {
-        case .link(let n): return n == 1 ? "1 earlier upload" : "\(n) earlier uploads"
-        case .sync(let n): return n == 1 ? "1 ride on this phone" : "\(n) rides on this phone"
-        case nil: return ""
-        }
+    private static func describe(_ found: Unlinked) -> String {
+        var parts: [String] = []
+        if found.measurements > 0 { parts.append(found.measurements == 1 ? "1 ride's Train Measurements" : "\(found.measurements) rides' Train Measurements") }
+        if found.uploads > 0 { parts.append(found.uploads == 1 ? "1 full recording" : "\(found.uploads) full recordings") }
+        return parts.joined(separator: " and ")
     }
 
     private func refresh() {
@@ -122,17 +112,20 @@ struct ContentView: View {
         }
     }
 
+    /// Offers to link what this phone shared before signing in (its device secret's) to the
+    /// account.
     private func offerAfterSignIn() async {
-        guard let uid = account.user?.uid else { return }
-        var next: [Offer] = []
-        if let body = try? await API.call("GET", "v1/uploads", auth: .required, device: true),
-           let uploads = body["uploads"] as? [[String: Any]] {
-            let n = uploads.filter { $0["linked"] as? Bool == false && $0["deletion_requested"] as? Bool != true }.count
-            if n > 0 { next.append(.link(n)) }
+        guard account.user != nil else { return }
+        var uploads = 0, measurements = 0
+        if let body = try? await API.call("GET", "v1/uploads", device: true),
+           let found = body["uploads"] as? [[String: Any]] {
+            uploads = found.filter { $0["linked"] as? Bool == false && $0["deletion_requested"] as? Bool != true }.count
         }
-        let unsynced = store.unsynced(to: uid).count
-        if unsynced > 0, AppSettings.syncRides { next.append(.sync(unsynced)) }
-        offers = next
+        if let body = try? await API.call("GET", "v1/measurements", device: true),
+           let found = body["measurements"] as? [[String: Any]] {
+            measurements = found.filter { $0["linked"] as? Bool == false }.count
+        }
+        if uploads + measurements > 0 { unlinked = Unlinked(measurements: measurements, uploads: uploads) }
     }
 
     /// For testing from the command line (the simulator):
@@ -162,6 +155,8 @@ private struct TrackScreen: View {
     let recorder: Recorder
     let replay: ReplayPlayer
     @State private var editingRide = false
+    /// Asking about sharing Train Measurements, before the first recording starts.
+    @State private var askingShare = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -227,6 +222,16 @@ private struct TrackScreen: View {
                 }
             }
             if args.contains("-editride") { editingRide = true }
+            if args.contains("-askshare") { askingShare = true }
+        }
+        .sheet(isPresented: $askingShare) {
+            MeasurementsConsentSheet { share in
+                AppSettings.shareMeasurements = share
+                AppSettings.askedShareMeasurements = true
+                askingShare = false
+                Task { await recorder.start() }
+            }
+            .interactiveDismissDisabled()
         }
     }
 
@@ -237,7 +242,13 @@ private struct TrackScreen: View {
             }
             Spacer()
             Button {
-                Task { if recorder.isRecording { await recorder.stop() } else { await recorder.start() } }
+                if recorder.isRecording {
+                    Task { await recorder.stop() }
+                } else if !AppSettings.askedShareMeasurements {
+                    askingShare = true  // then starts
+                } else {
+                    Task { await recorder.start() }
+                }
             } label: {
                 Image(systemName: recorder.isRecording ? "stop.circle.fill" : "record.circle")
                     .font(.system(size: 30))

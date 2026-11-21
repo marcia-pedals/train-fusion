@@ -9,8 +9,8 @@
 # providers in Identity Platform.
 
 locals {
-  api_host     = trimprefix(google_cloud_run_v2_service.api.uri, "https://")
-  ios_bundle   = "io.github.marcia-pedals.TrainFusion"
+  api_host   = trimprefix(google_cloud_run_v2_service.api.uri, "https://")
+  ios_bundle = "io.github.marcia-pedals.TrainFusion"
 }
 
 # ------------------------------------------------------------------ the service
@@ -50,13 +50,15 @@ resource "google_cloud_run_v2_service" "api" {
 
       dynamic "env" {
         for_each = {
-          GCP_PROJECT          = var.project
-          RECORDINGS_BUCKET    = google_storage_bucket.recordings.name
-          MAX_UPLOAD_BYTES     = "200000000"
-          ANON_UPLOADS_PER_DAY = "24"
-          USER_UPLOADS_PER_DAY = "12"
-          SIGNUPS_PER_DAY      = "24"
-          CONTACT_EMAIL        = var.contact_email
+          GCP_PROJECT               = var.project
+          RECORDINGS_BUCKET         = google_storage_bucket.recordings.name
+          MAX_UPLOAD_BYTES          = "200000000"
+          ANON_UPLOADS_PER_DAY      = "24"
+          USER_UPLOADS_PER_DAY      = "12"
+          SIGNUPS_PER_DAY           = "24"
+          ANON_MEASUREMENTS_PER_DAY = "240"
+          USER_MEASUREMENTS_PER_DAY = "48"
+          CONTACT_EMAIL             = var.contact_email
         }
         content {
           name  = env.key
