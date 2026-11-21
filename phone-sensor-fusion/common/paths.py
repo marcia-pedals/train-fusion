@@ -8,8 +8,8 @@ HERE = Path(__file__).resolve().parent.parent  # phone-sensor-fusion/
 REPO = HERE.parent
 # data/recordings/ mirrors the recordings bucket: raw/ is what the phone uploaded, labels/
 # what we made by hand. `just sync-recordings` (common/sync.py) keeps the two in step.
-BUCKET = "train-fusion-recordings"  # GCSUploader.bucket in the app, var.recordings_bucket in infra/
-RAW_PREFIX = "raw/"  # the app uploads to raw/<id>/ (GCSUploader.prefix)
+BUCKET = "train-fusion-recordings"  # var.recordings_bucket in infra/
+RAW_PREFIX = "raw/"  # uploads go to raw/<recording id>-<8 hex>/ (backend/, docs/api.md)
 LABELS_PREFIX = "labels/"
 RECORDINGS_DATA = REPO / "data" / "recordings"
 RECORDINGS = RECORDINGS_DATA / "raw"  # raw, as uploaded by the phone: bucket -> laptop only

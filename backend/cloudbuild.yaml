@@ -1,0 +1,8 @@
+# `just api-deploy`: build the image from backend/ and push it to Artifact Registry
+# (infra/api.tf). The deploy itself is `gcloud run services update` in the Justfile.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "${_IMAGE}", "."]
+images: ["${_IMAGE}"]
+options:
+  logging: CLOUD_LOGGING_ONLY  # no logs bucket needed

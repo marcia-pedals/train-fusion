@@ -1,17 +1,30 @@
 import SwiftUI
 
-/// Two screens behind a tab bar. "Measure" shows what the model believes: about the
-/// recording in progress, or about a recording being replayed. "History" lists the
-/// recordings on the phone; its replay buttons are the way into replay, and tapping the
-/// Measure tab again is the way out.
+/// Three screens behind a tab bar. "Measure" shows what the model believes: about the
+/// recording in progress, or about a recording being replayed. "History" lists the rides
+/// on the phone; its replay buttons are the way into replay, and tapping the Measure tab
+/// again is the way out. "Settings" has the settings and the account.
 struct ContentView: View {
     enum Tab { case track, recordings, settings }
 
     @State private var recorder = Recorder()
-    @State private var store = RecordingStore()
+    @State private var store = RideStore()
     @State private var replay = ReplayPlayer()
     @State private var tab = Tab.track
+    /// The upload question being asked (after a ride, or from History).
+    @State private var consent: UploadConsent?
+    /// What to offer after signing in, one at a time.
+    @State private var offers: [Offer] = []
     @Environment(\.scenePhase) private var scenePhase
+    private let account = Account.shared
+
+    enum Offer {
+        case link(Int)  // uploads from this phone not linked to an account
+        case sync(Int)  // rides not synced to this account
+    }
+
+    /// Recordings that mustn't be deleted from under the app.
+    private var protecting: Set<String> { Set([replay.recording?.id, recorder.activeID].compactMap { $0 }) }
 
     var body: some View {
         TabView(selection: Binding(
@@ -25,13 +38,18 @@ struct ContentView: View {
             TrackScreen(recorder: recorder, replay: replay)
                 .tabItem { Label("Measure", systemImage: "tram.fill") }
                 .tag(Tab.track)
-            RecordingsScreen(store: store, canReplay: !recorder.isRecording) { recording in
-                replay.play(recording)
-                tab = .track
-            }
-            .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
-            .tag(Tab.recordings)
-            SettingsScreen()
+            HistoryScreen(
+                store: store, canReplay: !recorder.isRecording, protecting: protecting,
+                onReplay: { recording in
+                    replay.play(recording)
+                    tab = .track
+                },
+                onUpload: { ride in
+                    consent = UploadConsent(rideID: ride.id, bytes: store.recordings[ride.id]?.bytes ?? 0, afterRide: false)
+                })
+                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+                .tag(Tab.recordings)
+            SettingsScreen(store: store, protecting: protecting)
                 .tabItem { Label("Settings", systemImage: "gearshape") }
                 .tag(Tab.settings)
         }
@@ -39,13 +57,82 @@ struct ContentView: View {
             refresh()
             autoReplay()
             if ProcessInfo.processInfo.arguments.contains("-history") { tab = .recordings }  // for screenshots
+            if ProcessInfo.processInfo.arguments.contains("-settings") { tab = .settings }
+            if ProcessInfo.processInfo.arguments.contains("-askupload"), let ride = store.rides.first {
+                consent = UploadConsent(rideID: ride.id, bytes: store.recordings[ride.id]?.bytes ?? 0, afterRide: true)
+            }
         }
-        .onChange(of: recorder.activeID) { refresh() }
-        .onChange(of: scenePhase) { refresh() }
+        .onChange(of: recorder.activeID) { old, new in
+            if let old, new == nil { rideEnded(old) } else { refresh() }
+        }
+        .onChange(of: scenePhase) {
+            guard scenePhase == .active else { return }
+            refresh()
+            store.resumeUploads()
+            Task { await store.syncPending() }
+        }
+        .sheet(item: $consent) { request in
+            UploadConsentSheet(request: request) { answer in
+                consent = nil
+                if answer == .dontAskAgain { AppSettings.askToUpload = false }
+                store.decide(request.rideID, upload: answer == .yes, protecting: protecting)
+            }
+        }
+        .onOpenURL { url in
+            if account.handle(url: url) { tab = .settings }
+        }
+        .onChange(of: account.signIns) { Task { await offerAfterSignIn() } }
+        .alert(offerTitle, isPresented: Binding(get: { !offers.isEmpty }, set: { if !$0, !offers.isEmpty { offers.removeFirst() } }),
+               presenting: offers.first) { offer in
+            switch offer {
+            case .link:
+                Button("Link them") { Task { try? await API.call("POST", "v1/uploads/claim", auth: .required, device: true) } }
+                Button("Not now", role: .cancel) {}
+            case .sync(let n):
+                Button("Sync \(n == 1 ? "it" : "them")") { Task { await store.syncAll() } }
+                Button("Not now", role: .cancel) {}
+            }
+        } message: { offer in
+            switch offer {
+            case .link: Text("Link the recordings you uploaded from this phone before signing in to your account? You'll be able to see them with your account later.")
+            case .sync: Text("Sync the timings of the rides already on this phone to your account?")
+            }
+        }
+    }
+
+    private var offerTitle: String {
+        switch offers.first {
+        case .link(let n): return n == 1 ? "1 earlier upload" : "\(n) earlier uploads"
+        case .sync(let n): return n == 1 ? "1 ride on this phone" : "\(n) rides on this phone"
+        case nil: return ""
+        }
     }
 
     private func refresh() {
         store.refresh(excluding: recorder.activeID)
+        store.prune(protecting: protecting)
+    }
+
+    private func rideEnded(_ id: String) {
+        guard let ride = store.rideEnded(id) else { return refresh() }
+        if ride.upload == .undecided, AppSettings.askToUpload {
+            consent = UploadConsent(rideID: id, bytes: store.recordings[id]?.bytes ?? 0, afterRide: true)
+        } else {
+            store.prune(protecting: protecting)
+        }
+    }
+
+    private func offerAfterSignIn() async {
+        guard let uid = account.user?.uid else { return }
+        var next: [Offer] = []
+        if let body = try? await API.call("GET", "v1/uploads", auth: .required, device: true),
+           let uploads = body["uploads"] as? [[String: Any]] {
+            let n = uploads.filter { $0["linked"] as? Bool == false && $0["deletion_requested"] as? Bool != true }.count
+            if n > 0 { next.append(.link(n)) }
+        }
+        let unsynced = store.unsynced(to: uid).count
+        if unsynced > 0, AppSettings.syncRides { next.append(.sync(unsynced)) }
+        offers = next
     }
 
     /// For testing from the command line (the simulator):
@@ -54,7 +141,7 @@ struct ContentView: View {
     private func autoReplay() {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-autoreplay"), i + 1 < args.count,
-              let recording = store.recordings.first(where: { $0.id == args[i + 1] }) else { return }
+              let recording = store.recordings[args[i + 1]] else { return }
         if let j = args.firstIndex(of: "-replayspeed"), j + 1 < args.count { replay.speed = Double(args[j + 1]) ?? 0 }
         replay.play(recording, dump: args.contains("-dump"))
         if let k = args.firstIndex(of: "-replayskips"), k + 1 < args.count {
@@ -278,128 +365,6 @@ private struct RideSheet: View {
     }
 }
 
-private struct SettingsScreen: View {
-    @AppStorage(Units.key) private var metric = false
-
-    var body: some View {
-        Form {
-            Section("Units") {
-                Picker("Units", selection: $metric) {
-                    Text("Imperial").tag(false)
-                    Text("Metric").tag(true)
-                }
-                .pickerStyle(.segmented)
-            }
-        }
-    }
-}
-
-private struct RecordingsScreen: View {
-    let store: RecordingStore
-    let canReplay: Bool  // not while a recording is in progress
-    let onReplay: (Recording) -> Void
-    @State private var deleting: Recording?
-
-    var body: some View {
-        Group {
-            if store.recordings.isEmpty {
-                ContentUnavailableView("No recordings", systemImage: "waveform")
-            } else {
-                List(store.recordings) { recording in
-                    RecordingRow(
-                        recording: recording, upload: store.uploads[recording.id],
-                        onUpload: { Task { await store.upload(recording) } },
-                        onReplay: recording.duration == nil || !canReplay ? nil : { onReplay(recording) })
-                    // swipe left to delete (it still asks first); not in the middle of an upload
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        if case .uploading = store.uploads[recording.id] {} else {
-                            Button { deleting = recording } label: { Label("Delete", systemImage: "trash") }.tint(.red)
-                        }
-                    }
-                }
-                .listStyle(.plain)
-            }
-        }
-        .confirmationDialog(
-            deleting.map { $0.uploaded ? "Delete this recording from the phone?" : "This recording hasn't been uploaded. Delete it anyway?" } ?? "",
-            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                if let recording = deleting { store.delete(recording) }
-                deleting = nil
-            }
-        }
-    }
-}
-
-struct RecordingRow: View {
-    let recording: Recording
-    let upload: UploadState?
-    let onUpload: () -> Void
-    var onReplay: (() -> Void)?
-
-    var body: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.body.weight(.medium)).lineLimit(1).minimumScaleFactor(0.7)
-                Text(detail).font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
-                if let ride = recording.ride {
-                    Text("Trip \(String(ride.trip)) · Car \(String(ride.car))" + (ride.position == .unspecified ? "" : " · \(ride.position.rawValue)"))
-                        .font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
-                }
-                if case .failed(let message) = upload {
-                    Text(message).font(.footnote).foregroundStyle(.red)
-                }
-            }
-            Spacer()
-            Group {
-                if case .uploading(let fraction) = upload {
-                    ProgressView(value: fraction).progressViewStyle(.circular)
-                } else if recording.uploaded {
-                    Image(systemName: "checkmark.icloud.fill").foregroundStyle(.green)
-                        .accessibilityLabel("Uploaded")
-                } else {
-                    Button(action: onUpload) { Image(systemName: "icloud.and.arrow.up") }
-                        .accessibilityLabel("Upload")
-                }
-            }
-            .frame(width: 32)
-            if let onReplay {
-                Button(action: onReplay) { Image(systemName: "play.circle") }
-                    .accessibilityLabel("Replay")
-            }
-        }
-        .font(.title3)
-        .buttonStyle(.borderless)  // so each button in the row takes its own taps
-    }
-
-    /// Where the model heard the ride start and end.
-    private var title: String {
-        guard let origin = recording.origin else { return "Unknown trip" }
-        return origin + (recording.destination.map { " → " + $0 } ?? "") + (recording.stationsSure ? "" : " (unsure)")
-    }
-
-    private static let dateFormat: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "MMM d h:mma"  // Jan 5 9:05am
-        f.amSymbol = "am"
-        f.pmSymbol = "pm"
-        return f
-    }()
-
-    private var detail: String {
-        let when = recording.started.map(Self.dateFormat.string) ?? recording.id
-        return "\(when) · \(lengthAndSize)"
-    }
-
-    private var lengthAndSize: String {
-        let size = ByteCountFormatter.string(fromByteCount: recording.bytes, countStyle: .file)
-        guard let duration = recording.duration else { return "not stopped properly · \(size)" }
-        let length = Duration.seconds(duration.rounded()).formatted(.time(pattern: duration >= 3600 ? .hourMinuteSecond : .minuteSecond))
-        return "\(length) · \(size)" + (recording.uploaded ? " · uploaded" : "")
-    }
-}
 
 #Preview {
     ContentView()

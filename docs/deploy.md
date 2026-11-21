@@ -99,6 +99,123 @@ replace the VM with `just tf apply -replace=google_compute_instance.fetcher`).
 The first uses GCS's own request metric. If it misfires, check the `method` /
 `response_code` label values in Metrics Explorer (`storage.googleapis.com/api/request_count`).
 
+## The recorder API (`backend/`)
+
+The phone app's backend ([api.md](api.md); why it exists: [accounts-and-uploads.md](accounts-and-uploads.md)):
+accounts (Identity Platform: Sign in with Apple, Google, emailed link), ride sync
+(Firestore) and signed upload URLs for `gs://train-fusion-recordings/raw/`. Terraform in
+`infra/api.tf`.
+
+```
+app ── ID token (Identity Platform) ─┐
+    ── X-Device-Secret ──────────────┤
+                                     ▼
+Cloud Run service `api` (scale to zero, ≤ 2 instances, SA recorder-api)
+  ├─ Firestore (default) database, us-west1: users, rides, uploads, deletion requests, counters
+  ├─ signs V4 PUT URLs with IAM signBlob (as itself) ──► app PUTs files to raw/<upload id>/
+  ├─ lists raw/<upload id>/ (names and sizes) to check an upload is complete
+  └─ deletes Identity Platform users (account deletion, refused signups)
+```
+
+What terraform makes: the APIs; the Firestore database; the service (with a placeholder
+image: `just api-deploy` builds and deploys the real one, and terraform ignores the image
+from then on) and its service account, which may create objects under `raw/` (never
+replace or delete), list the bucket's names and sizes, sign as itself, use Firestore and
+delete Identity Platform users, and nothing else; Identity Platform with email link sign-in
+and the API's host as an authorized domain; the app's API key (restricted to the Identity
+Toolkit and Secure Token APIs, and to the app's bundle id); and what `just api-deploy`
+builds with (an Artifact Registry repo `api`, a staging bucket, and a build service account
+that can only read that bucket, push to that repo and write logs).
+
+Settings are environment variables on the service, set in `api.tf` (limits, the bucket, the
+Apple app id) and `terraform.tfvars` (`contact_email`, shown on `/privacy`); change them
+with `just tf apply`.
+
+### One-time setup
+
+In this order. The old app builds upload with the `recorder` service account's key, which
+this change removes: keep it until every phone that records runs a build that uses the API
+(step 6). If you add `google_ios_client_id` later, `just tf apply -refresh-only` updates
+the output that `just ios-config` reads.
+
+1. **Google OAuth clients** (Google Cloud console, project train-fusion):
+   - *Google Auth Platform → Branding*: app name "Train Recorder", support email (the
+     privacy policy URL, `<api_url>/privacy`, once step 3 has made the API). *Audience*:
+     External, published.
+   - *Clients → Create*: a **Web application** client, with authorized redirect URI
+     `https://train-fusion.firebaseapp.com/__/auth/handler` (for Identity Platform's Google
+     provider, and a future web app), and an **iOS** client with bundle id
+     `io.github.marcia-pedals.TrainRecorder` (for the app).
+2. `infra/terraform.tfvars` (gitignored): add `contact_email = "..."` (the privacy policy's
+   contact address) and `google_ios_client_id = "<the iOS client's id>"`.
+3. Make the API and everything around it, but not yet the removal of `recorder`:
+
+   ```sh
+   just tf apply -target=google_identity_platform_config.default -target=google_apikeys_key.ios \
+       -target=google_project_iam_member.api_firestore -target=google_project_iam_member.api_delete_accounts \
+       -target=google_service_account_iam_member.api_sign_as_itself \
+       -target=google_storage_bucket_iam_member.api_builder_source \
+       -target=google_artifact_registry_repository_iam_member.api_builder_push \
+       -target=google_project_iam_member.api_builder_logs
+   just api-deploy                # build backend/ and deploy it; ends by checking /health
+   just auth-email-link-setup     # emailed sign-in links land on <api_url>/auth/email-link
+   ```
+
+   (Check from outside with `/health`: Cloud Run's front end answers `/healthz` itself.)
+4. **Providers** (Identity Platform → Providers; configured by hand, not in terraform, so
+   their secrets stay out of the state):
+   - **Google**: the web client's id and secret (step 1).
+   - **Apple**: first, in the Apple Developer account (team 4Q3J7GB2S8):
+     - the App ID `io.github.marcia-pedals.TrainRecorder` has the Sign in with Apple
+       capability;
+     - a **Services ID** (e.g. `io.github.marcia-pedals.TrainRecorder.web`) with Sign in
+       with Apple, domain `train-fusion.firebaseapp.com`, return URL
+       `https://train-fusion.firebaseapp.com/__/auth/handler`;
+     - a **Key** with Sign in with Apple: note its Key ID, download the `.p8` (once);
+     - so that emailed sign-in links reach people who hid their address from Apple (an
+       `@privaterelay.appleid.com` address): *Services → Sign in with Apple for Email
+       Communication*: add the sender, `noreply@train-fusion.firebaseapp.com`.
+
+     Then the provider: client id = the Services ID; for iOS, bundle id
+     `io.github.marcia-pedals.TrainRecorder`; OAuth code flow: Team ID `4Q3J7GB2S8`, the
+     Key ID and the `.p8`'s contents. The code flow settings let Identity Platform revoke
+     a user's Apple tokens when they delete their account (Apple requires that), and are
+     what web and Android sign-in will use later.
+   - **Email link** is on already (terraform: email, no password).
+5. `just ios-config` (writes `ios/Config.xcconfig`, gitignored: the API host, the API key,
+   the Google client ids), `just ios`, build, and install on every phone that records.
+6. Then the rest: `just tf apply`. This also deletes the `recorder` service account and
+   its key, so old builds can no longer upload; delete the old key file
+   `ios/TrainRecorder/uploader-key.json` if it's still around.
+
+### Day to day
+
+| | |
+|---|---|
+| `just api-deploy` | build `backend/` (Cloud Build) and deploy it |
+| `just tf apply` | change the service's settings (env vars in `api.tf`), scaling, IAM |
+| `gcloud run services logs tail api --region us-west1` | its logs (never tokens or device secrets) |
+| `just recording-deletions` | pending deletion requests, and the commands to delete each |
+| `just block-account <uid>` | refuse an account |
+| `just test` | includes the backend's tests (against in-memory fakes, no GCP) |
+
+**Deletion requests** (someone asked for their uploads to be deleted, or deleted their
+account): `just recording-deletions` lists each pending request with its uploads and the
+`gcloud storage rm -r gs://train-fusion-recordings/raw/<upload id>/` commands to run. Nothing
+is deleted automatically: run them yourself, also delete labels made from those uploads
+(in the bucket's `labels/` and `RIDES.md`) and any laptop copies (`data/recordings/`),
+then `just recording-deletions --done <request id>`. Requests promise deletion within 30
+days. Deleted objects stay recoverable for the bucket's 7-day soft-delete window. Upload
+URLs handed out shortly before a request still work for up to 12 hours; the listing says
+when a request is that recent.
+
+**Blocking an account** (someone abusing the shared upload limits): find its uid (the
+`uid` of its uploads in Firestore, or Identity Platform's user list) and
+`just block-account <uid>`: this disables the user in Identity Platform (no new tokens)
+and sets `users/<uid>.blocked`, so the API refuses it at once with `403 blocked`. Uploads
+without an account can't be blocked individually: the shared daily limit is the
+protection (accounts-and-uploads.md says why).
+
 ## Cost (approximate)
 
 | | per month |
@@ -110,3 +227,5 @@ The first uses GCS's own request metric. If it misfires, check the `method` /
 | Alerts: 3 conditions | ~$0.30 ($0.10/condition since May 2026) |
 | Custom metric | free (well under the free allotment) |
 | Secret Manager | free (≤ 6 secret versions, 10k accesses) |
+| Recorder API: Cloud Run, Firestore, Identity Platform, Cloud Build, Artifact Registry | free at this scale (all within free tiers: scale to zero, < 50k monthly users, a few builds) |
+| Recordings bucket | ~$0.02/GB-month stored; uploads are free (ingress) |

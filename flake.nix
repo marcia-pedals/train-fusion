@@ -31,6 +31,13 @@
           tqdm
           # phone-sensor-fusion/
           matplotlib
+          # backend/ (tests and the admin CLI; the service's own pins are backend/requirements.txt)
+          fastapi
+          httpx
+          uvicorn
+          google-auth
+          requests
+          google-cloud-firestore
         ]);
       in
       {

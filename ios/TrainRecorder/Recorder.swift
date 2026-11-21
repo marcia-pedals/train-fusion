@@ -83,7 +83,7 @@ final class Recorder {
 
         let now = Clock.now()
         let id = RecordingID.make(Date(timeIntervalSince1970: now.unix))
-        let dir = RecordingStore.root.appendingPathComponent(id)
+        let dir = RideStore.root.appendingPathComponent(id)
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let clock = try ClockLog(dir: dir)

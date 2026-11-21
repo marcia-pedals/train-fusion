@@ -29,4 +29,5 @@ just fetch                         # run the archiver locally (the real one runs
 - [docs/pipeline.md](docs/pipeline.md): stages, tables, commands
 - [docs/reference.md](docs/reference.md): the reference, how it's fitted and evaluated
 - [docs/recorder.md](docs/recorder.md): the iPhone app (`ios/`) for recording audio + motion on a train, and its file format
+- [docs/accounts-and-uploads.md](docs/accounts-and-uploads.md), [docs/api.md](docs/api.md): the app's accounts, ride sync and uploads, and its backend (`backend/`)
 - [phone-sensor-fusion/README.md](phone-sensor-fusion/README.md): stops, speed and position of a train from those recordings alone (separate from the GTFS-RT pipeline)

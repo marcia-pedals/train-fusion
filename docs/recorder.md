@@ -4,12 +4,17 @@ A one-screen iPhone app for recording a train ride from the inside: audio (to he
 door chimes and the traction motors) plus raw accelerometer, gyroscope and magnetometer
 samples and the barometer, all
 with timestamps that convert to exact clock time. One button starts and stops a recording;
-each recording in the list can be uploaded to `gs://train-fusion-recordings/raw/` or deleted.
+after each one the app asks whether to upload it (through the backend, to
+`gs://train-fusion-recordings/raw/`). Signing in is optional; it syncs each ride's timings
+to the account. What the app does about accounts, uploads, sync and keeping recordings is
+in [accounts-and-uploads.md](accounts-and-uploads.md); the backend's API in [api.md](api.md).
 Recording carries on with the app in the background and the phone locked.
 
 The recordings are used by [phone-sensor-fusion/](../phone-sensor-fusion/README.md), which infers the
 train's stops, speed and position from them. `just sync-recordings` downloads them to
-`data/recordings/raw/<id>/` (and syncs their labels, `data/recordings/labels/`, both ways).
+`data/recordings/raw/<bucket dir>/` (and syncs their labels, `data/recordings/labels/`, both ways).
+The bucket dir is the recording id plus the backend's suffix, `<id>-<8 hex>`, for uploads
+made since uploads went through the backend; plain `<id>` for older ones.
 
 ## Screens
 
@@ -48,11 +53,16 @@ Three, behind a tab bar:
      yellow fair, red missing, grey not in play. Tap for each one's state and a number.
 
   Every probability is still there under "Details".
-- **Settings**: miles and mph, or kilometres and km/h.
-- **History**: the recordings on the phone, each with upload and replay; swipe a row left to delete it. A row is
+- **Settings**: miles and mph, or kilometres and km/h; whether to ask about uploading after
+  each ride; how many recordings to keep on the phone; asking for uploaded recordings to be
+  deleted; the account (sign in with Apple, Google or an email link; ride timings sync;
+  sign out; delete account); the privacy policy.
+- **History**: the rides on the phone (`Application Support/rides.json`; a ride outlives its
+  recording), each with upload and replay while its recording is still here; swipe a row
+  left to delete it from the phone. A row is
   titled by where the model heard the ride start and end ("Millbrae → San Jose Diridon";
-  "Unknown trip" if it named no stop), then the date, length and size, then the trip and car
-  if they were typed in. Replay
+  "Unknown trip" if it named no stop), then the date, length and size (or "recording not
+  kept"), whether it's uploaded and synced, then the trip and car if they were typed in. Replay
   (not offered while recording) plays a finished recording back through the model, to watch
   the beliefs without being on a train.
 
@@ -116,30 +126,24 @@ and replay only sees recordings that are in the app's own Documents folder.
 ## Setup
 
 ```sh
-just tf apply     # once: the recordings bucket and the upload-only `recorder` service account
-just ios-key      # once: its key, into ios/TrainRecorder/uploader-key.json (gitignored)
+just ios-config   # once the backend is deployed (docs/deploy.md): ios/Config.xcconfig (gitignored)
 just ios          # generate the Xcode project (xcodegen) and open it; then run on the phone
 ```
 
 `ios/project.yml` is the source of truth for the Xcode project; the `.xcodeproj` is
-generated and not checked in. Re-run `just ios` after adding files, or after `just ios-key`
-(the key is bundled only if it existed when the project was generated).
+generated and not checked in. Re-run `just ios` after adding files, or after `just ios-config`.
 
-The key is inside the app, so anyone holding a build of the app has it. That's why it is
-its own service account with nothing but `objectCreator` on its own bucket: the worst it
-can do is add objects there. Don't distribute the app beyond your own devices.
+The app holds no credential: uploads go through the backend, which hands out signed URLs
+(docs/api.md). `Config.xcconfig` only says where the backend is, and Identity Platform's
+API key (restricted to this app's bundle id) and Google client id for sign-in. Without it
+the app records and replays as usual but can't upload or sign in.
 
-To let someone else download the recordings and labels with `just sync-recordings`, add
-them to `recordings_readers` in `infra/terraform.tfvars` (gitignored; e.g.
-`recordings_readers = ["user:someone@example.com"]`) and `just tf apply`. That gives them
-`objectViewer` on the bucket only, so they can read everything in it, but not add to it,
-change it or delete from it. Their sync downloads as usual. Any label files they change
-are reported as not uploaded and stay only on their machine.
+Build from a shell outside the nix dev shell: its linker breaks Xcode's link step.
 
 ## A recording
 
 `Documents/recordings/<id>/` on the phone (also visible in the Files app, and in Finder
-with the phone plugged in), uploaded as `gs://train-fusion-recordings/raw/<id>/`. `<id>` is
+with the phone plugged in), uploaded as `gs://train-fusion-recordings/raw/<id>-<8 hex>/`. `<id>` is
 the start time in UTC, e.g. `20261115T181502Z`.
 
 | File | |
@@ -222,6 +226,8 @@ timestamps are on the uptime clock as assumed.
   the sensor and clock files are fine up to the last few seconds (`gzip -dc` complains
   about the truncated end but outputs the data), but the last audio segment is unplayable
   (an `.m4a` needs its closing index). The list shows such a recording as "not stopped properly".
-- **Uploads** run while the app is open (plus a short grace period in the background). A
-  failed upload can be retried: objects already in the bucket are skipped, never replaced.
+- **Uploads** run in a background URL session, so they finish with the app closed; what's in
+  flight is in `Application Support/uploads.json`. A failed upload can be retried: objects
+  already in the bucket are skipped, never replaced. In the bucket a recording is
+  `raw/<id>-<8 hex>/` (the backend adds the suffix so two phones can't collide).
 - Deleting in the app deletes from the phone only.

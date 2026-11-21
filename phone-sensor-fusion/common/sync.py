@@ -6,10 +6,14 @@ The bucket and data/recordings/ have the same layout:
     labels/<id>/...    its labels (labels/README.md), made by hand on a laptop
     labels/RIDES.md    which ride is which
 
+<id> is the upload's directory name, which the recorder API chooses: the recording id (its
+start time) and 8 random hex digits, <recording id>-3f9a0c1d (recordings uploaded before
+the API are just <recording id>). That name is the id everywhere here (paths.recording_ids()).
+
 raw/ only ever flows bucket -> laptop: recordings appear in the bucket (the app uploads
-them, create-only) and are never made or changed on a laptop. A recording is downloaded
-once its meta.json is in the bucket (the app uploads it last), and files already here are
-skipped.
+them, create-only, through URLs the API signs) and are never made or changed on a laptop.
+A recording is downloaded once its meta.json is in the bucket (the app uploads it last),
+and files already here are skipped.
 
 labels/ flows both ways, file by file. data/recordings/.labels-sync.json remembers each
 file's md5 as of the last sync, so a file that differs on the two sides can be told apart:

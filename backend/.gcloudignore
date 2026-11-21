@@ -1,0 +1,5 @@
+# what `gcloud builds submit` leaves out of the build's source upload
+tests/
+admin.py
+__pycache__/
+.pytest_cache/

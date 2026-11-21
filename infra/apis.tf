@@ -5,6 +5,16 @@ locals {
     "monitoring.googleapis.com",
     "secretmanager.googleapis.com",
     "storage.googleapis.com",
+    # the recorder API (api.tf)
+    "run.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "artifactregistry.googleapis.com",
+    "firestore.googleapis.com",
+    "identitytoolkit.googleapis.com",
+    "securetoken.googleapis.com",
+    "apikeys.googleapis.com",
+    "iam.googleapis.com",            # custom roles
+    "iamcredentials.googleapis.com", # signing upload URLs (signBlob)
   ]
 }
 

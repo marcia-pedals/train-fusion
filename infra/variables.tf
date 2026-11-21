@@ -26,7 +26,7 @@ variable "alert_email" {
 }
 
 variable "recordings_bucket" {
-  description = "Phone recordings. Must match GCSUploader.bucket in ios/TrainRecorder/GCSUploader.swift and BUCKET in phone-sensor-fusion/common/paths.py."
+  description = "Phone recordings. Must match BUCKET in phone-sensor-fusion/common/paths.py. (The app doesn't know it: the API hands it signed URLs.)"
   type        = string
   default     = "train-fusion-recordings"
 }
@@ -35,4 +35,15 @@ variable "recordings_readers" {
   description = "Members (\"user:someone@example.com\") who may read the recordings bucket (just sync-recordings, download only). Set in terraform.tfvars, which is gitignored: who they are stays out of git."
   type        = list(string)
   default     = []
+}
+
+variable "contact_email" {
+  description = "The contact address on the API's privacy policy (/privacy). Set in terraform.tfvars (gitignored)."
+  type        = string
+}
+
+variable "google_ios_client_id" {
+  description = "The iOS OAuth client id for Sign in with Google (made by hand: docs/deploy.md), e.g. 123-abc.apps.googleusercontent.com. Set in terraform.tfvars; `just ios-config` writes it into the app's config."
+  type        = string
+  default     = ""
 }

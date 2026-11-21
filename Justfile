@@ -43,7 +43,10 @@ migrate dir:
     python -m fetchers.cloud migrate --data-dir {{dir}} --bucket train-fusion-archive
 
 # generate the phone recorder's Xcode project (ios/) and open it: docs/recorder.md
+# (without ios/Config.xcconfig from `just ios-config`, a placeholder: the app then can't
+# upload or sign in)
 ios:
+    [ -f ios/Config.xcconfig ] || printf 'API_HOST = example.invalid\nIDENTITY_API_KEY =\nGOOGLE_IOS_CLIENT_ID =\nGOOGLE_REVERSED_CLIENT_ID =\n' > ios/Config.xcconfig
     cd ios && xcodegen && open TrainRecorder.xcodeproj
 
 # write the fitted model where the app bundles it (ios/TrainRecorder/model.json), and the
@@ -51,10 +54,59 @@ ios:
 ios-model:
     cd phone-sensor-fusion && python -m app.export
 
-# one-off: create the upload-only key the app bundles (gitignored). Then `just ios` and rebuild.
-ios-key:
-    gcloud iam service-accounts keys create ios/TrainRecorder/uploader-key.json \
-        --iam-account "$(terraform -chdir=infra output -raw recorder_service_account)" --project train-fusion
+# write ios/Config.xcconfig (gitignored): the API host and the sign-in settings the app
+# builds with, from terraform's outputs. Then `just ios` and rebuild.
+ios-config:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    url=$(terraform -chdir=infra output -raw api_url)
+    key=$(terraform -chdir=infra output -raw identity_api_key)
+    client=$(terraform -chdir=infra output -raw google_ios_client_id)
+    [ -n "$client" ] || { echo "set google_ios_client_id in infra/terraform.tfvars and apply (docs/deploy.md)" >&2; exit 1; }
+    host=${url#https://}; host=${host%/}
+    # no "//" anywhere: xcconfig starts a comment there, hence a host and not a URL
+    printf '%s\n' \
+        "API_HOST = $host" \
+        "IDENTITY_API_KEY = $key" \
+        "GOOGLE_IOS_CLIENT_ID = $client" \
+        "GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.${client%.apps.googleusercontent.com}" \
+        > ios/Config.xcconfig
+    echo "wrote ios/Config.xcconfig (API at $host)"
+
+# build backend/ with Cloud Build and deploy it to the Cloud Run service `api` (infra/api.tf)
+api-deploy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tf() { terraform -chdir=infra output -raw "$1"; }
+    image="$(tf api_image_repository)/api:$(date -u +%Y%m%dT%H%M%S)-$(git rev-parse --short HEAD)$(git diff --quiet HEAD -- backend || echo -dirty)"
+    gcloud builds submit backend --project train-fusion --region us-west1 \
+        --config backend/cloudbuild.yaml --substitutions "_IMAGE=$image" \
+        --service-account "$(tf api_builder_service_account)" \
+        --gcs-source-staging-dir "gs://$(tf api_builds_bucket)/source"
+    gcloud run services update api --project train-fusion --region us-west1 --image "$image"
+    curl -fsS "$(tf api_url)/health" && echo " <- $(tf api_url)"
+
+# once (and whenever the API's URL changes): emailed sign-in links land on the API's
+# /auth/email-link, which the app opens as a universal link
+auth-email-link-setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    url=$(terraform -chdir=infra output -raw api_url)
+    curl -fsS -X PATCH \
+        "https://identitytoolkit.googleapis.com/admin/v2/projects/train-fusion/config?updateMask=notification.sendEmail.callbackUri" \
+        -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+        -H "X-Goog-User-Project: train-fusion" -H "Content-Type: application/json" \
+        -d "{\"notification\": {\"sendEmail\": {\"callbackUri\": \"$url/auth/email-link\"}}}" \
+        | jq '.notification.sendEmail.callbackUri'
+
+# recordings people asked to have deleted, with the commands to delete each by hand;
+# `just recording-deletions --done <request id>` once you have (backend/admin.py)
+recording-deletions *args:
+    python backend/admin.py deletions {{args}}
+
+# refuse an account: disable it in Identity Platform and mark it blocked in the API
+block-account uid:
+    python backend/admin.py block {{uid}}
 
 # phone recordings: download new ones from the bucket's raw/, sync labels/ both ways
 # (phone-sensor-fusion/common/sync.py); e.g. `just sync-recordings --dry-run`
@@ -73,3 +125,4 @@ psf-view:
 test:
     python -m pytest -q tests
     cd phone-sensor-fusion && python -m pytest -q tests
+    python -m pytest -q backend/tests

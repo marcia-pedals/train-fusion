@@ -15,8 +15,18 @@ targets:
   TrainRecorder:
     type: application
     platform: iOS
-    # TrainRecorder/uploader-key.json (gitignored, from `just ios-key`) is bundled when present.
     sources: [TrainRecorder]
+    # Where the backend is, and the Identity Platform settings: Config.xcconfig (gitignored,
+    # from `just ios-config`). Without it the app records and replays but can't upload or sign in.
+    configFiles:
+      Debug: Config.xcconfig
+      Release: Config.xcconfig
+    entitlements:
+      path: TrainRecorder/TrainRecorder.entitlements
+      properties:
+        com.apple.developer.applesignin: [Default]
+        # emailed sign-in links (https://<backend>/auth/...) open the app
+        com.apple.developer.associated-domains: ["applinks:$(API_HOST)"]
     info:
       path: TrainRecorder/Info.plist
       properties:
@@ -26,9 +36,14 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         # Recording keeps the app running when backgrounded or locked.
+        # Uploads finish in a background URL session, which needs no background mode.
         UIBackgroundModes: [audio]
-        NSMicrophoneUsageDescription: Records audio on the train (door chimes, traction motor).
-        NSMotionUsageDescription: Records motion sensor and barometer measurements on the train.
+        NSMicrophoneUsageDescription: Records audio on the train (door chimes, traction motor). Recordings stay on your phone unless you choose to upload one.
+        NSMotionUsageDescription: Records motion sensor and barometer measurements on the train. Recordings stay on your phone unless you choose to upload one.
+        # from Config.xcconfig (Backend.swift)
+        TRBackendHost: $(API_HOST)
+        TRIdentityAPIKey: $(IDENTITY_API_KEY)
+        TRGoogleClientID: $(GOOGLE_IOS_CLIENT_ID)
         # Recordings show up in the Files app and in Finder, as a fallback to uploading.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true

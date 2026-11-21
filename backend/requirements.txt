@@ -1,0 +1,37 @@
+# The service's dependencies, all pinned (Dockerfile). Resolved from the direct ones:
+# fastapi uvicorn google-auth requests google-cloud-firestore google-cloud-storage
+annotated-doc==0.0.7
+annotated-types==0.8.0
+anyio==4.16.0
+certifi==2026.11.20
+cffi==2.1.1
+charset-normalizer==3.5.2
+click==8.5.1
+cryptography==50.0.2
+fastapi==0.141.1
+google-api-core==2.44.0
+google-auth==2.50.0
+google-cloud-core==2.8.0
+google-cloud-firestore==2.34.1
+google-cloud-storage==3.12.0
+google-crc32c==1.9.0
+google-resumable-media==2.11.0
+googleapis-common-protos==1.76.0
+grpcio==1.85.3
+grpcio-status==1.85.3
+h11==0.16.0
+idna==3.20
+opentelemetry-api==1.45.2
+proto-plus==1.29.0
+protobuf==7.36.2
+pyasn1==0.6.5
+pyasn1_modules==0.4.2
+pycparser==3.12
+pydantic==2.14.4
+pydantic_core==2.50.5
+requests==2.34.2
+starlette==1.10.0
+typing-inspection==0.4.5
+typing_extensions==4.16.0
+urllib3==2.8.0
+uvicorn==0.51.0
