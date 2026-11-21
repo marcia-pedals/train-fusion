@@ -14,8 +14,8 @@ class Settings:
     user_uploads_per_day: int = 12
     signups_per_day: int = 24
     # new Train Measurements (an update of one already shared isn't counted)
-    anon_measurements_per_day: int = 240
-    user_measurements_per_day: int = 48
+    anon_measurements_per_day: int = 10_000
+    user_measurements_per_day: int = 1_000
     # shown on /privacy; set from terraform.tfvars (gitignored), never in git
     contact_email: str = ""
 

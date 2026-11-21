@@ -81,8 +81,8 @@ the bucket without limit; anyone with a build could extract it.)
   - **Delete shared measurements** (confirmed first): deletes, at once, every ride's
     measurements shared from this phone and every one linked to the signed-in account.
     They stay on the phone.
-- Limits on new measurements (updating one already shared isn't counted): **240 a day**
-  without an account, all devices together, and **48 a day** per account. Over the limit
+- Limits on new measurements (updating one already shared isn't counted): **10,000 a day**
+  without an account, all devices together, and **1,000 a day** per account. Over the limit
   they stay pending and are shared another day.
 - Sharing is idempotent: sharing a ride again replaces the earlier copy.
 

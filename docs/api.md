@@ -72,8 +72,8 @@ most 64 KB):
 `doors_closed_unix_s` may be null. `car_position`: `unspecified` / `upper` / `lower` /
 `vestibule`. At most 200 stops. Unknown fields are refused.
 
-- new: `201 {"id": "<ride_id>"}`, counted against today's limit: 240 without an account
-  (all devices together), 48 per account; over it, `429 rate_limited` with
+- new: `201 {"id": "<ride_id>"}`, counted against today's limit: 10,000 without an account
+  (all devices together), 1,000 per account; over it, `429 rate_limited` with
   `retry_after_s`;
 - replaced: `200 {"id": "<ride_id>"}`, not counted;
 - bad body or id: `400 bad_request`.

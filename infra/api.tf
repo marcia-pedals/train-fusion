@@ -56,8 +56,8 @@ resource "google_cloud_run_v2_service" "api" {
           ANON_UPLOADS_PER_DAY      = "24"
           USER_UPLOADS_PER_DAY      = "12"
           SIGNUPS_PER_DAY           = "24"
-          ANON_MEASUREMENTS_PER_DAY = "240"
-          USER_MEASUREMENTS_PER_DAY = "48"
+          ANON_MEASUREMENTS_PER_DAY = "10000"
+          USER_MEASUREMENTS_PER_DAY = "1000"
           CONTACT_EMAIL             = var.contact_email
         }
         content {
