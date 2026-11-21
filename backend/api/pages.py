@@ -75,8 +75,8 @@ history) the app asks whether to upload that ride's recording; nothing is upload
 your yes. An upload is the whole audio recording, including anything said near the phone,
 and the raw sensor data (motion, magnetometer, barometer) with their times. They are used
 only to develop and improve the app's model of trains' stops, speed and position.</li>
-<li><strong>Train Measurements, if you turn on sharing them</strong> (the app asks before
-your first recording; it's a setting). For each ride: the train's position, speed and stops
+<li><strong>Train Measurements, if you turn on sharing them</strong> (the app asks when
+your first recording starts; it's a setting). For each ride: the train's position, speed and stops
 with the exact date and time: when the ride started and ended, the train if you typed it
 in, the direction, and the stations the app detected with the times the doors opened and
 closed. They are used for research into trains' stops, speed and position.</li>

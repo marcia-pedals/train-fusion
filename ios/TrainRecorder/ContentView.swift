@@ -155,7 +155,7 @@ private struct TrackScreen: View {
     let recorder: Recorder
     let replay: ReplayPlayer
     @State private var editingRide = false
-    /// Asking about sharing Train Measurements, before the first recording starts.
+    /// Asking about sharing Train Measurements, once the first recording has started.
     @State private var askingShare = false
 
     var body: some View {
@@ -229,7 +229,6 @@ private struct TrackScreen: View {
                 AppSettings.shareMeasurements = share
                 AppSettings.askedShareMeasurements = true
                 askingShare = false
-                Task { await recorder.start() }
             }
             .interactiveDismissDisabled()
         }
@@ -244,10 +243,12 @@ private struct TrackScreen: View {
             Button {
                 if recorder.isRecording {
                     Task { await recorder.stop() }
-                } else if !AppSettings.askedShareMeasurements {
-                    askingShare = true  // then starts
                 } else {
-                    Task { await recorder.start() }
+                    Task {
+                        await recorder.start()
+                        // the first recording: ask while it runs (the answer applies when it ends)
+                        if recorder.isRecording, !AppSettings.askedShareMeasurements { askingShare = true }
+                    }
                 }
             } label: {
                 Image(systemName: recorder.isRecording ? "stop.circle.fill" : "record.circle")

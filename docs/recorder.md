@@ -6,7 +6,7 @@ samples and the barometer, all
 with timestamps that convert to exact clock time. One button starts and stops a recording;
 after each one the app asks whether to upload it (through the backend, to
 `gs://train-fusion-recordings/raw/`), and it can share each ride's Train Measurements
-(asked before the first recording). Signing in is optional; it links what's shared to the
+(asked when the first recording starts). Signing in is optional; it links what's shared to the
 account. What the app does about accounts, uploads, Train Measurements and keeping recordings is
 in [accounts-and-uploads.md](accounts-and-uploads.md); the backend's API in [api.md](api.md).
 Recording carries on with the app in the background and the phone locked.

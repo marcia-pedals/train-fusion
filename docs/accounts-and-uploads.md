@@ -68,7 +68,8 @@ the bucket without limit; anyone with a build could extract it.)
   at the time; the model changes. Not the audio or the sensor data (that's an upload).
 - They can be shared **with or without an account**, identified like uploads by the
   device secret (below); when signed in, they're also linked to the account.
-- The **first time the rider starts a recording**, before it starts, the app asks: "Share
+- The **first time the rider starts a recording**, once it has started (it keeps recording
+  meanwhile), the app asks: "Share
   Train Measurements for research?" (Share / Don't share), saying what they are, that
   they're not the audio or sensor data, that they're shared only with the app's
   developers, and that this can be changed and

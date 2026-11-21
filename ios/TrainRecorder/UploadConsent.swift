@@ -33,7 +33,7 @@ struct UploadConsentSheet: View {
     }
 }
 
-/// Asked once, before the first recording: whether to share each ride's Train Measurements.
+/// Asked once, as the first recording starts: whether to share each ride's Train Measurements.
 /// Sets the setting of the same name (Settings).
 struct MeasurementsConsentSheet: View {
     let answer: (Bool) -> Void
