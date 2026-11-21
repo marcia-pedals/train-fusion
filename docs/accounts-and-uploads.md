@@ -85,7 +85,7 @@ the bucket without limit; anyone with a build could extract it.)
   - **shared only with the app's developers** (and, when signed in, linked to your
     account);
   - you can delete your uploads anytime in Settings.
-- "Don't ask again" declines this one and turns off the **Ask to upload**
+- "Don't ask again" declines this one and turns off the **Ask to share with devs**
   setting (Settings). With the setting off, new recordings count as declined.
 - A recording over the size limit isn't offered; History says it's too large.
 
@@ -131,7 +131,7 @@ accounts can be spotted and blocked by hand.
 
 ### Asking for uploads to be deleted
 
-- Settings has **Delete uploaded recordings** (confirmed first): it marks every recording uploaded
+- Settings has **Delete shared recordings** (confirmed first): it marks every recording uploaded
   from this phone, and every one linked to the signed-in account, for deletion. As with
   account deletion, the developer deletes them by hand, within 30 days.
 - Copies on developers' laptops are dealt with by occasionally deleting the local data and

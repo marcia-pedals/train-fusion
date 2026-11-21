@@ -16,39 +16,56 @@ struct UploadConsent: Identifiable {
 struct UploadConsentSheet: View {
     let request: UploadConsent
     let answer: (UploadConsent.Answer) -> Void
+    @State private var height: CGFloat = 480
     private let account = Account.shared
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text("Upload this recording to help improve the model?").font(.title2.bold())
-                    point("doc", "**Size**: \(ByteCountFormatter.string(fromByteCount: request.bytes, countStyle: .file))")
-                    point("waveform", "**Audio**: all of it, including anything said near the phone")
-                    point("gauge.with.dots.needle.33percent", "**Sensor data**: motion, compass, barometer")
-                    point("lock", "**Shared only with the app's developers**"
-                        + (account.user != nil ? ", linked to your account" : ""))
-                    point("trash", "Delete your uploads anytime in Settings")
-                    VStack(spacing: 10) {
-                        Button { answer(.yes) } label: { Text("Yes, upload").frame(maxWidth: .infinity) }
-                        Button { answer(.no) } label: { Text("No").frame(maxWidth: .infinity) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Text("Upload this recording to help improve the model?")
+                    .font(.title3.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 14) {
+                    row("doc", "Size", ByteCountFormatter.string(fromByteCount: request.bytes, countStyle: .file))
+                    row("waveform", "Audio", "all of it, including anything said near the phone")
+                    row("sensor", "Sensor data", "motion, compass, barometer")
+                    row("lock", "Shared only with the app's developers", account.user != nil ? "linked to your account" : nil)
+                    row("trash", nil, "Delete it anytime in Settings")
+                }
+                VStack(spacing: 12) {
+                    Button { answer(.yes) } label: {
+                        Text("Yes, upload").fontWeight(.semibold).frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
+                    .buttonStyle(.borderedProminent)
+                    Button { answer(.no) } label: { Text("No").frame(maxWidth: .infinity) }
+                        .buttonStyle(.bordered)
                     if request.afterRide {
                         Button("Don't ask again") { answer(.dontAskAgain) }
-                            .frame(maxWidth: .infinity)
+                            .font(.subheadline)
+                            .padding(.top, 4)
                     }
                 }
-                .padding()
+                .controlSize(.large)
             }
-            .navigationBarTitleDisplayMode(.inline)
+            .padding(.horizontal, 24)
+            .padding(.top, 32)
+            .padding(.bottom, 16)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
         }
-        .presentationDetents([.large])
+        .scrollBounceBehavior(.basedOnSize)
+        .presentationDetents([.height(height)])
+        .presentationDragIndicator(.visible)
     }
 
-    /// `text` may have **bold** (Markdown).
-    private func point(_ symbol: String, _ text: String) -> some View {
-        Label { Text(LocalizedStringKey(text)) } icon: { Image(systemName: symbol).foregroundStyle(.tint) }
+    /// One line: an icon, then a **title**: detail (either may be left out).
+    private func row(_ symbol: String, _ title: String?, _ detail: String?) -> some View {
+        GridRow {
+            Image(systemName: symbol)
+                .foregroundStyle(.tint)
+                .frame(width: 24)
+                .gridColumnAlignment(.center)
+            (Text(title.map { detail == nil ? $0 : $0 + ": " } ?? "").fontWeight(.semibold) + Text(detail ?? ""))
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }

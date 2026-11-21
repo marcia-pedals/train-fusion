@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#241a78"/><stop offset="0.55" stop-color="#1b3f9c"/><stop offset="1" stop-color="#0d9488"/>
+  </linearGradient>
+  <radialGradient id="glow" cx="0.5" cy="0.3" r="0.55">
+    <stop offset="0" stop-color="#7cf2e6" stop-opacity="0.30"/><stop offset="1" stop-color="#7cf2e6" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#d9e2ef"/>
+  </linearGradient>
+  <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#1c2f63"/><stop offset="1" stop-color="#0a1433"/>
+  </linearGradient>
+  <clipPath id="car"><path d="M-40 500 L700 500 Q796 500 864 562 Q962 652 978 748 Q984 806 926 806 L-40 806 Z"/></clipPath>
+</defs>
+<rect width="1024" height="1024" fill="url(#bg)"/>
+<rect width="1024" height="1024" fill="url(#glow)"/>
+<g fill="#7cf2e6" opacity="0.9"><rect x="46" y="282.0" width="20" height="36.0" rx="10"/><rect x="84" y="275.6" width="20" height="48.9" rx="10"/><rect x="122" y="257.6" width="20" height="84.9" rx="10"/><rect x="160" y="241.6" width="20" height="116.8" rx="10"/><rect x="198" y="203.8" width="20" height="192.4" rx="10"/><rect x="236" y="201.2" width="20" height="197.6" rx="10"/><rect x="274" y="192.9" width="20" height="214.3" rx="10"/><rect x="312" y="185.9" width="20" height="228.3" rx="10"/><rect x="350" y="222.0" width="20" height="156.0" rx="10"/><rect x="388" y="232.0" width="20" height="136.1" rx="10"/><rect x="426" y="258.6" width="20" height="82.8" rx="10"/><rect x="464" y="276.4" width="20" height="47.1" rx="10"/><rect x="502" y="282.0" width="20" height="36.0" rx="10"/><rect x="540" y="276.4" width="20" height="47.1" rx="10"/><rect x="578" y="258.6" width="20" height="82.8" rx="10"/><rect x="616" y="232.0" width="20" height="136.1" rx="10"/><rect x="654" y="222.0" width="20" height="156.0" rx="10"/><rect x="692" y="185.9" width="20" height="228.3" rx="10"/><rect x="730" y="192.9" width="20" height="214.3" rx="10"/><rect x="768" y="201.2" width="20" height="197.6" rx="10"/><rect x="806" y="203.8" width="20" height="192.4" rx="10"/><rect x="844" y="241.6" width="20" height="116.8" rx="10"/><rect x="882" y="257.6" width="20" height="84.9" rx="10"/><rect x="920" y="275.6" width="20" height="48.9" rx="10"/><rect x="958" y="282.0" width="20" height="36.0" rx="10"/></g>
+<g fill="#ffffff" opacity="0.22"><rect x="-20" y="868" width="56" height="20" rx="6"/><rect x="76" y="868" width="56" height="20" rx="6"/><rect x="172" y="868" width="56" height="20" rx="6"/><rect x="268" y="868" width="56" height="20" rx="6"/><rect x="364" y="868" width="56" height="20" rx="6"/><rect x="460" y="868" width="56" height="20" rx="6"/><rect x="556" y="868" width="56" height="20" rx="6"/><rect x="652" y="868" width="56" height="20" rx="6"/><rect x="748" y="868" width="56" height="20" rx="6"/><rect x="844" y="868" width="56" height="20" rx="6"/><rect x="940" y="868" width="56" height="20" rx="6"/><rect x="1036" y="868" width="56" height="20" rx="6"/></g>
+<rect x="-10" y="866" width="1044" height="16" rx="8" fill="#ffffff" opacity="0.9"/>
+<g fill="#0e1838"><circle cx="100" cy="834" r="36"/><circle cx="100" cy="834" r="13" fill="#9fb0c8"/><circle cx="204" cy="834" r="36"/><circle cx="204" cy="834" r="13" fill="#9fb0c8"/><circle cx="620" cy="834" r="36"/><circle cx="620" cy="834" r="13" fill="#9fb0c8"/><circle cx="724" cy="834" r="36"/><circle cx="724" cy="834" r="13" fill="#9fb0c8"/></g>
+<path d="M-40 500 L700 500 Q796 500 864 562 Q962 652 978 748 Q984 806 926 806 L-40 806 Z" fill="url(#body)"/>
+<g clip-path="url(#car)">
+  <g fill="url(#glass)"><rect x="-48" y="556" width="104" height="82" rx="18"/><rect x="84" y="556" width="104" height="82" rx="18"/><rect x="216" y="556" width="104" height="82" rx="18"/><rect x="348" y="556" width="104" height="82" rx="18"/><rect x="480" y="556" width="104" height="82" rx="18"/><rect x="612" y="556" width="104" height="82" rx="18"/></g>
+  <path d="M736 556 Q806 558 852 604 Q878 630 890 652 L750 652 Q736 652 736 638 Z" fill="url(#glass)"/>
+  <rect x="-40" y="684" width="1040" height="28" fill="#0d9488"/>
+  <rect x="-40" y="770" width="1040" height="40" fill="#16234d"/>
+</g>
+
+</svg>

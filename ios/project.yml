@@ -55,6 +55,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.marcia-pedals.TrainFusion
+        # Assets.xcassets/AppIcon: rendered from ios/AppIcon.svg (1024x1024, no transparency)
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # iPhone only (XcodeGen's iOS preset sets "1,2" per target).
         TARGETED_DEVICE_FAMILY: "1"
 schemes:
