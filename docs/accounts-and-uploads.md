@@ -83,7 +83,8 @@ the bucket without limit; anyone with a build could extract it.)
   - **No, and don't ask again**: leaves the setting off; not asked again;
   - dismissing it (swiping it down, tapping outside it) answers nothing: this ride isn't
     shared, and it's asked again next recording.
-- Settings, **Train Measurements** section:
+- Settings, **Train Measurement Sharing** section (headed by the same lines as the
+  question):
   - **Always share**: on / off (default off until
     the question is answered). When on, each ride's measurements are shared when its
     recording stops (retried when the app is next opened if there's no network). Rides
@@ -105,7 +106,7 @@ the bucket without limit; anyone with a build could extract it.)
   recording automatically: each upload is a yes to that recording. The question says:
   - "Audio, including nearby voices";
   - "Motion, compass, barometer";
-  - "Only app's developers get it";
+  - "Only this app's devs get it";
   - delete any time in Settings.
 - "Don't ask again" declines this one and turns off the **Ask to share
   after each ride** setting (Settings). With the setting off, new recordings count as declined

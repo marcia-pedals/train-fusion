@@ -61,7 +61,7 @@ def privacy(s: Settings) -> str:
 
 <p>{APP_NAME} records audio and motion sensors on a phone during a train ride, and its
 localizer works out from them where the train is, where it stopped and how fast it went.
-If you choose, it sends the recording to the app's developers to improve the localizer. {APP_NAME} is an independent
+If you choose, it sends the recording to this app's developers to improve the localizer. {APP_NAME} is an independent
 project, not affiliated with any railway or transit agency.</p>
 
 <h2>What stays on your phone</h2>
@@ -100,7 +100,7 @@ and uploaded recordings) to your account.</li>
 rode. If you are signed in when you upload, the upload is linked to your account.</p>
 
 <h2>Who sees it</h2>
-<p><strong>Uploaded recordings</strong> are shared only with the app's developers, for
+<p><strong>Uploaded recordings</strong> are shared only with this app's developers, for
 improving the localizer.</p>
 <p><strong>Train Measurements</strong> are shared with anyone who asks for the data. Before
 we give them out, we remove your account, email address and device identifier. Those who

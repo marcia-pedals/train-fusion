@@ -30,7 +30,7 @@ struct UploadConsentSheet: View {
             rows: [
                 .init("waveform", "Audio, including nearby voices"),
                 .init("sensor", "Motion, compass, barometer"),
-                .init("lock", "Only app's developers get it"),
+                .init("lock", "Only this app's devs get it"),
                 .init("trash", "Delete any time in Settings"),
             ],
             choices: [

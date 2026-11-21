@@ -33,9 +33,26 @@ struct SettingsScreen: View {
                     Button("Delete shared measurements", role: .destructive) { confirmDeleteMeasurements = true }
                         .disabled(store.sharing || !BackendConfig.configured)
                 } header: {
-                    header("Train Measurements", "Position, speed, stops, exact times. For train operations research; anyone who asks gets it.")
+                    header("Train Measurement Sharing", "For train operations research", [
+                        ("tram", "Position, speed, stops, exact times"),
+                        ("waveform.slash", "No audio"),
+                        ("person.2", "Anyone who asks gets it"),
+                    ])
                 } footer: {
                     if let message = deleteMeasurementsMessage ?? store.shareMessage { Text(message) }
+                }
+                Section {
+                    Toggle("Ask to share after each ride", isOn: $askToUpload)
+                    Button("Delete shared recordings", role: .destructive) { confirmDeleteUploads = true }
+                        .disabled(working || !BackendConfig.configured)
+                } header: {
+                    header("Full Recording Sharing", "To improve the localizer", [
+                        ("waveform", "Audio, including nearby voices"),
+                        ("sensor", "Motion, compass, barometer"),
+                        ("lock", "Only this app's devs get it"),
+                    ])
+                } footer: {
+                    if let deleteUploadsMessage { Text(deleteUploadsMessage) }
                 }
                 Section {
                     Picker("On this phone", selection: Binding(
@@ -44,15 +61,6 @@ struct SettingsScreen: View {
                     ) {
                         ForEach(KeepRecordings.allCases) { Text($0.label).tag($0) }
                     }
-                } header: {
-                    header("Full Recordings", "Audio, motion, compass, barometer. To improve the localizer; only app's developers get it.")
-                }
-                Section {
-                    Toggle("Ask to share after each ride", isOn: $askToUpload)
-                    Button("Delete shared recordings", role: .destructive) { confirmDeleteUploads = true }
-                        .disabled(working || !BackendConfig.configured)
-                } footer: {
-                    if let deleteUploadsMessage { Text(deleteUploadsMessage) }
                 }
                 Section("Account") {
                     NavigationLink {
@@ -99,12 +107,30 @@ struct SettingsScreen: View {
         }
     }
 
-    /// A section's title, with a caption under it.
-    private func header(_ title: String, _ caption: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-            Text(caption).font(.footnote).textCase(nil).foregroundStyle(.secondary)
+    /// A section's title, then what it's for and what's shared as icon lines, like the
+    /// questions that ask (UploadConsent.swift).
+    private func header(_ title: String, _ subtitle: String, _ rows: [(symbol: String, text: String)]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                Text(subtitle).font(.footnote).foregroundStyle(.secondary)
+            }
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 8, verticalSpacing: 3) {
+                ForEach(rows, id: \.text) { row in
+                    GridRow {
+                        Image(systemName: row.symbol)
+                            .foregroundStyle(.tint)
+                            .frame(width: 18)
+                            .gridColumnAlignment(.center)
+                        Text(row.text)
+                    }
+                }
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
         }
+        .textCase(nil)
+        .padding(.bottom, 2)
     }
 
     private func choose(_ setting: KeepRecordings) {
