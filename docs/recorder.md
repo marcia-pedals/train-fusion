@@ -54,8 +54,8 @@ Three, behind a tab bar:
 
   Every probability is still there under "Details".
 - **Settings**: miles and mph, or kilometres and km/h; whether to ask about uploading after
-  each ride; how many recordings to keep on the phone; asking for uploaded recordings to be
-  deleted; the account (sign in with Apple, Google or an email link; ride timings sync;
+  each ride; how many recordings to keep on the phone; deleting uploaded recordings (done
+  by hand, within 30 days); the account (sign in with Apple, Google or an email link; ride timings sync;
   sign out; delete account); the privacy policy.
 - **History**: the rides on the phone (`Application Support/rides.json`; a ride outlives its
   recording), each with upload and replay while its recording is still here; swipe a row

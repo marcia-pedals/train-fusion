@@ -24,28 +24,22 @@ struct SettingsScreen: View {
                     }
                     .pickerStyle(.segmented)
                 }
-                Section {
-                    Toggle("Ask to upload after each ride", isOn: $askToUpload)
+                Section("Recordings") {
+                    Toggle("Ask to upload", isOn: $askToUpload)
                     Picker("On this phone", selection: Binding(
                         get: { KeepRecordings(rawValue: keep) ?? .last3 },
                         set: { choose($0) })
                     ) {
                         ForEach(KeepRecordings.allCases) { Text($0.label).tag($0) }
                     }
-                } header: {
-                    Text("Recordings")
-                } footer: {
-                    Text("Ride timings are always kept. A recording that's waiting to be uploaded, or that you haven't been asked about, is never deleted automatically.")
                 }
                 Section {
-                    Button("Ask to delete my uploaded recordings", role: .destructive) { confirmDeleteUploads = true }
+                    Button("Delete uploaded recordings", role: .destructive) { confirmDeleteUploads = true }
                         .disabled(working || !BackendConfig.configured)
                 } header: {
                     Text("Uploaded recordings")
                 } footer: {
-                    Text(deleteUploadsMessage ?? "Covers the recordings uploaded from this phone"
-                        + (account.user != nil ? " and those linked to your account" : "")
-                        + ". The developers delete them by hand, within 30 days.")
+                    if let deleteUploadsMessage { Text(deleteUploadsMessage) }
                 }
                 Section("Account") {
                     NavigationLink {
@@ -72,8 +66,8 @@ struct SettingsScreen: View {
         } message: {
             Text("They're uploaded, or you chose not to upload them. Their ride timings stay.")
         }
-        .confirmationDialog("Ask to delete your uploaded recordings?", isPresented: $confirmDeleteUploads, titleVisibility: .visible) {
-            Button("Ask to delete them", role: .destructive) { Task { await requestDeletion() } }
+        .confirmationDialog("Delete your uploaded recordings?", isPresented: $confirmDeleteUploads, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { Task { await requestDeletion() } }
         } message: {
             Text("Every recording uploaded from this phone" + (account.user != nil ? " or linked to your account" : "")
                 + " will be deleted by the developers within 30 days. Recordings on this phone stay.")

@@ -78,15 +78,14 @@ the bucket without limit; anyone with a build could extract it.)
 
 - When a recording is stopped (with the app's stop button), the app asks whether to upload
   it: **Yes / No / Don't ask again**.
-- The question makes clear that:
-  - the upload is the **whole audio recording** (including anything said near the
-    phone) and the **raw sensor data** (motion, magnetometer, barometer, and the times);
-  - it is **probably linkable to you** (voices, when and where you rode, and your account
-    if you're signed in);
-  - it is **shared only with the app's developers, for improving the model**;
-  - you can ask for your uploads to be deleted later (Settings).
-- It shows the recording's size.
-- "Don't ask again" declines this one and turns off the **Ask to upload after each ride**
+- The question ("Upload this recording to help improve the model?") is short and says:
+  - the recording's size;
+  - **audio**: all of it, including anything said near the phone;
+  - **sensor data**: motion, compass, barometer;
+  - **shared only with the app's developers** (and, when signed in, linked to your
+    account);
+  - you can delete your uploads anytime in Settings.
+- "Don't ask again" declines this one and turns off the **Ask to upload**
   setting (Settings). With the setting off, new recordings count as declined.
 - A recording over the size limit isn't offered; History says it's too large.
 
@@ -132,7 +131,7 @@ accounts can be spotted and blocked by hand.
 
 ### Asking for uploads to be deleted
 
-- Settings has **Ask to delete my uploaded recordings**: it marks every recording uploaded
+- Settings has **Delete uploaded recordings** (confirmed first): it marks every recording uploaded
   from this phone, and every one linked to the signed-in account, for deletion. As with
   account deletion, the developer deletes them by hand, within 30 days.
 - Copies on developers' laptops are dealt with by occasionally deleting the local data and

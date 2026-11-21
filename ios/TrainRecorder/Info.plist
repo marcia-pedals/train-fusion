@@ -36,9 +36,9 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Records audio on the train (door chimes, traction motor). Recordings stay on your phone unless you choose to upload one.</string>
+	<string>Records audio to sense the train. Recordings stay on your phone unless you choose to upload one.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>Records motion sensor and barometer measurements on the train. Recordings stay on your phone unless you choose to upload one.</string>
+	<string>Records motion and barometer to sense the train. Recordings stay on your phone unless you choose to upload one.</string>
 	<key>TRBackendHost</key>
 	<string>$(API_HOST)</string>
 	<key>TRGoogleClientID</key>

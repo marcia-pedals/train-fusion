@@ -22,13 +22,13 @@ struct UploadConsentSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    Text("Upload this ride's recording?").font(.title2.bold())
-                    Text("Uploading helps improve the model that works out the train's speed, stops and position.")
-                    point("waveform", "**The whole recording is uploaded**: all of the audio, including anything said near the phone, and the raw sensor data (motion, compass, barometer, and their times). \(ByteCountFormatter.string(fromByteCount: request.bytes, countStyle: .file)) in all.")
-                    point("person.crop.circle", "**It's probably linkable to you**: by voices, and by when and where you rode"
-                        + (account.user != nil ? ", and it's linked to your account." : "."))
-                    point("lock", "**It's shared only with the app's developers**, and used only to improve the model.")
-                    point("trash", "You can ask for your uploaded recordings to be deleted at any time, in Settings.")
+                    Text("Upload this recording to help improve the model?").font(.title2.bold())
+                    point("doc", "**Size**: \(ByteCountFormatter.string(fromByteCount: request.bytes, countStyle: .file))")
+                    point("waveform", "**Audio**: all of it, including anything said near the phone")
+                    point("gauge.with.dots.needle.33percent", "**Sensor data**: motion, compass, barometer")
+                    point("lock", "**Shared only with the app's developers**"
+                        + (account.user != nil ? ", linked to your account" : ""))
+                    point("trash", "Delete your uploads anytime in Settings")
                     VStack(spacing: 10) {
                         Button { answer(.yes) } label: { Text("Yes, upload").frame(maxWidth: .infinity) }
                         Button { answer(.no) } label: { Text("No").frame(maxWidth: .infinity) }
@@ -38,8 +38,6 @@ struct UploadConsentSheet: View {
                     if request.afterRide {
                         Button("Don't ask again") { answer(.dontAskAgain) }
                             .frame(maxWidth: .infinity)
-                        Text("You can still upload a ride from History, and turn the question back on in Settings.")
-                            .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
                 .padding()
