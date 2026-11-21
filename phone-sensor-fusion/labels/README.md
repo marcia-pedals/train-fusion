@@ -28,9 +28,10 @@ on the train or not, phone state), which is what `features/` and `model/` train 
   With the phone in a hand there is nothing comparable, and the tone can't say either (it is
   inaudible below 10 m/s). Ride A's stop times are therefore blank rather
   than guessed.
-- **Which stations**: on rides A and B from announcements; on rides C and D no announcement survives in the
-  transcripts, and the stations follow from the leg durations matching the earlier rides
-  and from the accelerometer's own leg distances matching the map (`journey.toml`).
+- **Which stations**: from announcements on every ride ("next stop" after each departure
+  names every station on rides B, C and D; ride A, with a conversation next to the phone,
+  has only a few). On C and D the leg durations matching the earlier rides and the
+  accelerometer's own leg distances matching the map agree with them (`journey.toml`).
 - **Speed on ride C**: the motor tone is barely audible there, so the tone
   trace fails (implied tone constants of 26–36 Hz per m/s). Seven legs have accelerometer
   speed; the other three (phone in a hand for part of the leg) have no speed label at all:
@@ -97,3 +98,15 @@ python -m labels.presence_sheets               # first / last 150 s -> presence.
 python -m labels.trace_tone                    # tone_trace.csv; check data/phone-sensor-fusion/labels/*.trace_*.png
 python -m labels.build_speed                   # speed.csv; prints tone-vs-accelerometer agreement
 ```
+
+**Stations (`journey.toml`)**: the announcements are the evidence to use first. Grep the
+transcript (`data/phone-sensor-fusion/whisper/<id>.csv`) for "next stop", "approaching"
+and "making all stops" (train number and direction); whisper misspells some names, but
+their order settles them. Write down in `evidence` which announcements, at what times, fix
+which stations. Only where none is heard, fall back on the leg durations against the map
+and earlier rides, and on the accelerometer's leg distances; say so in `evidence`.
+
+Before relying on a transcript, check that it isn't one line on repeat
+(`cut -d, -f3- <id>.csv | sort | uniq -c | sort -rn | head`): a few dozen "Thank you."
+for windows without speech is normal, hundreds of one sentence means whisper went wrong.
+`transcribe.py` skips rides that already have a transcript: delete the csv to redo one.

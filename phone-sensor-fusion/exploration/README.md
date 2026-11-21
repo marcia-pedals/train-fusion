@@ -90,8 +90,10 @@ lateral axis), which wasn't tried.
 - Inside the train there are steady lines near 200 Hz at stops (blower?) and a family at
   3.7–4.2 kHz and 7.8 kHz while moving; they are not proportional to speed.
 - Two 7.25 kHz beeps ~5 s before most door openings (not used).
-- Whisper catches only 3–4 announcements per ride (the next station, or the train's number
-  and direction), enough to fix the station sequence but not to label stops.
+- Whisper catches most announcements (the next station, the train's number and direction,
+  doors closing) when each 30 s window is decoded without the previous one's text
+  (`transcribe.py`). With whisper.cpp's default context it fell into repeating one line and
+  kept only 0–4 per ride.
 
 ## The sensors added later
 

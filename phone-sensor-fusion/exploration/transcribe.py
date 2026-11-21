@@ -11,8 +11,13 @@ Needs the model file (1.6 GB), once:
 
     python -m exploration.transcribe
 
-Whisper hears few of the announcements over the train noise (3 or 4 per ride), and fills
-silence with repeated phrases; grep for station names and "doors" rather than reading it.
+Each 30 s window is decoded on its own (`-mc 0`). By default whisper.cpp prompts each
+window with the text of the previous one, and on hours of train noise that locks it into
+repeating one hallucinated line for the rest of the ride, so that almost every announcement
+was lost. Without the context it hears most of them (next stop, train number, doors
+closing). Windows with no speech still come out as filler ("Thank you."); grep for
+station names and "doors" rather than reading it. Silero VAD (`--vad`) is no help: it
+doesn't count the PA over the noise as speech.
 """
 
 import subprocess
@@ -30,8 +35,8 @@ def main():
         wav = paths.derived("whisper", f"{rec.id}.16k.wav")
         subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(rec.dir / "audio_000.m4a"),
                         "-ar", "16000", "-ac", "1", str(wav)], check=True)
-        subprocess.run(["whisper-cli", "-m", str(model), "-f", str(wav), "-l", "en", "-ocsv",
-                        "-of", str(paths.derived("whisper", rec.id)), "-np"], check=True,
+        subprocess.run(["whisper-cli", "-m", str(model), "-f", str(wav), "-l", "en", "-mc", "0",
+                        "-ocsv", "-of", str(paths.derived("whisper", rec.id)), "-np"], check=True,
                        stdout=subprocess.DEVNULL)
         wav.unlink()
         print("wrote", paths.derived("whisper", f"{rec.id}.csv"))
