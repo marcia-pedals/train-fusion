@@ -10,6 +10,11 @@ output "archive_bucket" {
   value = google_storage_bucket.archive.name
 }
 
+output "recorder_service_account" {
+  description = "The upload-only account older app builds have a key for (recordings.tf)."
+  value       = google_service_account.recorder.email
+}
+
 output "api_url" {
   description = "The recorder API's base URL (docs/api.md)."
   value       = google_cloud_run_v2_service.api.uri

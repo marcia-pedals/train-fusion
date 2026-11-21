@@ -127,16 +127,14 @@ Toolkit and Secure Token APIs, and to the app's bundle id); and what `just api-d
 builds with (an Artifact Registry repo `api`, a staging bucket, and a build service account
 that can only read that bucket, push to that repo and write logs).
 
-Settings are environment variables on the service, set in `api.tf` (limits, the bucket, the
-Apple app id) and `terraform.tfvars` (`contact_email`, shown on `/privacy`); change them
+Settings are environment variables on the service, set in `api.tf` (limits, the bucket) and `terraform.tfvars` (`contact_email`, shown on `/privacy`); change them
 with `just tf apply`.
 
 ### One-time setup
 
-In this order. The old app builds upload with the `recorder` service account's key, which
-this change removes: keep it until every phone that records runs a build that uses the API
-(step 6). If you add `google_ios_client_id` later, `just tf apply -refresh-only` updates
-the output that `just ios-config` reads.
+In this order. Older builds of the app keep uploading as before, with the `recorder`
+service account's key (`infra/recordings.tf`): that account stays until you remove it,
+which cuts those builds off.
 
 1. **Google OAuth clients** (Google Cloud console, project train-fusion):
    - *Google Auth Platform → Branding*: app name "Train Fusion", support email (the
@@ -148,15 +146,10 @@ the output that `just ios-config` reads.
      `io.github.marcia-pedals.TrainFusion` (for the app).
 2. `infra/terraform.tfvars` (gitignored): add `contact_email = "..."` (the privacy policy's
    contact address) and `google_ios_client_id = "<the iOS client's id>"`.
-3. Make the API and everything around it, but not yet the removal of `recorder`:
+3. Make the API and everything around it:
 
    ```sh
-   just tf apply -target=google_identity_platform_config.default -target=google_apikeys_key.ios \
-       -target=google_project_iam_member.api_firestore -target=google_project_iam_member.api_delete_accounts \
-       -target=google_service_account_iam_member.api_sign_as_itself \
-       -target=google_storage_bucket_iam_member.api_builder_source \
-       -target=google_artifact_registry_repository_iam_member.api_builder_push \
-       -target=google_project_iam_member.api_builder_logs
+   just tf apply
    just api-deploy                # build backend/ and deploy it; ends by checking /health
    ```
 
@@ -189,10 +182,7 @@ the output that `just ios-config` reads.
    The bundle id changed (`…TrainRecorder` → `…TrainFusion`), so this installs as a second
    app next to the old one, with its own, empty storage. Before deleting the old app, move
    its recordings over: Finder → the phone → Files → copy `recordings/` out of the old app
-   and into the new one (or upload them from the old app first, while `recorder` exists).
-6. Then the rest: `just tf apply`. This also deletes the `recorder` service account and
-   its key, so old builds can no longer upload; delete the old key file
-   `ios/TrainRecorder/uploader-key.json` if it's still around.
+   and into the new one (or upload them from the old app first).
 
 ### Day to day
 

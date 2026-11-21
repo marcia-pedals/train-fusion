@@ -172,6 +172,10 @@ resource "google_identity_platform_config" "default" {
       enabled           = true
       password_required = false
     }
+    # off; Identity Platform reports it either way, so say so (or every plan shows a change)
+    phone_number {
+      enabled = false
+    }
   }
 
   depends_on = [google_project_service.api]
