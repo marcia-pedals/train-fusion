@@ -61,7 +61,9 @@ ios-config:
     set -euo pipefail
     url=$(terraform -chdir=infra output -raw api_url)
     key=$(terraform -chdir=infra output -raw identity_api_key)
-    client=$(terraform -chdir=infra output -raw google_ios_client_id)
+    # from terraform.tfvars, not an output: a targeted apply (docs/deploy.md) doesn't record
+    # outputs that only repeat a variable
+    client=$(echo 'var.google_ios_client_id' | terraform -chdir=infra console | tr -d '"')
     [ -n "$client" ] || { echo "set google_ios_client_id in infra/terraform.tfvars and apply (docs/deploy.md)" >&2; exit 1; }
     host=${url#https://}; host=${host%/}
     # no "//" anywhere: xcconfig starts a comment there, hence a host and not a URL
