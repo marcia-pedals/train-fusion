@@ -28,12 +28,12 @@ struct SettingsScreen: View {
                     .pickerStyle(.segmented)
                 }
                 Section {
-                    Toggle("Automatically share Train Measurements for train operations research", isOn: $shareMeasurements)
+                    Toggle("Always share", isOn: $shareMeasurements)
                         .onChange(of: shareMeasurements) { AppSettings.askedShareMeasurements = true }
                     Button("Delete shared measurements", role: .destructive) { confirmDeleteMeasurements = true }
                         .disabled(store.sharing || !BackendConfig.configured)
                 } header: {
-                    header("Train Measurements", "Train position, speed, and stops, with exact time and date")
+                    header("Train Measurements", "Position, speed, stops, exact times. For train operations research; anyone who asks gets it.")
                 } footer: {
                     if let message = deleteMeasurementsMessage ?? store.shareMessage { Text(message) }
                 }
@@ -45,10 +45,10 @@ struct SettingsScreen: View {
                         ForEach(KeepRecordings.allCases) { Text($0.label).tag($0) }
                     }
                 } header: {
-                    header("Full Recordings", "Audio and sensor data from rides")
+                    header("Full Recordings", "Audio, motion, compass, barometer. To improve the localizer; only app's developers get it.")
                 }
                 Section {
-                    Toggle("Ask to share with devs", isOn: $askToUpload)
+                    Toggle("Ask to share after each ride", isOn: $askToUpload)
                     Button("Delete shared recordings", role: .destructive) { confirmDeleteUploads = true }
                         .disabled(working || !BackendConfig.configured)
                 } footer: {
@@ -77,27 +77,25 @@ struct SettingsScreen: View {
                 pendingKeep = nil
             }
         } message: {
-            Text("They're uploaded, or you chose not to upload them. Their Train Measurements stay.")
+            Text("They're shared, or you chose not to share them. Their Train Measurements stay.")
         }
         .confirmationDialog("Delete your shared Train Measurements?", isPresented: $confirmDeleteMeasurements,
                             titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 Task {
                     if let n = await store.deleteShared() {
-                        deleteMeasurementsMessage = n == 0 ? "There were no shared measurements."
+                        deleteMeasurementsMessage = n == 0 ? "Nothing was shared."
                             : "Deleted \(n) ride\(n == 1 ? "'s" : "s'") Train Measurements."
                     }
                 }
             }
         } message: {
-            Text("Every ride's Train Measurements shared from this phone" + (account.user != nil ? " or linked to your account" : "")
-                + " are deleted now. They stay on this phone.")
+            Text("Deleted now. They stay on this phone.")
         }
         .confirmationDialog("Delete your shared recordings?", isPresented: $confirmDeleteUploads, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { Task { await requestDeletion() } }
         } message: {
-            Text("Every recording uploaded from this phone" + (account.user != nil ? " or linked to your account" : "")
-                + " will be deleted by the developers within 30 days. Recordings on this phone stay.")
+            Text("The developers delete them within 30 days. They stay on this phone.")
         }
     }
 
@@ -126,10 +124,10 @@ struct SettingsScreen: View {
             let body = try await API.call("POST", "v1/uploads/deletion-request", auth: .ifSignedIn, device: true)
             let n = body["requested"] as? Int ?? 0
             deleteUploadsMessage = n == 0
-                ? "There were no uploaded recordings left to delete."
-                : "Asked: \(n) uploaded recording\(n == 1 ? "" : "s") will be deleted within 30 days."
+                ? "Nothing was shared."
+                : "\(n) shared recording\(n == 1 ? "" : "s") will be deleted within 30 days."
         } catch {
-            deleteUploadsMessage = "Couldn't ask: \(error.localizedDescription)"
+            deleteUploadsMessage = "Couldn't delete: \(error.localizedDescription)"
         }
     }
 }
@@ -164,7 +162,7 @@ struct AccountScreen: View {
 
     @ViewBuilder private var signedOut: some View {
         Section {
-            Text("Signing in is optional. With an account, the Train Measurements and recordings you share are linked to it, so you'll be able to see them on the web later.")
+            Text("Optional. What you share is linked to your account, to see on the web later.")
                 .font(.callout)
         }
         Section {
@@ -225,12 +223,12 @@ struct AccountScreen: View {
                 }
             }
         } message: {
-            Text("Your account and the Train Measurements linked to it are deleted now. Full recordings linked to it are deleted within 30 days. Everything on this phone stays. This can't be undone.")
+            Text("Its Train Measurements are deleted now, its full recordings within 30 days. Everything on this phone stays. This can't be undone.")
         }
         .sheet(isPresented: $appleDeletion) {
             VStack(spacing: 20) {
                 Text("Confirm with Apple").font(.title2.bold())
-                Text("To delete your account, confirm with Apple once more. This also stops the app's access to your Apple ID.")
+                Text("Confirm with Apple once more. This also ends the app's access to your Apple ID.")
                     .multilineTextAlignment(.center)
                 SignInWithAppleButton(.continue, onRequest: account.prepare) { result in
                     appleDeletion = false

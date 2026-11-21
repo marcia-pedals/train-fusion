@@ -14,7 +14,7 @@ struct UploadConsent: Identifiable {
 
     struct Answer {
         let upload: Bool
-        /// Stop asking after each ride (Settings' "Ask to share with devs" off).
+        /// Stop asking after each ride (Settings: "Ask to share after each ride" off).
         let stopAsking: Bool
     }
 }
