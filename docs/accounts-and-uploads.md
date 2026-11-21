@@ -141,7 +141,7 @@ the bucket without limit; anyone with a build could extract it.)
 | Limit | Value |
 |---|---|
 | Size of one recording (all its files) | 200 MB (200,000,000 bytes) |
-| Uploads without an account, all phones together | 24 per UTC day |
+| Uploads without an account, all phones together | 100 per UTC day |
 | Uploads per signed-in account | 12 per UTC day |
 | New accounts, in total | 24 per UTC day |
 

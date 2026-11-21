@@ -53,7 +53,7 @@ resource "google_cloud_run_v2_service" "api" {
           GCP_PROJECT               = var.project
           RECORDINGS_BUCKET         = google_storage_bucket.recordings.name
           MAX_UPLOAD_BYTES          = "200000000"
-          ANON_UPLOADS_PER_DAY      = "24"
+          ANON_UPLOADS_PER_DAY      = "100"
           USER_UPLOADS_PER_DAY      = "12"
           SIGNUPS_PER_DAY           = "24"
           ANON_MEASUREMENTS_PER_DAY = "10000"

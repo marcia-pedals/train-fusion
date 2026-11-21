@@ -119,7 +119,7 @@ Checks, in order:
 3. if this device already has an unfinished (`pending`) upload of this recording with the
    same files and sizes: reuse it, with fresh URLs, not counted again (and linked to the
    account if one is signed in now and it wasn't);
-4. otherwise the limit: signed in, 12 per account per day; not signed in, 24 per day for
+4. otherwise the limit: signed in, 12 per account per day; not signed in, 100 per day for
    all anonymous uploads together. Over: `429 rate_limited` with `retry_after_s`.
 
 The upload id is `<recording_id>-<8 random hex>`; its files go to
