@@ -129,6 +129,13 @@ The key is inside the app, so anyone holding a build of the app has it. That's w
 its own service account with nothing but `objectCreator` on its own bucket: the worst it
 can do is add objects there. Don't distribute the app beyond your own devices.
 
+To let someone else download the recordings and labels with `just sync-recordings`, add
+them to `recordings_readers` in `infra/terraform.tfvars` (gitignored; e.g.
+`recordings_readers = ["user:someone@example.com"]`) and `just tf apply`. That gives them
+`objectViewer` on the bucket only, so they can read everything in it, but not add to it,
+change it or delete from it. Their sync downloads as usual. Any label files they change
+are reported as not uploaded and stay only on their machine.
+
 ## A recording
 
 `Documents/recordings/<id>/` on the phone (also visible in the Files app, and in Finder

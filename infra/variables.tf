@@ -30,3 +30,9 @@ variable "recordings_bucket" {
   type        = string
   default     = "train-fusion-recordings"
 }
+
+variable "recordings_readers" {
+  description = "Members (\"user:someone@example.com\") who may read the recordings bucket (just sync-recordings, download only). Set in terraform.tfvars, which is gitignored: who they are stays out of git."
+  type        = list(string)
+  default     = []
+}

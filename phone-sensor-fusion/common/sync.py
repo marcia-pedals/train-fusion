@@ -23,6 +23,9 @@ Deletions are never propagated, in either direction: a file missing on one side 
 from the other. So clearing data/ (or a fresh checkout) gets everything back. To really
 delete a label file, delete it here and `gcloud storage rm` it from the bucket.
 
+With read-only access to the bucket (`recordings_readers` in infra/recordings.tf), the sync
+downloads as usual; label files changed here are reported as not uploaded and kept as they are.
+
 Auth: `gcloud auth application-default login` once.
 """
 from __future__ import annotations
@@ -108,7 +111,8 @@ def save_state(path: Path, state: dict[str, str]) -> None:
 def sync_labels(bucket, local: Path = paths.LABELS, state_path: Path = STATE,
                 conflicts: str | None = None, dry_run: bool = False) -> dict[str, list[str]]:
     """Sync labels/ both ways (see the module docstring). Returns the relative paths by what
-    happened to them: uploaded, downloaded, conflict."""
+    happened to them: uploaded, downloaded, conflict, forbidden (changed here, but we may
+    not write to the bucket)."""
     state = load_state(state_path)
     remote = {}
     for b in bucket.list_blobs(prefix=paths.LABELS_PREFIX):
@@ -122,11 +126,11 @@ def sync_labels(bucket, local: Path = paths.LABELS, state_path: Path = STATE,
             if p.is_file() and wanted(rel) and not any(part.startswith(".") for part in rel.split("/")):
                 here[rel] = md5(p)
 
-    done: dict[str, list[str]] = {"uploaded": [], "downloaded": [], "conflict": []}
+    done: dict[str, list[str]] = {"uploaded": [], "downloaded": [], "conflict": [], "forbidden": []}
 
     def upload(rel: str, generation: int) -> None:
         if not dry_run:
-            from google.api_core.exceptions import PreconditionFailed
+            from google.api_core.exceptions import Forbidden, PreconditionFailed
             try:
                 # create-only for a new file, or replace exactly the version we compared
                 # against: if another checkout uploaded in between, this fails instead of
@@ -135,6 +139,11 @@ def sync_labels(bucket, local: Path = paths.LABELS, state_path: Path = STATE,
                     str(local / rel), if_generation_match=generation)
             except PreconditionFailed:
                 done["conflict"].append(rel)  # the next sync sorts it out
+                return
+            except Forbidden:
+                # read-only access: keep the local file, and leave the state alone so it
+                # still counts as changed here
+                done["forbidden"].append(rel)
                 return
             state[rel] = here[rel]
         done["uploaded"].append(rel)
@@ -202,12 +211,16 @@ def main() -> None:
     for rel in labels["conflict"]:
         print(f"labels/{rel}: CONFLICT, changed here and in the bucket since the last sync; "
               "left alone (rerun with --conflicts local|remote)")
+    for rel in labels["forbidden"]:
+        print(f"labels/{rel}: changed here, NOT uploaded (no write access to the bucket)")
     for name in stray(bucket):
         print(f"warning: gs://{a.bucket}/{name} is outside raw/ and labels/; an old app build? "
               f"(move it: gcloud storage mv gs://{a.bucket}/{name} gs://{a.bucket}/{paths.RAW_PREFIX})")
 
     print(f"sync with gs://{a.bucket}: {len(got)} recording(s), {len(labels['uploaded'])} label file(s) up, "
-          f"{len(labels['downloaded'])} down, {len(labels['conflict'])} conflict(s) in {time.time() - t0:.1f}s"
+          f"{len(labels['downloaded'])} down, {len(labels['conflict'])} conflict(s)"
+          + (f", {len(labels['forbidden'])} not uploaded (read-only)" if labels["forbidden"] else "")
+          + f" in {time.time() - t0:.1f}s"
           + (" (dry run)" if a.dry_run else ""))
 
 

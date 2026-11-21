@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from google.api_core.exceptions import PreconditionFailed
+from google.api_core.exceptions import Forbidden, PreconditionFailed
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common import sync  # noqa: E402
@@ -28,6 +28,8 @@ class Blob:
 
     def upload_from_filename(self, path, if_generation_match=None):
         assert if_generation_match is not None, "label uploads must be conditional"
+        if self.bucket.read_only:
+            raise Forbidden("no storage.objects.create permission")
         if self.bucket.gen.get(self.name, 0) != if_generation_match:
             raise PreconditionFailed("generation mismatch")
         self.bucket.put(self.name, Path(path).read_bytes())
@@ -44,6 +46,7 @@ class Listing:
 class Bucket:
     def __init__(self):
         self.store, self.gen, self.n = {}, {}, 0
+        self.read_only = False
 
     def put(self, name, data: bytes):
         self.n += 1
@@ -97,10 +100,11 @@ def test_labels_new_files_go_both_ways(env):
     write(local, "r1/stops.csv", "here")
     bucket.put("labels/r2/stops.csv", b"there")
     done = run(env)
-    assert done == {"uploaded": ["r1/stops.csv"], "downloaded": ["r2/stops.csv"], "conflict": []}
+    assert done == {"uploaded": ["r1/stops.csv"], "downloaded": ["r2/stops.csv"], "conflict": [],
+                    "forbidden": []}
     assert bucket.store["labels/r1/stops.csv"] == b"here"
     assert (local / "r2/stops.csv").read_text() == "there"
-    assert run(env) == {"uploaded": [], "downloaded": [], "conflict": []}
+    assert run(env) == {"uploaded": [], "downloaded": [], "conflict": [], "forbidden": []}
 
 
 def test_labels_edits_go_whichever_way_they_were_made(env):
@@ -165,6 +169,24 @@ def test_labels_upload_never_overwrites_a_concurrent_change(env, monkeypatch):
     monkeypatch.setattr(Blob, "upload_from_filename", racing)
     assert run(env)["conflict"] == ["r1/stops.csv"]
     assert bucket.store["labels/r1/stops.csv"] == b"theirs"
+
+
+def test_read_only_access_downloads_and_keeps_local_changes(env):
+    bucket, local, _ = env
+    bucket.put("labels/r1/stops.csv", b"v1")
+    bucket.read_only = True
+    assert run(env)["downloaded"] == ["r1/stops.csv"]
+    write(local, "r1/stops.csv", "mine")
+    write(local, "r2/stops.csv", "new")
+    bucket.put("labels/r3/stops.csv", b"there")
+    done = run(env)
+    assert done["forbidden"] == ["r1/stops.csv", "r2/stops.csv"]
+    assert done["downloaded"] == ["r3/stops.csv"] and done["uploaded"] == []
+    assert bucket.store["labels/r1/stops.csv"] == b"v1" and "labels/r2/stops.csv" not in bucket.store
+    assert (local / "r1/stops.csv").read_text() == "mine"
+    assert run(env)["forbidden"] == ["r1/stops.csv", "r2/stops.csv"]  # still changed here
+    bucket.read_only = False
+    assert run(env)["uploaded"] == ["r1/stops.csv", "r2/stops.csv"]
 
 
 def test_dry_run_changes_nothing(env):
