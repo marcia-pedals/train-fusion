@@ -59,9 +59,9 @@ def privacy(s: Settings) -> str:
 <h1>{APP_NAME}: privacy policy</h1>
 <p><em>Effective November 21, 2026.</em></p>
 
-<p>{APP_NAME} records audio and motion sensors on a phone during a train ride, works out
-from them where the train stopped and how fast it went, and, if you choose, sends the
-recording to the app's developers to improve that model. {APP_NAME} is an independent
+<p>{APP_NAME} records audio and motion sensors on a phone during a train ride, and its
+localizer works out from them where the train is, where it stopped and how fast it went.
+If you choose, it sends the recording to the app's developers to improve the localizer. {APP_NAME} is an independent
 project, not affiliated with any railway or transit agency.</p>
 
 <h2>What stays on your phone</h2>
@@ -75,7 +75,8 @@ without an account.</p>
 history) the app asks whether to upload that ride's recording; nothing is uploaded without
 your yes. An upload is the whole audio recording, including anything said near the phone,
 and the raw sensor data (motion, magnetometer, barometer) with their times. They are used
-only to develop and improve the app's model of trains' stops, speed and position.</li>
+only to develop and improve the app's localizer, which works out trains' stops, speed and
+position.</li>
 <li><strong>Train Measurements, if you turn on sharing them</strong> (the app asks when
 your first recording starts; it's a setting). For each ride: the train's position, speed and stops
 with the exact date and time: when the ride started and ended, the train if you typed it
@@ -100,7 +101,7 @@ rode. If you are signed in when you upload, the upload is linked to your account
 
 <h2>Who sees it</h2>
 <p><strong>Uploaded recordings</strong> are shared only with the app's developers, for
-improving the model.</p>
+improving the localizer.</p>
 <p><strong>Train Measurements</strong> are shared with anyone who asks for the data. Before
 we give them out, we remove your account, email address and device identifier. Those who
 receive them must agree to use the data only for train operations research, and only to

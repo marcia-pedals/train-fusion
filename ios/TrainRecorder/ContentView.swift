@@ -74,8 +74,8 @@ struct ContentView: View {
         .sheet(item: $consent) { request in
             UploadConsentSheet(request: request) { answer in
                 consent = nil
-                if answer == .dontAskAgain { AppSettings.askToUpload = false }
-                store.decide(request.rideID, upload: answer == .yes, protecting: protecting)
+                if answer.stopAsking { AppSettings.askToUpload = false }
+                store.decide(request.rideID, upload: answer.upload, protecting: protecting)
             }
         }
         .onOpenURL { url in

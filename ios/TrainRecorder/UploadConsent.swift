@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// Asking whether to upload a ride's recording: after a ride (Yes / No / Don't ask again)
-/// or from History (Yes / No). The wording is the consent: keep it specific about what
-/// goes, who gets it and why (docs/accounts-and-uploads.md).
+/// Asking whether to share (upload) a ride's full recording: after a ride (Share / Don't
+/// share / Don't ask again) or from History (Share / Don't share).
+/// There's deliberately no "always", nor anything that could read as one. The wording is
+/// the consent: keep it specific about what goes, who gets it and why
+/// (docs/accounts-and-uploads.md).
 struct UploadConsent: Identifiable {
     let rideID: String
     let bytes: Int64
@@ -10,7 +12,11 @@ struct UploadConsent: Identifiable {
 
     var id: String { rideID }
 
-    enum Answer { case yes, no, dontAskAgain }
+    struct Answer {
+        let upload: Bool
+        /// Stop asking after each ride (Settings' "Ask to share with devs" off).
+        let stopAsking: Bool
+    }
 }
 
 struct UploadConsentSheet: View {
@@ -19,18 +25,20 @@ struct UploadConsentSheet: View {
 
     var body: some View {
         ConsentSheet(
-            title: "Upload this recording to help improve the model?",
+            title: "Share full recording?",
+            subtitle: "To improve the localizer · " + ByteCountFormatter.string(fromByteCount: request.bytes, countStyle: .file),
             rows: [
-                .init("doc", "Size", ByteCountFormatter.string(fromByteCount: request.bytes, countStyle: .file)),
-                .init("waveform", "Audio", "all of it, including anything said near the phone"),
-                .init("sensor", "Sensor data", "motion, compass, barometer"),
-                .init("lock", "Shared only with the app's developers", nil),
-                .init("trash", nil, "Delete it anytime in Settings"),
+                .init("waveform", "Audio, including nearby voices"),
+                .init("sensor", "Motion, compass, barometer"),
+                .init("lock", "Only app's devs get it"),
+                .init("trash", "Delete any time in Settings"),
             ],
             choices: [
-                .init("Yes, upload", .primary) { answer(.yes) },
-                .init("No", .secondary) { answer(.no) },
-            ] + (request.afterRide ? [.init("Don't ask again", .link) { answer(.dontAskAgain) }] : []))
+                .init("Share", primary: true) { answer(.init(upload: true, stopAsking: false)) },
+                .init("Don't share") { answer(.init(upload: false, stopAsking: false)) },
+            ] + (request.afterRide
+                ? [.init("Don't ask again") { answer(.init(upload: false, stopAsking: true)) }]
+                : []))
     }
 }
 
@@ -45,112 +53,115 @@ struct MeasurementsConsentSheet: View {
 
     var body: some View {
         ConsentSheet(
-            title: "Share Train Measurements for train operations research?",
+            title: "Share Train Measurements?",
+            subtitle: "For train operations research",
             rows: [
-                .init("tram", "Train Measurements", "train position, speed, and stops, with exact time and date"),
-                .init("waveform.slash", nil, "Not the audio or sensor data"),
-                .init("person.2", "Shared with anyone who asks for the data", nil,
-                      more: "They must agree to use the data only for train operations research, and only publish aggregated statistics, but we cannot guarantee what they do after they receive the data."),
-                .init("gearshape", nil, "Change this, or delete what's shared, anytime in Settings"),
+                .init("tram", "Position, speed, stops, exact times"),
+                .init("person.2", "Anyone who asks gets it",
+                      more: "We remove your account and device IDs first. They must agree to use the data only for train operations research, and only publish aggregated statistics, but we cannot guarantee what they do after they receive the data."),
+                .init("trash", "Delete any time in Settings"),
             ],
             choices: [
-                .init("Always share", .primary) { answer(.always) },
-                .init("Share just this ride", .secondary) { answer(.thisRide) },
-                .init("No, and don't ask again", .secondary) { answer(.never) },
+                .init("Always share", primary: true) { answer(.always) },
+                .init("Share just this ride") { answer(.thisRide) },
+                .init("No, and don't ask again") { answer(.never) },
             ])
     }
 }
 
-/// The layout both questions share: a title, a few icon rows, and the answers. Sized to
-/// its content.
+/// The layout both questions share: a title and what it's for, a few icon lines, then the
+/// answers as full-width buttons, one per row. Sized to its content.
 struct ConsentSheet: View {
     struct Row: Identifiable {
         let symbol: String
-        let title: String?
-        let detail: String?
-        /// Shown under the row when its "Details" is tapped.
+        let text: String
+        /// Shown in a popover when its "Details" is tapped.
         let more: String?
-        var id: String { symbol + (title ?? "") + (detail ?? "") }
+        var id: String { symbol + text }
 
-        init(_ symbol: String, _ title: String?, _ detail: String?, more: String? = nil) {
-            (self.symbol, self.title, self.detail, self.more) = (symbol, title, detail, more)
+        init(_ symbol: String, _ text: String, more: String? = nil) {
+            (self.symbol, self.text, self.more) = (symbol, text, more)
         }
     }
 
-    /// An answer button: the first is usually `.primary`; `.link` is a small text button.
     struct Choice: Identifiable {
-        enum Style { case primary, secondary, link }
         let label: String
-        let style: Style
+        let primary: Bool
         let action: () -> Void
         var id: String { label }
 
-        init(_ label: String, _ style: Style, action: @escaping () -> Void) {
-            (self.label, self.style, self.action) = (label, style, action)
+        init(_ label: String, primary: Bool = false, action: @escaping () -> Void) {
+            (self.label, self.primary, self.action) = (label, primary, action)
         }
     }
 
     let title: String
+    let subtitle: String
     let rows: [Row]
     let choices: [Choice]
-    @State private var height: CGFloat = 480
-    @State private var expanded: Set<String> = []
+    @State private var height: CGFloat = 400
+    @State private var showingMore: String?  // the row whose details are showing
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text(title)
-                    .font(.title3.weight(.semibold))
-                    .fixedSize(horizontal: false, vertical: true)
-                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 14) {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.title3.weight(.semibold))
+                    Text(subtitle)
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 12) {
                     ForEach(rows) { row in
                         GridRow {
                             Image(systemName: row.symbol)
                                 .foregroundStyle(.tint)
                                 .frame(width: 24)
                                 .gridColumnAlignment(.center)
-                            VStack(alignment: .leading, spacing: 6) {
-                                (Text(row.title.map { row.detail == nil ? $0 : $0 + ": " } ?? "").fontWeight(.semibold)
-                                    + Text(row.detail ?? ""))
-                                    .fixedSize(horizontal: false, vertical: true)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(row.text)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)  // one line each, even on small phones
                                 if let more = row.more {
-                                    if expanded.contains(row.id) {
-                                        Text(more)
-                                            .font(.subheadline).foregroundStyle(.secondary)
-                                            .fixedSize(horizontal: false, vertical: true)
-                                    }
-                                    Button(expanded.contains(row.id) ? "Less" : "Details") {
-                                        withAnimation { expanded.formSymmetricDifference([row.id]) }
-                                    }
-                                    .font(.subheadline)
+                                    // a popover, so nothing in the sheet moves or resizes
+                                    Button("Details") { showingMore = row.id }
+                                        .font(.subheadline)
+                                        .popover(isPresented: Binding(
+                                            get: { showingMore == row.id },
+                                            set: { if !$0 { showingMore = nil } })
+                                        ) {
+                                            Text(more)
+                                                .font(.subheadline)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                                .frame(width: 280, alignment: .leading)
+                                                .padding()
+                                                .presentationCompactAdaptation(.popover)
+                                        }
                                 }
                             }
                         }
                     }
                 }
-                VStack(spacing: 8) {
+                VStack(spacing: 10) {
                     ForEach(choices) { choice in
-                        switch choice.style {
-                        case .primary:
+                        if choice.primary {
                             Button(action: choice.action) {
                                 Text(choice.label).fontWeight(.semibold).frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent)
-                        case .secondary:
+                        } else {
                             Button(action: choice.action) { Text(choice.label).frame(maxWidth: .infinity) }
                                 .buttonStyle(.bordered)
-                        case .link:
-                            Button(choice.label, action: choice.action)
-                                .font(.subheadline)
-                                .padding(.top, 4)
                         }
                     }
                 }
                 .controlSize(.large)
+                .padding(.top, 4)
             }
             .padding(.horizontal, 24)
-            .padding(.top, 32)
-            .padding(.bottom, 16)
+            .padding(.top, 28)
+            .padding(.bottom, 12)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
         }
         .scrollBounceBehavior(.basedOnSize)

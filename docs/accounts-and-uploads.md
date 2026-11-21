@@ -13,10 +13,11 @@ several requirements below are there for the stores (marked *store*).
 - **Recording**: the big files of one ride (audio, raw sensors, `meta.json`): tens to
   hundreds of MB, on the phone under `Documents/recordings/<id>/`.
 - **Ride**: the small summary of one ride, its **Train Measurements**: when it started and
-  ended, the train (trip, car, position) if typed in, the stops the model heard (station,
+  ended, the train (trip, car, position) if typed in, the stops the localizer heard (station,
   when the doors opened and closed) and the direction. A ride outlives its recording on the
   phone.
-- **Upload**: a recording sent to the developers' bucket to improve the model.
+- **Upload**: a recording sent to the developers' bucket to improve the localizer (the
+  app's model of where the train is).
 - **Share** (measurements): a ride's Train Measurements sent to the developers, for train
   operations research, and given to anyone who asks for the data (below), with the
   account, email and device identifier removed first.
@@ -65,18 +66,17 @@ the bucket without limit; anyone with a build could extract it.)
   speed, and stops, with exact time and date". They're what's shared per ride: its id (the
   recording's start time), start and end time, app version, the train if typed in, the
   direction and its confidence, and each stop's station and door times (as true clock
-  time, corrected with the recording's NTP measurements). These are the model's inferences
-  at the time; the model changes. Not the audio or the sensor data (that's an upload).
+  time, corrected with the recording's NTP measurements). These are the localizer's inferences
+  at the time; the localizer changes. Not the audio or the sensor data (that's an upload).
 - They can be shared **with or without an account**, identified like uploads by the
   device secret (below); when signed in, they're also linked to the account.
 - When a recording starts, once it has started (it keeps recording meanwhile), the app asks
-  "Share Train Measurements for train operations research?", saying what they are, that
-  they're not the audio or sensor data, that they're **shared with anyone who asks for the
-  data** (with "Details": "They must agree to use the data only for train operations
-  research, and only publish aggregated statistics, but we cannot guarantee what they do
-  after they receive the data."), and that this
-  can be changed and what's shared deleted in Settings. It's asked at every recording
-  until answered for good:
+  "Share Train Measurements?" ("For train operations research"), one line each:
+  "Position, speed, stops, exact times"; "**Anyone who asks gets it**" (with
+  "Details": "We remove your account and device IDs first. They must agree to use the data only for train
+  operations research, and only publish aggregated statistics, but we cannot guarantee
+  what they do after they receive the data."); delete any time in Settings. It's asked at
+  every recording until answered for good:
   - **Always share**: turns the setting below on (this ride is shared too); not asked again;
   - **Share just this ride**: shares the ride being recorded, leaves the setting off, and
     asks again next recording;
@@ -100,16 +100,17 @@ the bucket without limit; anyone with a build could extract it.)
 
 ### Asking after each ride
 
-- When a recording is stopped (with the app's stop button), the app asks whether to upload
-  it: **Yes / No / Don't ask again**.
-- The question ("Upload this recording to help improve the model?") is short and says:
-  - the recording's size;
-  - **audio**: all of it, including anything said near the phone;
-  - **sensor data**: motion, compass, barometer;
-  - **shared only with the app's developers**;
-  - you can delete your uploads anytime in Settings.
-- "Don't ask again" declines this one and turns off the **Ask to share with devs**
-  setting (Settings). With the setting off, new recordings count as declined.
+- When a recording is stopped (with the app's stop button), the app asks "Share full
+  recording?" ("To improve the localizer", and its size): **Share** / **Don't share** / **Don't ask again**. There's deliberately no way to upload every
+  recording automatically: each upload is a yes to that recording. The question says:
+  - "Audio, including nearby voices";
+  - "Motion, compass, barometer";
+  - "Only app's devs get it";
+  - delete any time in Settings.
+- "Don't ask again" declines this one and turns off the **Ask to share
+  with devs** setting (Settings). With the setting off, new recordings count as declined
+  (they can still be shared from History). Nothing in the question pairs "Share" with
+  remembering, so nothing can read as "share from now on".
 - A recording over the size limit isn't offered; History says it's too large.
 
 ### Uploading from History
