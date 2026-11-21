@@ -30,7 +30,7 @@ struct UploadConsentSheet: View {
             rows: [
                 .init("waveform", "Audio, including nearby voices"),
                 .init("sensor", "Motion, compass, barometer"),
-                .init("lock", "Only app's devs get it"),
+                .init("lock", "Only app's developers get it"),
                 .init("trash", "Delete any time in Settings"),
             ],
             choices: [
@@ -57,6 +57,7 @@ struct MeasurementsConsentSheet: View {
             subtitle: "For train operations research",
             rows: [
                 .init("tram", "Position, speed, stops, exact times"),
+                .init("waveform.slash", "No audio"),
                 .init("person.2", "Anyone who asks gets it",
                       more: "We remove your account and device IDs first. They must agree to use the data only for train operations research, and only publish aggregated statistics, but we cannot guarantee what they do after they receive the data."),
                 .init("trash", "Delete any time in Settings"),
@@ -75,7 +76,7 @@ struct ConsentSheet: View {
     struct Row: Identifiable {
         let symbol: String
         let text: String
-        /// Shown in a popover when its "Details" is tapped.
+        /// Shown in a popover when its ⓘ is tapped.
         let more: String?
         var id: String { symbol + text }
 
@@ -119,25 +120,28 @@ struct ConsentSheet: View {
                                 .foregroundStyle(.tint)
                                 .frame(width: 24)
                                 .gridColumnAlignment(.center)
-                            VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
                                 Text(row.text)
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.8)  // one line each, even on small phones
                                 if let more = row.more {
                                     // a popover, so nothing in the sheet moves or resizes
-                                    Button("Details") { showingMore = row.id }
-                                        .font(.subheadline)
-                                        .popover(isPresented: Binding(
-                                            get: { showingMore == row.id },
-                                            set: { if !$0 { showingMore = nil } })
-                                        ) {
-                                            Text(more)
-                                                .font(.subheadline)
-                                                .fixedSize(horizontal: false, vertical: true)
-                                                .frame(width: 280, alignment: .leading)
-                                                .padding()
-                                                .presentationCompactAdaptation(.popover)
-                                        }
+                                    Button { showingMore = row.id } label: {
+                                        Image(systemName: "info.circle")
+                                    }
+                                    .accessibilityLabel("Details")
+                                    .popover(isPresented: Binding(
+                                        get: { showingMore == row.id },
+                                        set: { if !$0 { showingMore = nil } })
+                                    ) {
+                                        Text(more)
+                                            .font(.subheadline)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .frame(width: 280, alignment: .leading)
+                                            .padding(.horizontal, 22)
+                                            .padding(.vertical, 20)
+                                            .presentationCompactAdaptation(.popover)
+                                    }
                                 }
                             }
                         }
@@ -166,6 +170,8 @@ struct ConsentSheet: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .presentationDetents([.height(height)])
+        // plain, not the default grey: the lighter buttons' edges show, so the gaps read even
+        .presentationBackground(Color(.systemBackground))
         .presentationDragIndicator(.visible)
     }
 }

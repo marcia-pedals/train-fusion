@@ -72,8 +72,8 @@ the bucket without limit; anyone with a build could extract it.)
   device secret (below); when signed in, they're also linked to the account.
 - When a recording starts, once it has started (it keeps recording meanwhile), the app asks
   "Share Train Measurements?" ("For train operations research"), one line each:
-  "Position, speed, stops, exact times"; "**Anyone who asks gets it**" (with
-  "Details": "We remove your account and device IDs first. They must agree to use the data only for train
+  "Position, speed, stops, exact times"; "No audio"; "**Anyone who asks gets it**" (with
+  details behind an ⓘ: "We remove your account and device IDs first. They must agree to use the data only for train
   operations research, and only publish aggregated statistics, but we cannot guarantee
   what they do after they receive the data."); delete any time in Settings. It's asked at
   every recording until answered for good:
@@ -105,7 +105,7 @@ the bucket without limit; anyone with a build could extract it.)
   recording automatically: each upload is a yes to that recording. The question says:
   - "Audio, including nearby voices";
   - "Motion, compass, barometer";
-  - "Only app's devs get it";
+  - "Only app's developers get it";
   - delete any time in Settings.
 - "Don't ask again" declines this one and turns off the **Ask to share
   with devs** setting (Settings). With the setting off, new recordings count as declined
