@@ -47,6 +47,7 @@ targets:
         TRBackendHost: $(API_HOST)
         TRIdentityAPIKey: $(IDENTITY_API_KEY)
         TRGoogleClientID: $(GOOGLE_IOS_CLIENT_ID)
+        TRSiteHost: $(SITE_HOST)
         # Recordings show up in the Files app and in Finder, as a fallback to uploading.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true

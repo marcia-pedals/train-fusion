@@ -308,13 +308,13 @@ def create_app(deps: Deps | None = None) -> FastAPI:
 
     @app.delete("/v1/account")
     def delete_account(uid: str = Depends(account)):
-        measurements = delete_measurements(None, uid)
-        uploads = [i for i, u in docs.query("uploads", "uid", uid) if u.get("deletion_requested_at") is None]
-        request_deletion(uploads, "account_deleted", uid=uid, device_hash=None)
+        measurements = unmarked(docs.query("measurements", "uid", uid))
+        uploads = unmarked(docs.query("uploads", "uid", uid))
+        request_deletion(uploads, measurements, "account_deleted", uid=uid, device_hash=None)
         deps.identity.delete_user(uid)
         docs.delete(f"users/{uid}")
-        log.info("deleted an account (%d measurements, %d uploads to delete)", measurements, len(uploads))
-        return {"deleted_measurements": measurements, "uploads_pending_deletion": len(uploads)}
+        log.info("deleted an account (%d measurements, %d uploads to delete)", len(measurements), len(uploads))
+        return {"measurements_pending_deletion": len(measurements), "uploads_pending_deletion": len(uploads)}
 
     @app.post("/v1/claim")
     def claim(uid: str = Depends(account), device_hash: str = Depends(device)):
@@ -346,8 +346,11 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         m = parse(Measurement, raw)
         now = deps.now()
         existing = docs.get(path)
+        if existing is not None and existing.get("deletion_requested_at") is not None:
+            raise ApiError(409, "deletion_pending",
+                           "These measurements are waiting to be deleted, so they can't be shared again.")
         doc = {**m.model_dump(), "ride_id": ride_id, "device_hash": device_hash,
-               "uid": (existing or {}).get("uid") or uid, "shared_at": now}
+               "uid": (existing or {}).get("uid") or uid, "shared_at": now, "deletion_requested_at": None}
         if existing is not None:
             docs.set(path, doc)
             return {"id": ride_id}
@@ -368,12 +371,6 @@ def create_app(deps: Deps | None = None) -> FastAPI:
             found.update(docs.query("measurements", "uid", uid))
         return found
 
-    def delete_measurements(device_hash: str | None, uid: str | None) -> int:
-        found = my_measurements(device_hash, uid)
-        for doc_id in found:
-            docs.delete(f"measurements/{doc_id}")
-        return len(found)
-
     @app.get("/v1/measurements")
     def list_measurements(who: tuple = Depends(device_or_account)):
         out = []
@@ -381,13 +378,18 @@ def create_app(deps: Deps | None = None) -> FastAPI:
             d.pop("device_hash", None)
             linked = d.pop("uid", None) is not None
             shared = d.pop("shared_at", None)
-            out.append({"id": d.pop("ride_id"), **d, "linked": linked, "shared_at_unix_s": unix(shared)})
+            deletion_requested = d.pop("deletion_requested_at", None) is not None
+            out.append({"id": d.pop("ride_id"), **d, "linked": linked, "shared_at_unix_s": unix(shared),
+                        "deletion_requested": deletion_requested})
         out.sort(key=lambda r: (r.get("started_unix_s") or 0, r["id"]), reverse=True)
         return {"measurements": out}
 
-    @app.delete("/v1/measurements")
-    def delete_all_measurements(who: tuple = Depends(device_or_account)):
-        return {"deleted": delete_measurements(*who)}
+    @app.post("/v1/measurements/deletion-request")
+    def ask_measurement_deletion(who: tuple = Depends(device_or_account)):
+        device_hash, uid = who
+        ids = unmarked(my_measurements(device_hash, uid).items())
+        request_deletion([], ids, "requested", uid=uid, device_hash=device_hash)
+        return {"requested": len(ids)}
 
     # -------------------------------------------------------------- uploads
 
@@ -459,8 +461,8 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     @app.post("/v1/uploads/deletion-request")
     def ask_deletion(who: tuple = Depends(device_or_account)):
         device_hash, uid = who
-        ids = [i for i, u in mine(device_hash, uid).items() if u.get("deletion_requested_at") is None]
-        request_deletion(ids, "requested", uid=uid, device_hash=device_hash)
+        ids = unmarked(mine(device_hash, uid).items())
+        request_deletion(ids, [], "requested", uid=uid, device_hash=device_hash)
         return {"requested": len(ids)}
 
     @app.post("/v1/uploads/{upload_id}/complete")
@@ -499,19 +501,27 @@ def create_app(deps: Deps | None = None) -> FastAPI:
             found.update(docs.query("uploads", "uid", uid))
         return found
 
-    def request_deletion(upload_ids: list[str], reason: str, uid: str | None, device_hash: str | None) -> None:
-        """Records a deletion request for the developer (`just recording-deletions`), then
-        marks the uploads (in that order: a failure in between leaves the request on record)."""
-        if not upload_ids:
+    def unmarked(found) -> list[str]:
+        """The ids of these (id, doc) pairs that aren't already marked for deletion."""
+        return [i for i, d in found if d.get("deletion_requested_at") is None]
+
+    def request_deletion(upload_ids: list[str], measurement_ids: list[str], reason: str,
+                         uid: str | None, device_hash: str | None) -> None:
+        """Records a deletion request for the developer (`just deletions`), then marks what it
+        covers (in that order: a failure in between leaves the request on record). Nothing is
+        deleted here: the developer deletes by hand, within 30 days."""
+        if not upload_ids and not measurement_ids:
             return
         now = deps.now()
         docs.add("deletion_requests", {
             "requested_at": now, "reason": reason, "uid": uid, "device_hash": device_hash,
-            "upload_ids": sorted(upload_ids), "done_at": None,
+            "upload_ids": sorted(upload_ids), "measurement_ids": sorted(measurement_ids), "done_at": None,
         })
         for upload_id in upload_ids:
             docs.update(f"uploads/{upload_id}", {"deletion_requested_at": now})
-        log.info("deletion request (%s) for %d uploads", reason, len(upload_ids))
+        for measurement_id in measurement_ids:
+            docs.update(f"measurements/{measurement_id}", {"deletion_requested_at": now})
+        log.info("deletion request (%s) for %d uploads, %d measurements", reason, len(upload_ids), len(measurement_ids))
 
     # -------------------------------------------------------------- pages
 

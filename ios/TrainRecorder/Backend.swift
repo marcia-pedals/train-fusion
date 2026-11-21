@@ -13,10 +13,15 @@ enum BackendConfig {
     static let host = info("TRBackendHost")
     static let identityAPIKey = info("TRIdentityAPIKey")
     static let googleClientID = info("TRGoogleClientID")
+    /// The public site (infra/hosting.tf), where the privacy policy is.
+    static let siteHost = info("TRSiteHost")
 
     static var configured: Bool { host != nil && identityAPIKey != nil }
     static var baseURL: URL? { host.flatMap { URL(string: "https://\($0)") } }
-    static var privacyPolicy: URL? { baseURL?.appendingPathComponent("privacy") }
+    /// https://<site>/privacy, or the API's own /privacy if the site isn't configured.
+    static var privacyPolicy: URL? {
+        (siteHost.flatMap { URL(string: "https://\($0)") } ?? baseURL)?.appendingPathComponent("privacy")
+    }
 
     static let notConfigured = "This build of the app isn't connected to a server, so it can't upload or sign in."
 }

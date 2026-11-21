@@ -50,9 +50,9 @@ the bucket without limit; anyone with a build could extract it.)
 - **Delete account** (*store*: Apple and Google require in-app account deletion). It says
   that it deletes the account, the Train Measurements linked to it, and the recordings
   uploaded while signed in (or linked to it). What happens:
-  - the account and its Train Measurements are deleted at once;
-  - its uploaded recordings are marked for deletion, and the developer deletes them by
-    hand (`just recording-deletions`). This is deliberate: it's a big operation that must
+  - the account is deleted at once;
+  - its Train Measurements and uploaded recordings are marked for deletion, and the
+    developer deletes them by hand (`just deletions`). This is deliberate: deleting must
     reach every copy, so it's done carefully each time, not automatically. The app says
     they're deleted within 30 days;
   - for an account that signed in with Apple, the app gets a fresh Apple authorization and
@@ -88,9 +88,11 @@ the bucket without limit; anyone with a build could extract it.)
     (the default: the question above) / **Always share** / **Don't ask** (nothing shared). The question's answers set it the same way. With Always share, each ride's
     measurements are shared when its recording stops (retried when the app is next opened
     if there's no network). Rides recorded while it wasn't on aren't shared later.
-  - **Delete shared measurements** (confirmed first): deletes, at once, every ride's
-    measurements shared from this phone and every one linked to the signed-in account.
-    They stay on the phone.
+  - **Delete shared measurements** (confirmed first): marks every ride's measurements
+    shared from this phone, and every one linked to the signed-in account, for deletion;
+    the developer deletes them by hand within 30 days, as with recordings. They stay on the
+    phone. A ride whose measurements are waiting to be deleted isn't shared again. Copies
+    already given to researchers can't be recalled (they had identifiers removed).
 - Limits on new measurements (updating one already shared isn't counted): **10,000 a day**
   without an account, all devices together, and **1,000 a day** per account. Over the limit
   they stay pending and are shared another day.
@@ -183,7 +185,8 @@ Done in the app or the repo:
 - no credential in the app (above);
 - in-app account deletion, with Apple token revocation (above);
 - Sign in with Apple alongside Google;
-- a privacy policy, served by the backend at `/privacy` and linked from Settings;
+- a privacy policy at `https://train-fusion.web.app/privacy` (Firebase Hosting passes it on
+  to the backend's `/privacy`; `infra/hosting.tf`), linked from Settings;
 - a privacy manifest (`PrivacyInfo.xcprivacy`): no tracking; required-reason APIs
   (UserDefaults, system boot time for the monotonic clock); collected data (audio, other
   sensor data, precise location via the Train Measurements (the train's position with exact times), email, user id);

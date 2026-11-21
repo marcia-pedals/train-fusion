@@ -1,12 +1,14 @@
 """Admin commands for the recorder API, run on a laptop with your own credentials
 (`gcloud auth application-default login`). Through the Justfile:
 
-    just recording-deletions                 # pending deletion requests, and what to run for each
-    just recording-deletions --done <id>     # after you've deleted that request's uploads by hand
+    just deletions                           # pending deletion requests, and what to run for each
+    just delete-measurements <id>            # delete that request's Train Measurements
+    just deletions --done <id>               # once everything in that request is deleted
     just block-account <uid>                 # disable the account and refuse it in the API
 
-Nothing here deletes recordings: deleting an upload is done by hand, carefully, each time
-(docs/accounts-and-uploads.md).
+Deleting is done by hand, carefully, each time (docs/accounts-and-uploads.md): nothing here
+deletes on its own. `delete-measurements` deletes exactly what one request lists, when you
+run it.
 """
 from __future__ import annotations
 
@@ -43,8 +45,12 @@ def deletions(args) -> None:
             sys.exit(f"no deletion request {args.done}")
         if req.get("done_at") is not None:
             sys.exit(f"{args.done} was already marked done at {fmt(req['done_at'])}")
+        left = [m for m in req.get("measurement_ids", []) if d.get(f"measurements/{m}") is not None]
+        if left:
+            sys.exit(f"{len(left)} of its measurements are still there: just delete-measurements {args.done}")
         d.update(path, {"done_at": datetime.now(timezone.utc)})
-        print(f"marked {args.done} done ({len(req['upload_ids'])} upload(s))")
+        print(f"marked {args.done} done ({len(req['upload_ids'])} upload(s), "
+              f"{len(req.get('measurement_ids', []))} measurement(s))")
         return
 
     pending = sorted(((i, r) for i, r in d.query("deletion_requests") if r.get("done_at") is None),
@@ -58,6 +64,17 @@ def deletions(args) -> None:
         print(f"deletion request {request_id}: {r['reason']}, requested {fmt(r['requested_at'])}, "
               f"due by {fmt(due)}{'  OVERDUE' if due < now else ''}")
         print(f"  account: {r.get('uid') or '-'}")
+        measurement_ids = r.get("measurement_ids", [])
+        if measurement_ids:
+            left = sum(d.get(f"measurements/{m}") is not None for m in measurement_ids)
+            print(f"  Train Measurements: {len(measurement_ids)} ({left} not deleted yet)")
+            print(f"    just delete-measurements {request_id}")
+            print("    (copies already given to researchers, identifiers removed, can't be recalled)")
+        if not r["upload_ids"]:
+            print(f"  then: just deletions --done {request_id}")
+            print()
+            continue
+        print(f"  uploads: {len(r['upload_ids'])}")
         for upload_id in r["upload_ids"]:
             u = d.get(f"uploads/{upload_id}") or {}
             mb = u.get("total_bytes", 0) / 1e6
@@ -72,8 +89,26 @@ def deletions(args) -> None:
         print("  (a pending upload may have no files: 'no URLs matched' is fine.) If one was labelled,")
         print(f"  also gs://{BUCKET}/labels/<upload id>/ and its line in labels/RIDES.md. Then local copies")
         print("  (data/recordings/{raw,labels}/<upload id>/ on every laptop that synced). Then:")
-        print(f"    just recording-deletions --done {request_id}")
+        print(f"    just deletions --done {request_id}")
         print()
+
+
+def delete_measurements(args) -> None:
+    d = docs()
+    req = d.get(f"deletion_requests/{args.request}")
+    if req is None:
+        sys.exit(f"no deletion request {args.request}")
+    deleted = 0
+    for m in req.get("measurement_ids", []):
+        doc = d.get(f"measurements/{m}")
+        if doc is None:
+            continue
+        if doc.get("deletion_requested_at") is None:
+            print(f"  skipped {m}: no longer marked for deletion")
+            continue
+        d.delete(f"measurements/{m}")
+        deleted += 1
+    print(f"deleted {deleted} measurement(s) of request {args.request}")
 
 
 def block(args) -> None:
@@ -95,6 +130,9 @@ def main() -> None:
     p = sub.add_parser("deletions", help="list pending deletion requests, or mark one done")
     p.add_argument("--done", metavar="REQUEST_ID", help="mark this request done (after deleting by hand)")
     p.set_defaults(fn=deletions)
+    p = sub.add_parser("delete-measurements", help="delete the Train Measurements one deletion request lists")
+    p.add_argument("request", metavar="REQUEST_ID")
+    p.set_defaults(fn=delete_measurements)
     p = sub.add_parser("block", help="disable an account and mark it blocked")
     p.add_argument("uid")
     p.set_defaults(fn=block)

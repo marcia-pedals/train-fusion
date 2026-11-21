@@ -281,6 +281,8 @@ final class RideStore {
             do {
                 try await API.call("PUT", "v1/measurements/\(id)", json: ride.apiBody, auth: .ifSignedIn, device: true)
                 update(id) { $0.sharedAt = Date().timeIntervalSince1970; $0.sharePending = nil }
+            } catch let error as APIError where error.code == "deletion_pending" {
+                update(id) { $0.sharePending = nil }  // waiting to be deleted: not shared again
             } catch {
                 // left pending: tried again when the app is next opened
                 shareMessage = "Couldn't share: \(error.localizedDescription)"
@@ -295,29 +297,30 @@ final class RideStore {
         await share(rides.filter { $0.sharePending == true && $0.sharedAt == nil }.map(\.id))
     }
 
-    /// Deletes every measurement shared from this phone or linked to the account. Returns
-    /// how many, or nil if it failed (`shareMessage` says why).
+    /// Asks for every measurement shared from this phone or linked to the account to be
+    /// deleted (the developers do it by hand, within 30 days). Returns how many, or nil if it
+    /// failed (`shareMessage` says why).
     func deleteShared() async -> Int? {
         sharing = true
         shareMessage = nil
         defer { sharing = false }
         do {
-            let body = try await API.call("DELETE", "v1/measurements", auth: .ifSignedIn, device: true)
+            let body = try await API.call("POST", "v1/measurements/deletion-request", auth: .ifSignedIn, device: true)
             for i in rides.indices { (rides[i].sharedAt, rides[i].sharePending) = (nil, nil) }
             save()
-            return body["deleted"] as? Int ?? 0
+            return body["requested"] as? Int ?? 0
         } catch {
             shareMessage = "Couldn't delete: \(error.localizedDescription)"
             return nil
         }
     }
 
-    /// Marks as shared exactly the rides the server still has from this phone (e.g. after
-    /// the account, and the measurements linked to it, were deleted).
+    /// Marks as shared exactly the rides the server still has from this phone, not waiting
+    /// to be deleted (e.g. after the account, and so its measurements, were deleted).
     func reconcileShared() async {
         guard let body = try? await API.call("GET", "v1/measurements", device: true),
               let found = body["measurements"] as? [[String: Any]] else { return }
-        let ids = Set(found.compactMap { $0["id"] as? String })
+        let ids = Set(found.filter { $0["deletion_requested"] as? Bool != true }.compactMap { $0["id"] as? String })
         for i in rides.indices where !ids.contains(rides[i].id) { rides[i].sharedAt = nil }
         save()
     }

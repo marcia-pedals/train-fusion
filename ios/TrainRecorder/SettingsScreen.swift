@@ -25,6 +25,8 @@ struct SettingsScreen: View {
     @AppStorage(AppSettings.shareMeasurementsKey) private var shareMeasurements = false
     @AppStorage(AppSettings.askedShareMeasurementsKey) private var askedShare = false
     @State private var info: SharingInfoSheet?
+    /// For screenshots from the command line: -account opens the account screen.
+    @State private var showingAccount = ProcessInfo.processInfo.arguments.contains("-account")
     @State private var confirmDeleteMeasurements = false
     @State private var deleteMeasurementsMessage: String?
     /// A "keep" setting that deletes recordings now, waiting to be confirmed.
@@ -89,6 +91,7 @@ struct SettingsScreen: View {
                 }
             }
             .navigationTitle("Settings")
+            .navigationDestination(isPresented: $showingAccount) { AccountScreen(store: store) }
         }
         .sheet(item: $info) { $0 }
         .confirmationDialog(
@@ -109,12 +112,12 @@ struct SettingsScreen: View {
                 Task {
                     if let n = await store.deleteShared() {
                         deleteMeasurementsMessage = n == 0 ? "Nothing was shared."
-                            : "Deleted \(n) ride\(n == 1 ? "'s" : "s'") Train Measurements."
+                            : "\(n) ride\(n == 1 ? "'s" : "s'") Train Measurements will be deleted within 30 days."
                     }
                 }
             }
         } message: {
-            Text("Deleted now. They stay on this phone.")
+            Text("The developers delete them within 30 days. They stay on this phone.")
         }
         .confirmationDialog("Delete your shared recordings?", isPresented: $confirmDeleteUploads, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { Task { await requestDeletion() } }
@@ -207,22 +210,36 @@ struct AccountScreen: View {
 
     @ViewBuilder private var signedOut: some View {
         Section {
-            Text("Optional. What you share is linked to your account, to see on the web later.")
-                .font(.callout)
-        }
-        Section {
-            SignInWithAppleButton(.signIn, onRequest: account.prepare) { result in
-                Task { await account.signInWithApple(result) }
+            // the buttons on their own, not in a card (whose corners would cut them off)
+            VStack(spacing: 12) {
+                SignInWithAppleButton(.signIn, onRequest: account.prepare) { result in
+                    Task { await account.signInWithApple(result) }
+                }
+                .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+                .frame(height: 50)
+                .clipShape(Capsule())
+                Button { Task { await signInWithGoogle() } } label: {
+                    // white with a thin outline, as Google's own buttons are
+                    Text("Sign in with Google")
+                        .font(.system(size: 19, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                        .background(Capsule().fill(Color(.systemBackground)))
+                        .overlay(Capsule().strokeBorder(Color(.separator)))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
-            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
-            .frame(height: 44)
             .listRowInsets(EdgeInsets())
-            Button { Task { await signInWithGoogle() } } label: {
-                Text("Sign in with Google").frame(maxWidth: .infinity)
-            }
+            .listRowBackground(Color.clear)
+        } header: {
+            Text("Optional. Links your shared Train Measurements and Full Recordings to an account so that you can view them on the web or download them.")
+                .font(.subheadline)
+                .textCase(nil)
+                .padding(.bottom, 8)
         }
         Section {
-            TextField("you@example.com", text: $email)
+            TextField("Email address", text: $email)  // (an address as the placeholder shows as a blue link)
                 .keyboardType(.emailAddress)
                 .textContentType(.emailAddress)
                 .textInputAutocapitalization(.never)
@@ -268,7 +285,7 @@ struct AccountScreen: View {
                 }
             }
         } message: {
-            Text("Its Train Measurements are deleted now, its full recordings within 30 days. Everything on this phone stays. This can't be undone.")
+            Text("Its Train Measurements and full recordings are deleted within 30 days. Everything on this phone stays. This can't be undone.")
         }
         .sheet(isPresented: $appleDeletion) {
             VStack(spacing: 20) {

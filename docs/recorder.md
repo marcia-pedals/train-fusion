@@ -137,7 +137,8 @@ generated and not checked in. Re-run `just ios` after adding files, or after `ju
 
 The app holds no credential: uploads go through the backend, which hands out signed URLs
 (docs/api.md). `Config.xcconfig` only says where the backend is, and Identity Platform's
-API key (restricted to this app's bundle id) and Google client id for sign-in. Without it
+API key (restricted to this app's bundle id) and Google client id for sign-in, and the public
+site's host (the privacy policy link, `infra/hosting.tf`). Without it
 the app records and replays as usual but can't upload or sign in.
 
 Build from a shell outside the nix dev shell: its linker breaks Xcode's link step.

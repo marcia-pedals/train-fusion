@@ -37,11 +37,11 @@ Auth: account token (registration not needed, obviously). Idempotent.
 
 ### `DELETE /v1/account`
 
-Auth: account. Deletes every measurement linked to the account, marks every upload linked to it for
-deletion (a deletion request, reason `account_deleted`), deletes the user record and the
-Identity Platform user. Clients revoke provider tokens (Apple) before calling this.
+Auth: account. Marks every measurement and upload linked to the account for deletion (a
+deletion request, reason `account_deleted`), deletes the user record and the Identity
+Platform user. Clients revoke provider tokens (Apple) before calling this.
 
-`200 {"deleted_measurements": n, "uploads_pending_deletion": m}`
+`200 {"measurements_pending_deletion": n, "uploads_pending_deletion": m}`
 
 ## Measurements
 
@@ -82,12 +82,15 @@ most 64 KB):
 
 Auth: device secret and/or account. This device's and the account's:
 `200 {"measurements": [{"id": "...", ...the body as stored..., "linked": bool,
-"shared_at_unix_s": ...}]}`, newest first.
+"shared_at_unix_s": ..., "deletion_requested": bool}]}`, newest first.
 
-### `DELETE /v1/measurements`
+### `POST /v1/measurements/deletion-request`
 
-Auth: device secret and/or account. Deletes every measurement put from this device or
-linked to the account, at once. `200 {"deleted": n}`.
+Auth: device secret and/or account. Marks every measurement put from this device or linked
+to the account, not already marked, for deletion, and records a deletion request for the
+developer (`just deletions`), who deletes them by hand. `200 {"requested": n}` (0 if there
+was nothing). A marked measurement is listed with `"deletion_requested": true`, and putting
+it again is refused: `409 deletion_pending`.
 
 ### `POST /v1/claim`
 
@@ -159,7 +162,7 @@ linked to this account:
 
 Auth: device secret and/or account. Marks every upload made by this device or linked to
 the account, not already marked, for deletion, and records a deletion request for the
-developer (`just recording-deletions`). `200 {"requested": n}` (0 if there was nothing).
+developer (`just deletions`). `200 {"requested": n}` (0 if there was nothing).
 
 ## Pages
 
@@ -177,7 +180,7 @@ developer (`just recording-deletions`). `200 {"requested": n}` (0 if there was n
 | `users` | `<uid>` | `created_at`, `email`, `blocked` |
 | `measurements` | `<ride_id>-<first 16 of device_hash>` | the body, `ride_id`, `device_hash`, `uid` (or null), `shared_at` |
 | `uploads` | `<upload_id>` | `recording_id`, `uid` (or null), `device_hash`, `files` [{name, size, content_type}], `total_bytes`, `status`, `created_at`, `completed_at`, `deletion_requested_at` |
-| `deletion_requests` | auto id | `requested_at`, `reason` (`requested` / `account_deleted`), `uid`, `device_hash`, `upload_ids`, `done_at` |
+| `deletion_requests` | auto id | `requested_at`, `reason` (`requested` / `account_deleted`), `uid`, `device_hash`, `upload_ids`, `measurement_ids`, `done_at` |
 | `counters` | `signups-<YYYY-MM-DD>`, `anon-uploads-<day>`, `user-uploads-<uid>-<day>`, `anon-measurements-<day>`, `user-measurements-<uid>-<day>` | `count` |
 
 Counters are incremented in a transaction with the check.

@@ -15,6 +15,11 @@ output "recorder_service_account" {
   value       = google_service_account.recorder.email
 }
 
+output "site_host" {
+  description = "The public site's host (hosting.tf): the privacy policy is https://<it>/privacy."
+  value       = "${local.hosting_site}.web.app"
+}
+
 output "api_url" {
   description = "The recorder API's base URL (docs/api.md)."
   value       = google_cloud_run_v2_service.api.uri

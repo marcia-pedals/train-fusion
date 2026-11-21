@@ -12,6 +12,11 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 7.0"
     }
+    # Firebase Hosting's versions and releases (hosting.tf) are only in the beta provider
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 7.0"
+    }
   }
 }
 
@@ -22,6 +27,13 @@ provider "google" {
 
   # Bill API quota to this project, not to gcloud's own: with your own login (application
   # default credentials), some APIs (Identity Platform's) refuse to run otherwise.
+  user_project_override = true
+  billing_project       = var.project
+}
+
+provider "google-beta" {
+  project               = var.project
+  region                = var.region
   user_project_override = true
   billing_project       = var.project
 }

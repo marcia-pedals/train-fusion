@@ -138,7 +138,7 @@ which cuts those builds off.
 
 1. **Google OAuth clients** (Google Cloud console, project train-fusion):
    - *Google Auth Platform → Branding*: app name "Train Fusion", support email (the
-     privacy policy URL, `<api_url>/privacy`, once step 3 has made the API). *Audience*:
+     privacy policy URL, `https://train-fusion.web.app/privacy`, once step 3 has made the API). *Audience*:
      External, published.
    - *Clients → Create*: a **Web application** client, with authorized redirect URI
      `https://train-fusion.firebaseapp.com/__/auth/handler` (for Identity Platform's Google
@@ -178,7 +178,7 @@ which cuts those builds off.
      that) and lands on `<api_url>/auth/email-link`, whose "Open in Train Fusion" button
      opens the app (`trainfusion://`).
 5. `just ios-config` (writes `ios/Config.xcconfig`, gitignored: the API host, the API key,
-   the Google client ids), `just ios`, build, and install on every phone that records.
+   the Google client ids, the site host for the privacy policy), `just ios`, build, and install on every phone that records.
    The bundle id changed (`…TrainRecorder` → `…TrainFusion`), so this installs as a second
    app next to the old one, with its own, empty storage. Before deleting the old app, move
    its recordings over: Finder → the phone → Files → copy `recordings/` out of the old app
@@ -191,16 +191,19 @@ which cuts those builds off.
 | `just api-deploy` | build `backend/` (Cloud Build) and deploy it |
 | `just tf apply` | change the service's settings (env vars in `api.tf`), scaling, IAM |
 | `gcloud run services logs tail api --region us-west1` | its logs (never tokens or device secrets) |
-| `just recording-deletions` | pending deletion requests, and the commands to delete each |
+| `just deletions` | pending deletion requests (recordings and Train Measurements), and what to run for each |
 | `just block-account <uid>` | refuse an account |
 | `just test` | includes the backend's tests (against in-memory fakes, no GCP) |
 
-**Deletion requests** (someone asked for their uploads to be deleted, or deleted their
-account): `just recording-deletions` lists each pending request with its uploads and the
-`gcloud storage rm -r gs://train-fusion-recordings/raw/<upload id>/` commands to run. Nothing
-is deleted automatically: run them yourself, also delete labels made from those uploads
-(in the bucket's `labels/` and `RIDES.md`) and any laptop copies (`data/recordings/`),
-then `just recording-deletions --done <request id>`. Requests promise deletion within 30
+**Deletion requests** (someone asked for their recordings or Train Measurements to be
+deleted, or deleted their account): `just deletions` lists each pending request with what it
+covers and what to run. Nothing is deleted automatically: for Train Measurements run
+`just delete-measurements <request id>` (it deletes exactly the ones that request lists);
+for uploads, the `gcloud storage rm -r gs://train-fusion-recordings/raw/<upload id>/`
+commands, and also labels made from those uploads (in the bucket's `labels/` and
+`RIDES.md`) and any laptop copies (`data/recordings/`). Then
+`just deletions --done <request id>` (it refuses while that request's measurements are
+still there). Requests promise deletion within 30
 days. Deleted objects stay recoverable for the bucket's 7-day soft-delete window. Upload
 URLs handed out shortly before a request still work for up to 12 hours; the listing says
 when a request is that recent.

@@ -147,14 +147,19 @@ def test_delete_account(env):
 
     r = env.client.delete("/v1/account", headers=env.headers("u1"))
     assert r.status_code == 200
-    assert r.json() == {"deleted_measurements": 2, "uploads_pending_deletion": 1}
+    assert r.json() == {"measurements_pending_deletion": 2, "uploads_pending_deletion": 1}
     assert env.docs.get("users/u1") is None
-    assert [d["uid"] for _, d in env.docs.query("measurements")] == ["u2", None]
+    # nothing is deleted: the account's measurements and uploads are marked, by hand later
+    marked = {d["uid"]: [] for _, d in env.docs.query("measurements")}
+    for i, d in env.docs.query("measurements"):
+        marked[d["uid"]].append(d["deletion_requested_at"] is not None)
+    assert marked == {"u1": [True, True], "u2": [False], None: [False]}
     assert env.deps.identity.deleted == ["u1"]
     assert env.docs.get(f"uploads/{linked}")["deletion_requested_at"] is not None
     assert env.docs.get(f"uploads/{anon}")["deletion_requested_at"] is None
     [(_, req)] = env.docs.query("deletion_requests")
     assert req["reason"] == "account_deleted" and req["upload_ids"] == [linked]
+    assert req["measurement_ids"] == sorted(i for i, d in env.docs.query("measurements") if d["uid"] == "u1")
     assert req["uid"] == "u1" and req["done_at"] is None
     # the account is gone
     assert env.client.delete("/v1/account", headers=env.headers("u1")).json()["error"] == "not_registered"
@@ -163,7 +168,7 @@ def test_delete_account(env):
 def test_delete_account_without_uploads_makes_no_request(env):
     env.register("u1")
     r = env.client.delete("/v1/account", headers=env.headers("u1"))
-    assert r.json() == {"deleted_measurements": 0, "uploads_pending_deletion": 0}
+    assert r.json() == {"measurements_pending_deletion": 0, "uploads_pending_deletion": 0}
     assert env.docs.query("deletion_requests") == []
 
 
@@ -179,7 +184,7 @@ def test_measurements_without_an_account(env):
 
     found = env.client.get("/v1/measurements", headers=env.headers(device=DEVICE)).json()["measurements"]
     assert [x["id"] for x in found] == [REC2, REC]  # newest first
-    assert {k: v for k, v in found[1].items() if k not in ("id", "linked", "shared_at_unix_s")} == MEASUREMENT
+    assert {k: v for k, v in found[1].items() if k not in ("id", "linked", "shared_at_unix_s", "deletion_requested")} == MEASUREMENT
     assert found[1]["linked"] is False and found[1]["shared_at_unix_s"] == env.clock.t.timestamp()
 
     # replacing: 200, not counted
@@ -192,9 +197,23 @@ def test_measurements_without_an_account(env):
     assert put(env, device=OTHER_DEVICE).status_code == 201
     assert len(env.client.get("/v1/measurements", headers=env.headers(device=OTHER_DEVICE)).json()["measurements"]) == 1
 
-    assert env.client.delete("/v1/measurements", headers=env.headers(device=DEVICE)).json() == {"deleted": 2}
-    assert env.client.get("/v1/measurements", headers=env.headers(device=DEVICE)).json() == {"measurements": []}
-    assert len(env.docs.query("measurements")) == 1  # the other phone's
+    # asking for deletion marks this phone's (and records a request); nothing is deleted
+    r = env.client.post("/v1/measurements/deletion-request", headers=env.headers(device=DEVICE))
+    assert r.json() == {"requested": 2}
+    found = env.client.get("/v1/measurements", headers=env.headers(device=DEVICE)).json()["measurements"]
+    assert [m["deletion_requested"] for m in found] == [True, True]
+    assert len(env.docs.query("measurements")) == 3
+    [(_, req)] = env.docs.query("deletion_requests")
+    assert req["reason"] == "requested" and len(req["measurement_ids"]) == 2 and req["upload_ids"] == []
+    # asking again finds nothing new
+    assert env.client.post("/v1/measurements/deletion-request", headers=env.headers(device=DEVICE)).json() == {"requested": 0}
+    assert len(env.docs.query("deletion_requests")) == 1
+    # a marked one can't be shared again (it's waiting to be deleted)
+    r = put(env)
+    assert r.status_code == 409 and r.json()["error"] == "deletion_pending"
+    # the other phone's is untouched
+    other = env.client.get("/v1/measurements", headers=env.headers(device=OTHER_DEVICE)).json()["measurements"]
+    assert [m["deletion_requested"] for m in other] == [False]
 
 
 def test_measurements_with_an_account(env):
@@ -208,11 +227,11 @@ def test_measurements_with_an_account(env):
     # shared again signed out: stays linked
     assert put(env).status_code == 200
     assert env.docs.query("measurements", "device_hash", env.docs.query("measurements")[0][1]["device_hash"])[0][1]["uid"] == "u1"
-    # deleting signed in deletes the account's and this phone's
+    # asking signed in covers the account's and this phone's
     put(env, device=DEVICE, rec="20300101T140000Z")  # this phone, not linked
-    r = env.client.delete("/v1/measurements", headers=env.headers("u1", DEVICE))
-    assert r.json() == {"deleted": 3}
-    assert env.docs.query("measurements") == []
+    r = env.client.post("/v1/measurements/deletion-request", headers=env.headers("u1", DEVICE))
+    assert r.json() == {"requested": 3}
+    assert all(d["deletion_requested_at"] is not None for _, d in env.docs.query("measurements"))
 
 
 def test_measurement_limits(small_env):
@@ -499,6 +518,10 @@ def test_pages(env):
     assert r.status_code == 404
     r = env.client.get("/privacy")
     assert r.status_code == 200 and "contact@example.com" in r.text and "30 days" in r.text
+    for name, kind in [("favicon.ico", "image/x-icon"), ("icon-192.png", "image/png"), ("apple-touch-icon.png", "image/png")]:
+        r = env.client.get(f"/{name}")
+        assert r.status_code == 200 and r.headers["content-type"] == kind and len(r.content) > 1000
+    assert '<link rel=icon href="/favicon.ico"' in env.client.get("/privacy").text
     for path in ["/healthz", "/health"]:
         r = env.client.get(path)
         assert r.status_code == 200 and r.text == "ok"

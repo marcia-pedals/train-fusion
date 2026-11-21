@@ -219,8 +219,8 @@ final class Account {
         user = nil
     }
 
-    /// Deletes the account on the server (its Train Measurements at once; its uploads are marked
-    /// for deletion), then signs out. An Apple account needs a fresh Apple authorization
+    /// Deletes the account on the server (its Train Measurements and uploads are marked for
+    /// deletion, done by hand), then signs out. An Apple account needs a fresh Apple authorization
     /// (`apple`), to revoke the app's Apple tokens as Apple requires. Returns whether it worked.
     func deleteAccount(apple: Result<ASAuthorization, Error>? = nil) async -> Bool {
         guard let user else { return false }

@@ -46,7 +46,7 @@ migrate dir:
 # (without ios/Config.xcconfig from `just ios-config`, a placeholder: the app then can't
 # upload or sign in)
 ios:
-    [ -f ios/Config.xcconfig ] || printf 'API_HOST = example.invalid\nIDENTITY_API_KEY =\nGOOGLE_IOS_CLIENT_ID =\nGOOGLE_REVERSED_CLIENT_ID =\n' > ios/Config.xcconfig
+    [ -f ios/Config.xcconfig ] || printf 'API_HOST = example.invalid\nIDENTITY_API_KEY =\nGOOGLE_IOS_CLIENT_ID =\nGOOGLE_REVERSED_CLIENT_ID =\nSITE_HOST =\n' > ios/Config.xcconfig
     cd ios && xcodegen && open TrainRecorder.xcodeproj
 
 # write the fitted model where the app bundles it (ios/TrainRecorder/model.json), and the
@@ -66,14 +66,16 @@ ios-config:
     client=$(echo 'var.google_ios_client_id' | terraform -chdir=infra console | tr -d '"')
     [ -n "$client" ] || { echo "set google_ios_client_id in infra/terraform.tfvars and apply (docs/deploy.md)" >&2; exit 1; }
     host=${url#https://}; host=${host%/}
+    site=$(terraform -chdir=infra output -raw site_host)
     # no "//" anywhere: xcconfig starts a comment there, hence a host and not a URL
     printf '%s\n' \
         "API_HOST = $host" \
         "IDENTITY_API_KEY = $key" \
         "GOOGLE_IOS_CLIENT_ID = $client" \
         "GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.${client%.apps.googleusercontent.com}" \
+        "SITE_HOST = $site" \
         > ios/Config.xcconfig
-    echo "wrote ios/Config.xcconfig (API at $host)"
+    echo "wrote ios/Config.xcconfig (API at $host, privacy policy at https://$site/privacy)"
 
 # build backend/ with Cloud Build and deploy it to the Cloud Run service `api` (infra/api.tf)
 api-deploy:
@@ -88,10 +90,14 @@ api-deploy:
     gcloud run services update api --project train-fusion --region us-west1 --image "$image"
     curl -fsS "$(tf api_url)/health" && echo " <- $(tf api_url)"
 
-# recordings people asked to have deleted, with the commands to delete each by hand;
-# `just recording-deletions --done <request id>` once you have (backend/admin.py)
-recording-deletions *args:
+# recordings and Train Measurements people asked to have deleted, with what to run for
+# each; `just deletions --done <request id>` once all of it is (backend/admin.py)
+deletions *args:
     python backend/admin.py deletions {{args}}
+
+# delete the Train Measurements that one deletion request lists (run by hand, like the rest)
+delete-measurements request:
+    python backend/admin.py delete-measurements {{request}}
 
 # refuse an account: disable it in Identity Platform and mark it blocked in the API
 block-account uid:
