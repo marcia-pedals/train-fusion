@@ -177,7 +177,7 @@ private struct TrackScreen: View {
                             Text(problem).font(.footnote).foregroundStyle(.red)
                         }
                     } else {
-                        Text(recorder.busy ? "Saving…" : "Tap the red button to start measuring a ride.\nOr replay an earlier one from History.")
+                        Text(recorder.starting ? "Starting…" : recorder.busy ? "Saving…" : "Tap the red button to start measuring a ride.\nOr replay an earlier one from History.")
                             .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                             .padding(.top, 40)
                     }
@@ -225,12 +225,18 @@ private struct TrackScreen: View {
             if args.contains("-askshare") { askingShare = true }
         }
         .sheet(isPresented: $askingShare) {
-            MeasurementsConsentSheet { share in
-                AppSettings.shareMeasurements = share
-                AppSettings.askedShareMeasurements = true
+            MeasurementsConsentSheet { answer in
+                switch answer {
+                case .always:
+                    (AppSettings.shareMeasurements, AppSettings.askedShareMeasurements) = (true, true)
+                case .thisRide:
+                    if let id = recorder.activeID { AppSettings.shareOnce(id) }  // asked again next time
+                case .never:
+                    (AppSettings.shareMeasurements, AppSettings.askedShareMeasurements) = (false, true)
+                }
                 askingShare = false
             }
-            .interactiveDismissDisabled()
+            // swiping it away or tapping outside answers nothing: asked again next recording
         }
     }
 

@@ -28,7 +28,7 @@ struct SettingsScreen: View {
                     .pickerStyle(.segmented)
                 }
                 Section {
-                    Toggle("Automatically share Train Measurements for research", isOn: $shareMeasurements)
+                    Toggle("Automatically share Train Measurements for train operations research", isOn: $shareMeasurements)
                         .onChange(of: shareMeasurements) { AppSettings.askedShareMeasurements = true }
                     Button("Delete shared measurements", role: .destructive) { confirmDeleteMeasurements = true }
                         .disabled(store.sharing || !BackendConfig.configured)

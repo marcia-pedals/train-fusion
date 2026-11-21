@@ -57,6 +57,7 @@ def privacy(s: Settings) -> str:
         contact = "the contact address in the app's App Store listing"
     return f"""
 <h1>{APP_NAME}: privacy policy</h1>
+<p><em>Effective November 21, 2026.</em></p>
 
 <p>{APP_NAME} records audio and motion sensors on a phone during a train ride, works out
 from them where the train stopped and how fast it went, and, if you choose, sends the
@@ -79,7 +80,8 @@ only to develop and improve the app's model of trains' stops, speed and position
 your first recording starts; it's a setting). For each ride: the train's position, speed and stops
 with the exact date and time: when the ride started and ended, the train if you typed it
 in, the direction, and the stations the app detected with the times the doors opened and
-closed. They are used for research into trains' stops, speed and position.</li>
+closed. They are used for train operations research, by us and by others (see "Who
+sees it").</li>
 <li><strong>A random device identifier.</strong> Each installation makes a random secret;
 we keep only a one-way hash of it with each upload and each Train Measurement, so that you
 can delete them without an account, and link them to your account if you sign in
@@ -97,9 +99,16 @@ and uploaded recordings) to your account.</li>
 rode. If you are signed in when you upload, the upload is linked to your account.</p>
 
 <h2>Who sees it</h2>
-<p>Train Measurements and uploaded recordings are shared only with the app's developers, for
-improving the model. They are stored on Google Cloud (in the United States), which
-processes them on our behalf. We do not sell your data, show ads, or track you across apps
+<p><strong>Uploaded recordings</strong> are shared only with the app's developers, for
+improving the model.</p>
+<p><strong>Train Measurements</strong> are shared with anyone who asks for the data. Before
+we give them out, we remove your account, email address and device identifier. Those who
+receive them must agree to use the data only for train operations research, and only to
+publish aggregated statistics, but we cannot guarantee what they do after they receive the
+data. Even without identifiers, the exact times and places of someone's regular rides
+could point to them for someone who knows their routine.</p>
+<p>Both are stored on Google Cloud (in the United States), which processes them on our
+behalf. We do not sell your data, show ads, or track you across apps
 or websites, and the app contains no third-party analytics or advertising.</p>
 
 <h2>Deleting your data</h2>
@@ -123,8 +132,12 @@ If you can't use the app, write to us (below) and we'll delete your data.</p>
 <p>The app is not directed at children under 13, and we don't knowingly collect their
 data.</p>
 
+<h2>Do Not Track</h2>
+<p>We don't track you across apps or websites, so there is nothing for a Do Not Track
+signal to turn off: we treat every visitor the same whether or not one is sent.</p>
+
 <h2>Changes and contact</h2>
-<p>If this policy changes, the new version will be here. Questions, or requests about your
+<p>If this policy changes, the new version will be here, with a new effective date. Questions, or requests about your
 data: {contact}.</p>
 """
 

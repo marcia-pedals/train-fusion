@@ -42,6 +42,30 @@ final class MotionCapture {
 
     private let manager = CMMotionManager()
     private let altimeter = CMAltimeter()
+
+    /// Asks for Motion & Fitness access (the barometer needs it) if it hasn't been asked
+    /// yet, and returns once the rider has answered: whether it's allowed. There's no call
+    /// that only asks, so this starts barometer updates and waits for the first answer
+    /// (a reading, or the not-authorized error). No barometer: nothing to ask, true.
+    static func requestPermission() async -> Bool {
+        guard CMAltimeter.isRelativeAltitudeAvailable() else { return true }
+        switch CMAltimeter.authorizationStatus() {
+        case .authorized: return true
+        case .denied, .restricted: return false
+        default: break
+        }
+        final class Once: @unchecked Sendable { var done = false }  // touched on the main queue only
+        let altimeter = CMAltimeter()
+        let once = Once()
+        return await withCheckedContinuation { continuation in
+            altimeter.startRelativeAltitudeUpdates(to: .main) { _, error in
+                guard !once.done else { return }
+                once.done = true
+                altimeter.stopRelativeAltitudeUpdates()
+                continuation.resume(returning: error == nil)
+            }
+        }
+    }
     private let accel: Stream
     private let gyro: Stream
     private let mag: Stream

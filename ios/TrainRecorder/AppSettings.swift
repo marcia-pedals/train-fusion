@@ -35,6 +35,24 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue, forKey: shareMeasurementsKey) }
     }
 
+    /// Recordings whose Train Measurements are to be shared when they end although the
+    /// setting is off ("Share just this ride").
+    private static let shareOnceKey = "shareMeasurementsOnce"
+
+    static func shareOnce(_ id: String) {
+        UserDefaults.standard.set(Array(Set(UserDefaults.standard.stringArray(forKey: shareOnceKey) ?? []).union([id])),
+                                  forKey: shareOnceKey)
+    }
+
+    /// Whether `id` was to be shared once; forgets it.
+    static func takeShareOnce(_ id: String) -> Bool {
+        var ids = UserDefaults.standard.stringArray(forKey: shareOnceKey) ?? []
+        guard let i = ids.firstIndex(of: id) else { return false }
+        ids.remove(at: i)
+        UserDefaults.standard.set(ids, forKey: shareOnceKey)
+        return true
+    }
+
     static var askedShareMeasurements: Bool {
         get { UserDefaults.standard.bool(forKey: askedShareMeasurementsKey) }
         set { UserDefaults.standard.set(newValue, forKey: askedShareMeasurementsKey) }

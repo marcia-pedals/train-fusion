@@ -44,6 +44,7 @@ final class Recorder {
     private(set) var startedAt: Date?
     private(set) var live = Live()
     private(set) var busy = false  // starting or stopping
+    private(set) var starting = false  // asking for permissions, starting the sensors
     var error: String?
     /// Trip and car of the recording in progress (or, typed in before starting, of the
     /// next one). Set with `setRide`.
@@ -73,13 +74,16 @@ final class Recorder {
 
     func start() async {
         guard !isRecording, !busy else { return }
-        busy = true
-        defer { busy = false }
+        (busy, starting) = (true, true)
+        defer { (busy, starting) = (false, false) }
         error = nil
         guard await AVAudioApplication.requestRecordPermission() else {
             error = "Microphone access is off. Turn it on in Settings › Train Fusion."
             return
         }
+        // Wait for the Motion & Fitness answer too, so the recording starts only once both
+        // questions are out of the way. Without it there's no barometer, but it records.
+        _ = await MotionCapture.requestPermission()
 
         let now = Clock.now()
         let id = RecordingID.make(Date(timeIntervalSince1970: now.unix))

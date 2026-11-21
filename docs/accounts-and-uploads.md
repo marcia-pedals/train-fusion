@@ -17,8 +17,9 @@ several requirements below are there for the stores (marked *store*).
   when the doors opened and closed) and the direction. A ride outlives its recording on the
   phone.
 - **Upload**: a recording sent to the developers' bucket to improve the model.
-- **Share** (measurements): a ride's Train Measurements sent to the developers, for
-  research.
+- **Share** (measurements): a ride's Train Measurements sent to the developers, for train
+  operations research, and given to anyone who asks for the data (below), with the
+  account, email and device identifier removed first.
 
 ## No credential in the app
 
@@ -68,14 +69,22 @@ the bucket without limit; anyone with a build could extract it.)
   at the time; the model changes. Not the audio or the sensor data (that's an upload).
 - They can be shared **with or without an account**, identified like uploads by the
   device secret (below); when signed in, they're also linked to the account.
-- The **first time the rider starts a recording**, once it has started (it keeps recording
-  meanwhile), the app asks: "Share
-  Train Measurements for research?" (Share / Don't share), saying what they are, that
-  they're not the audio or sensor data, that they're shared only with the app's
-  developers, and that this can be changed and
-  what's shared deleted in Settings. The answer sets the setting below.
+- When a recording starts, once it has started (it keeps recording meanwhile), the app asks
+  "Share Train Measurements for train operations research?", saying what they are, that
+  they're not the audio or sensor data, that they're **shared with anyone who asks for the
+  data** (with "Details": "They must agree to use the data only for train operations
+  research, and only publish aggregated statistics, but we cannot guarantee what they do
+  after they receive the data."), and that this
+  can be changed and what's shared deleted in Settings. It's asked at every recording
+  until answered for good:
+  - **Always share**: turns the setting below on (this ride is shared too); not asked again;
+  - **Share just this ride**: shares the ride being recorded, leaves the setting off, and
+    asks again next recording;
+  - **No, and don't ask again**: leaves the setting off; not asked again;
+  - dismissing it (swiping it down, tapping outside it) answers nothing: this ride isn't
+    shared, and it's asked again next recording.
 - Settings, **Train Measurements** section:
-  - **Automatically share Train Measurements for research**: on / off (default off until
+  - **Automatically share Train Measurements for train operations research**: on / off (default off until
     the question is answered). When on, each ride's measurements are shared when its
     recording stops (retried when the app is next opened if there's no network). Rides
     recorded while it was off aren't shared later.
@@ -176,15 +185,17 @@ Done in the app or the repo:
 - a privacy policy, served by the backend at `/privacy` and linked from Settings;
 - a privacy manifest (`PrivacyInfo.xcprivacy`): no tracking; required-reason APIs
   (UserDefaults, system boot time for the monotonic clock); collected data (audio, other
-  sensor data, coarse location via the station timings, email, user id);
+  sensor data, precise location via the Train Measurements (the train's position with exact times), email, user id);
 - explicit, specific consent before every upload (above), and permission texts that say
   recordings stay on the phone unless you choose to upload them.
 
 To do outside the code (checklist):
 
 - App Store Connect: privacy policy URL, App Privacy answers matching the manifest (audio
-  data, coarse location, email, user id, other data; linked to the user when signed in;
-  not used for tracking), support URL, age rating;
+  data, precise location, email, user id, other data; linked to the user when signed in;
+  not used for tracking), support URL, age rating. Train Measurements are given to third
+  parties who ask (researchers), which App Privacy has to say; and Google Play's Data
+  Safety form counts that as "shared";
 - a **demo ride for the reviewer**, who won't be on a train: a recording made for the
   purpose (it ships to everyone, so not one of the developer's own rides), bundled and
   replayable; plus review notes saying how to try it;

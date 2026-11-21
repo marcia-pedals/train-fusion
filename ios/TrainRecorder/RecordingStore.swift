@@ -213,7 +213,7 @@ final class RideStore {
         guard var ride = ride(id), let recording = recordings[id] else { return nil }
         ride = Ride.read(recording.url, id: id)
         ride.upload = recording.tooLargeToUpload ? .tooLarge : AppSettings.askToUpload ? .undecided : .declined
-        if AppSettings.shareMeasurements { ride.sharePending = true }
+        if AppSettings.takeShareOnce(id) || AppSettings.shareMeasurements { ride.sharePending = true }
         update(id) { $0 = ride }
         if ride.sharePending == true { Task { await share([id]) } }
         return ride
