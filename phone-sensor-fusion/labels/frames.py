@@ -14,6 +14,7 @@ from labels import load
 MOVING, PRE, OPEN_CHIME, OPEN, CLOSE_CHIME, POST = range(6)
 MODE_NAMES = ["moving", "stopped, doors not yet open", "door-open chime", "doors open",
               "door-close chime", "stopped, doors closed"]
+MODE_KEYS = ["moving", "pre", "open_chime", "open", "close_chime", "post"]  # as written in modes.csv
 UNKNOWN = -1
 PHONE_STATES = ("resting", "held", "handled")
 
@@ -56,6 +57,9 @@ def frame_labels(rid: str) -> FrameLabels:
                 mode[(c >= st.t_depart) & (c < nxt.t_arrive)] = MOVING
     # where wheel-stop / wheel-start aren't labelled, only clearly moving frames are known
     mode[(mode == UNKNOWN) & conf & (v > 1.0)] = MOVING
+    # stretches stops.csv can't describe (doors opened and closed again during a long hold)
+    for a, b, name in load.modes(rid):
+        mode[(c >= a) & (c < b)] = UNKNOWN if name == "unknown" else MODE_KEYS.index(name)
     on_train = np.full(T, UNKNOWN)
     for a, b, where in load.presence(rid):
         on_train[(c >= a) & (c < b)] = UNKNOWN if where == "unknown" else int(where == "train")  # any other place: off
