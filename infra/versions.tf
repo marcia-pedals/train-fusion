@@ -19,4 +19,9 @@ provider "google" {
   project = var.project
   region  = var.region
   zone    = var.zone
+
+  # Bill API quota to this project, not to gcloud's own: with your own login (application
+  # default credentials), some APIs (Identity Platform's) refuse to run otherwise.
+  user_project_override = true
+  billing_project       = var.project
 }
