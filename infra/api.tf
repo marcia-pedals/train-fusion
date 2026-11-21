@@ -11,7 +11,7 @@
 
 locals {
   api_host     = trimprefix(google_cloud_run_v2_service.api.uri, "https://")
-  ios_bundle   = "io.github.marcia-pedals.TrainRecorder"
+  ios_bundle   = "io.github.marcia-pedals.TrainFusion"
   apple_app_id = "4Q3J7GB2S8.${local.ios_bundle}" # DEVELOPMENT_TEAM in ios/project.yml
 }
 

@@ -453,7 +453,7 @@ def test_pages(env):
     r = env.client.get("/.well-known/apple-app-site-association")
     assert r.status_code == 200 and r.headers["content-type"] == "application/json"
     details = r.json()["applinks"]["details"][0]
-    assert details["appIDs"] == ["4Q3J7GB2S8.io.github.marcia-pedals.TrainRecorder"]
+    assert details["appIDs"] == ["4Q3J7GB2S8.io.github.marcia-pedals.TrainFusion"]
     assert details["components"][0]["/"] == "/auth/*"
     r = env.client.get("/auth/email-link?mode=signIn&oobCode=x")
     assert r.status_code == 200 and "phone" in r.text

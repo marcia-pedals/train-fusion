@@ -77,7 +77,7 @@ final class Recorder {
         defer { busy = false }
         error = nil
         guard await AVAudioApplication.requestRecordPermission() else {
-            error = "Microphone access is off. Turn it on in Settings › Train Recorder."
+            error = "Microphone access is off. Turn it on in Settings › Train Fusion."
             return
         }
 

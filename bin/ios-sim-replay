@@ -13,7 +13,7 @@
 # itself for the Python part.
 set -e
 cd "$(dirname "$0")/.."
-BID=io.github.marcia-pedals.TrainRecorder
+BID=io.github.marcia-pedals.TrainFusion
 DEV=${IOS_SIM_DEVICE:-"iPhone 17"}
 
 xcodebuild -project ios/TrainRecorder.xcodeproj -scheme TrainRecorder -configuration Release \

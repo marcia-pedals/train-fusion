@@ -30,7 +30,7 @@ targets:
     info:
       path: TrainRecorder/Info.plist
       properties:
-        CFBundleDisplayName: Train Recorder
+        CFBundleDisplayName: Train Fusion
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
@@ -51,7 +51,7 @@ targets:
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: io.github.marcia-pedals.TrainRecorder
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.marcia-pedals.TrainFusion
         # iPhone only (XcodeGen's iOS preset sets "1,2" per target).
         TARGETED_DEVICE_FAMILY: "1"
 schemes:

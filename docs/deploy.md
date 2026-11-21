@@ -139,13 +139,13 @@ this change removes: keep it until every phone that records runs a build that us
 the output that `just ios-config` reads.
 
 1. **Google OAuth clients** (Google Cloud console, project train-fusion):
-   - *Google Auth Platform → Branding*: app name "Train Recorder", support email (the
+   - *Google Auth Platform → Branding*: app name "Train Fusion", support email (the
      privacy policy URL, `<api_url>/privacy`, once step 3 has made the API). *Audience*:
      External, published.
    - *Clients → Create*: a **Web application** client, with authorized redirect URI
      `https://train-fusion.firebaseapp.com/__/auth/handler` (for Identity Platform's Google
      provider, and a future web app), and an **iOS** client with bundle id
-     `io.github.marcia-pedals.TrainRecorder` (for the app).
+     `io.github.marcia-pedals.TrainFusion` (for the app).
 2. `infra/terraform.tfvars` (gitignored): add `contact_email = "..."` (the privacy policy's
    contact address) and `google_ios_client_id = "<the iOS client's id>"`.
 3. Make the API and everything around it, but not yet the removal of `recorder`:
@@ -166,9 +166,9 @@ the output that `just ios-config` reads.
    their secrets stay out of the state):
    - **Google**: the web client's id and secret (step 1).
    - **Apple**: first, in the Apple Developer account (team 4Q3J7GB2S8):
-     - the App ID `io.github.marcia-pedals.TrainRecorder` has the Sign in with Apple
+     - the App ID `io.github.marcia-pedals.TrainFusion` has the Sign in with Apple
        capability;
-     - a **Services ID** (e.g. `io.github.marcia-pedals.TrainRecorder.web`) with Sign in
+     - a **Services ID** (e.g. `io.github.marcia-pedals.TrainFusion.web`) with Sign in
        with Apple, domain `train-fusion.firebaseapp.com`, return URL
        `https://train-fusion.firebaseapp.com/__/auth/handler`;
      - a **Key** with Sign in with Apple: note its Key ID, download the `.p8` (once);
@@ -177,13 +177,17 @@ the output that `just ios-config` reads.
        Communication*: add the sender, `noreply@train-fusion.firebaseapp.com`.
 
      Then the provider: client id = the Services ID; for iOS, bundle id
-     `io.github.marcia-pedals.TrainRecorder`; OAuth code flow: Team ID `4Q3J7GB2S8`, the
+     `io.github.marcia-pedals.TrainFusion`; OAuth code flow: Team ID `4Q3J7GB2S8`, the
      Key ID and the `.p8`'s contents. The code flow settings let Identity Platform revoke
      a user's Apple tokens when they delete their account (Apple requires that), and are
      what web and Android sign-in will use later.
    - **Email link** is on already (terraform: email, no password).
 5. `just ios-config` (writes `ios/Config.xcconfig`, gitignored: the API host, the API key,
    the Google client ids), `just ios`, build, and install on every phone that records.
+   The bundle id changed (`…TrainRecorder` → `…TrainFusion`), so this installs as a second
+   app next to the old one, with its own, empty storage. Before deleting the old app, move
+   its recordings over: Finder → the phone → Files → copy `recordings/` out of the old app
+   and into the new one (or upload them from the old app first, while `recorder` exists).
 6. Then the rest: `just tf apply`. This also deletes the `recorder` service account and
    its key, so old builds can no longer upload; delete the old key file
    `ios/TrainRecorder/uploader-key.json` if it's still around.

@@ -14,7 +14,7 @@ class Settings:
     user_uploads_per_day: int = 12
     signups_per_day: int = 24
     # <team id>.<bundle id>, for the apple-app-site-association file
-    apple_app_id: str = "4Q3J7GB2S8.io.github.marcia-pedals.TrainRecorder"
+    apple_app_id: str = "4Q3J7GB2S8.io.github.marcia-pedals.TrainFusion"
     # shown on /privacy; set from terraform.tfvars (gitignored), never in git
     contact_email: str = ""
 

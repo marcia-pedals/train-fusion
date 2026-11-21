@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 from .config import Settings
 
-APP_NAME = "Train Recorder"
+APP_NAME = "Train Fusion"
 
 STYLE = """
 :root { color-scheme: light dark; }
