@@ -376,10 +376,8 @@ struct RideDetail: View {
                                 if isRecording { mustStopRecording = true } else { onReplay() }
                             } label: { Label("Play back", systemImage: "play.fill") }
                             .disabled(replayProblem != nil)
-                            .alert("Stop recording to play back", isPresented: $mustStopRecording) {
+                            .alert("Stop recording first", isPresented: $mustStopRecording) {
                                 Button("OK", role: .cancel) {}
-                            } message: {
-                                Text("Stop the recording on the Measure tab, then play this ride back.")
                             }
                         }
                     } footer: {
