@@ -77,6 +77,10 @@ struct Ride: Codable, Identifiable, Equatable {
     /// Counts as not shared; sharing again from History undoes it. Optional, like sharePending.
     var measurementsDeletionRequested: Bool?
     var recordingDeletionRequested: Bool?
+    /// The generated sample ride (`SampleRide`): plays back, is never shared.
+    var sample: Bool?
+
+    var isSample: Bool { sample == true }
 
     var settled: Bool { [.uploaded, .declined, .tooLarge].contains(upload) }
     var measurementsShared: Bool { sharedAt != nil && measurementsDeletionRequested != true }
@@ -87,7 +91,7 @@ struct Ride: Codable, Identifiable, Equatable {
         guard let origin = stops.first?.station else { return "Unknown trip" }
         let destination = stops.count > 1 ? stops.last?.station : nil
         let sure = (stationConfidence ?? 0) > 0.9
-        return origin + (destination.map { " → " + $0 } ?? "") + (sure ? "" : " (unsure)")
+        return (isSample ? "Sample: " : "") + origin + (destination.map { " → " + $0 } ?? "") + (sure ? "" : " (unsure)")
     }
 
     /// The body of PUT /v1/measurements/<id>.
@@ -139,6 +143,7 @@ struct Ride: Codable, Identifiable, Equatable {
         ride.ended = (meta["ended_uptime_s"] as? Double).map(unix)
         ride.stoppedProperly = meta["complete"] as? Bool ?? false
         ride.appVersion = meta["app_version"] as? String
+        if meta["sample"] as? Bool == true { ride.sample = true }
         if let train = meta["ride"] as? [String: Any], let trip = train["trip_number"] as? Int, let car = train["car_number"] as? Int {
             ride.train = Train(trip: trip, car: car, position: train["car_position"] as? String ?? "unspecified")
         }
@@ -206,6 +211,7 @@ final class RideStore {
         if let data = try? Data(contentsOf: Self.elsewhereFile), let saved = try? JSONDecoder().decode([Ride].self, from: data) {
             elsewhere = saved
         }
+        installSample()
         Uploader.shared.onFinished = { [weak self] id, outcome in self?.uploadFinished(id, outcome) }
     }
 
@@ -264,9 +270,28 @@ final class RideStore {
         return ride
     }
 
+    private static let sampleInstalledKey = "sampleInstalled"
+
+    /// The first time the app runs, a sample ride to play back (`SampleRide`): just a
+    /// meta.json saying so, since it's generated as it plays. Deleted like any other ride,
+    /// and not put back.
+    private func installSample() {
+        guard !UserDefaults.standard.bool(forKey: Self.sampleInstalledKey),
+              let model = try? SharedModel.result.get() else { return }
+        UserDefaults.standard.set(true, forKey: Self.sampleInstalledKey)
+        let sample = SampleRide(model: model)
+        let started = Date().addingTimeInterval(-sample.duration - 3600)  // as if ridden an hour ago
+        let dir = Self.root.appendingPathComponent(RecordingID.make(started))
+        guard let data = try? JSONSerialization.data(withJSONObject: sample.meta(startedUnix: started.timeIntervalSince1970),
+                                                     options: [.prettyPrinted, .sortedKeys]) else { return }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? data.write(to: dir.appendingPathComponent("meta.json"))
+    }
+
     /// The rider answered: upload or not. Uploading one whose upload is marked for deletion
     /// uploads it afresh (the marked upload is still deleted).
     func decide(_ id: String, upload: Bool, protecting: Set<String>) {
+        if upload, ride(id)?.isSample == true { return }  // made up: never shared
         if upload {
             update(id) { $0.upload = .wanted; $0.recordingDeletionRequested = nil }
             if let recording = recordings[id] {
@@ -342,7 +367,7 @@ final class RideStore {
         shareMessage = nil
         defer { sharing = false }
         for id in ids {
-            guard let ride = ride(id), !sharingNow.contains(id) else { continue }
+            guard let ride = ride(id), !ride.isSample, !sharingNow.contains(id) else { continue }
             sharingNow.insert(id)
             shareFailures[id] = nil
             defer { sharingNow.remove(id) }

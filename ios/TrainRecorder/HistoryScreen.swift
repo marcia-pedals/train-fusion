@@ -174,7 +174,8 @@ struct HistoryScreen: View {
 
     /// Deleting just its Full Recording, once confirmed; nil if there's none or it can't be now.
     private func deleteRecordingAction(_ id: String) -> (() -> Void)? {
-        guard let ride = store.ride(id), store.recordings[id] != nil, canDelete(ride) else { return nil }
+        // (the sample's recording is a few hundred bytes of meta.json: just delete the trip)
+        guard let ride = store.ride(id), !ride.isSample, store.recordings[id] != nil, canDelete(ride) else { return nil }
         return { store.deleteRecording(id) }
     }
 
@@ -238,6 +239,7 @@ enum ShareStatus: Equatable {
 
 extension RideStore {
     func measurementsStatus(_ ride: Ride) -> ShareStatus {
+        if ride.isSample { return .unavailable("Sample: not shareable") }
         if unsharing.contains(Self.unshareKey(.measurements, ride.id)) { return .unsharing }
         if sharingNow.contains(ride.id) { return .working(nil) }
         if ride.measurementsShared { return .shared(since: ride.sharedAt) }
@@ -250,6 +252,7 @@ extension RideStore {
     }
 
     func recordingStatus(_ ride: Ride, _ state: Uploader.State?) -> ShareStatus {
+        if ride.isSample { return .unavailable("Sample: not shareable") }
         if unsharing.contains(Self.unshareKey(.recording, ride.id)) { return .unsharing }
         switch state {
         case .starting: return .working(nil)
@@ -365,7 +368,7 @@ extension Ride {
         } else if recording != nil {
             parts.append("not stopped properly")
         }
-        if let recording {  // nothing when it isn't on the phone
+        if let recording, !isSample {  // nothing when it isn't on the phone
             parts.append(ByteCountFormatter.string(fromByteCount: recording.bytes, countStyle: .file))
         }
         return parts.joined(separator: " · ")
@@ -487,7 +490,7 @@ struct RideDetail: View {
     private func details(_ ride: Ride) -> String {
         var parts = [ride.date?.formatted(date: .complete, time: .shortened) ?? ride.id]
         if let duration = ride.duration { parts.append(duration) }
-        if let recording = store.recordings[ride.id] {
+        if let recording = store.recordings[ride.id], !ride.isSample {
             parts.append(ByteCountFormatter.string(fromByteCount: recording.bytes, countStyle: .file))
         }
         return parts.joined(separator: " · ")

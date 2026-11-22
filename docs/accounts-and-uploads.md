@@ -214,9 +214,9 @@ To do outside the code (checklist):
   not used for tracking), support URL, age rating. Train Measurements are given to third
   parties who ask (researchers), which App Privacy has to say; and Google Play's Data
   Safety form counts that as "shared";
-- a **demo ride for the reviewer**, who won't be on a train: a recording made for the
-  purpose (it ships to everyone, so not one of the developer's own rides), bundled and
-  replayable; plus review notes saying how to try it;
+- a **demo ride for the reviewer**, who won't be on a train: done in the app, the sample
+  ride (generated, not anyone's recording; [recorder.md](recorder.md), "The sample ride");
+  still to do: review notes saying how to try it (History, the sample, Play back);
 - don't suggest affiliation with Caltrain in the name, icon or listing;
 - TestFlight external testing first (it goes through a lighter version of the review);
 - for Google Play later: the Data Safety form, and a web page for account deletion

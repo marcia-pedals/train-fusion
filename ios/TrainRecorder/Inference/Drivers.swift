@@ -239,23 +239,9 @@ enum Replay {
     /// starting over and running flat out to the place (a whole ride takes a few seconds).
     static func run(_ recording: Recording, control: ReplayControl, dump: Bool,
                     report: (Update) async -> Void) async throws {
-        let dir = recording.url
-        guard let meta = (try? JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("meta.json")))) as? [String: Any],
-              let t0 = meta["started_uptime_s"] as? Double,
-              let segment = ((meta["audio"] as? [String: Any])?["segments"] as? [[String: Any]])?.first,
-              let name = segment["file"] as? String, let audioStart = segment["first_frame_uptime_s"] as? Double
-        else { throw Failure(errorDescription: "This recording's meta.json is incomplete.") }
-        let duration = ((meta["ended_uptime_s"] as? Double) ?? t0) - t0
         let model = try SharedModel.result.get()
-        let file = try AVAudioFile(forReading: dir.appendingPathComponent(name))
-        guard file.processingFormat.sampleRate == 48000,
-              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 48000)
-        else { throw Failure(errorDescription: "Replay needs 48 kHz audio.") }
-
-        let accel = GzipCSV.read(dir.appendingPathComponent("accel.csv.gz"), columns: [0, 1, 2, 3])
-        let gyro = GzipCSV.read(dir.appendingPathComponent("gyro.csv.gz"), columns: [0, 1, 2, 3])
-        let baro = GzipCSV.read(dir.appendingPathComponent("baro.csv.gz"), columns: [0, 1])
-        let fused = GzipCSV.read(dir.appendingPathComponent("device_motion.csv.gz"), columns: [0, 1, 2, 3, 4, 8, 9, 10])
+        let source: ReplaySource = try isSample(recording.url) ? SampleRide(model: model) : FileSource(recording.url)
+        let duration = source.duration
 
         var out: FileHandle?
         if dump {
@@ -268,7 +254,6 @@ enum Replay {
         defer { try? out?.close() }
 
         var engine = InferenceEngine(model: model)
-        var (ia, ig, ib, ifu) = (0, 0, 0, 0)
         var second = 0
         var unsent: [Belief] = []
         var restarted = false
@@ -278,8 +263,8 @@ enum Replay {
 
         func restart() {
             engine = InferenceEngine(model: model)
-            file.framePosition = 0
-            (ia, ig, ib, ifu, second, stops) = (0, 0, 0, 0, 0, 0)
+            source.rewind()
+            (second, stops) = (0, 0)
             unsent.removeAll()
             restarted = true
         }
@@ -308,28 +293,7 @@ enum Replay {
                 continue
             }
             let tick = Clock.uptime()
-            let f = engine.features
-            // one second of every stream
-            buffer.frameLength = 0
-            try? file.read(into: buffer, frameCount: 48000)
-            if buffer.frameLength > 0, let data = buffer.floatChannelData {
-                f.addAudio48k(UnsafeBufferPointer(start: data[0], count: Int(buffer.frameLength)),
-                              at: second == 0 ? audioStart - t0 : nil)
-            }
-            let until = t0 + Double(second + 1)
-            while ia < accel.count / 4, accel[4 * ia] < until {
-                f.addAccel(accel[4 * ia] - t0, SIMD3(accel[4 * ia + 1], accel[4 * ia + 2], accel[4 * ia + 3])); ia += 1
-            }
-            while ig < gyro.count / 4, gyro[4 * ig] < until {
-                f.addGyro(gyro[4 * ig] - t0, SIMD3(gyro[4 * ig + 1], gyro[4 * ig + 2], gyro[4 * ig + 3])); ig += 1
-            }
-            while ib < baro.count / 2, baro[2 * ib] < until { f.addBaro(baro[2 * ib] - t0, kPa: baro[2 * ib + 1]); ib += 1 }
-            while ifu < fused.count / 8, fused[8 * ifu] < until {
-                let r = 8 * ifu
-                f.addAttitude(fused[r] - t0, simd_quatd(ix: fused[r + 1], iy: fused[r + 2], iz: fused[r + 3], r: fused[r + 4]),
-                              gravity: SIMD3(fused[r + 5], fused[r + 6], fused[r + 7]))
-                ifu += 1
-            }
+            source.feed(second, into: engine.features)
             second += 1
 
             while let b = engine.processNext() {
@@ -366,6 +330,13 @@ enum Replay {
         }
     }
 
+    /// Whether the recording in `dir` is the generated sample ride (its meta.json says so).
+    static func isSample(_ dir: URL) -> Bool {
+        guard let meta = (try? JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("meta.json")))) as? [String: Any]
+        else { return false }
+        return meta["sample"] as? Bool == true
+    }
+
     private static func dumpLine(_ b: Belief, _ f: Frame, _ accel: InferenceEngine.Accel?, _ late: (second: Int, spec: [Float])?) -> Data {
         var o: [String: Any] = [
             "n": b.second, "v": b.speedMean, "v_sd": b.speedSd, "mode": b.modeP, "phone": b.phoneP,
@@ -386,6 +357,73 @@ enum Replay {
         var data = (try? JSONSerialization.data(withJSONObject: o)) ?? Data()
         data.append(0x0A)
         return data
+    }
+}
+
+/// Where a replay's sensor streams come from: a recording's files, or the sample ride.
+protocol ReplaySource: AnyObject {
+    /// Seconds.
+    var duration: Double { get }
+    /// Feed one second of every stream (seconds are asked for in order from 0, and again
+    /// from 0 after `rewind`).
+    func feed(_ second: Int, into f: FeatureExtractor)
+    func rewind()
+}
+
+/// A recording's files: its audio and the sensors' .csv.gz.
+final class FileSource: ReplaySource {
+    let duration: Double
+    private let t0: Double, audioStart: Double
+    private let file: AVAudioFile
+    private let buffer: AVAudioPCMBuffer
+    private let accel: [Double], gyro: [Double], baro: [Double], fused: [Double]
+    private var (ia, ig, ib, ifu) = (0, 0, 0, 0)
+
+    init(_ dir: URL) throws {
+        guard let meta = (try? JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("meta.json")))) as? [String: Any],
+              let t0 = meta["started_uptime_s"] as? Double,
+              let segment = ((meta["audio"] as? [String: Any])?["segments"] as? [[String: Any]])?.first,
+              let name = segment["file"] as? String, let audioStart = segment["first_frame_uptime_s"] as? Double
+        else { throw Replay.Failure(errorDescription: "This recording's meta.json is incomplete.") }
+        (self.t0, self.audioStart) = (t0, audioStart)
+        duration = ((meta["ended_uptime_s"] as? Double) ?? t0) - t0
+        file = try AVAudioFile(forReading: dir.appendingPathComponent(name))
+        guard file.processingFormat.sampleRate == 48000,
+              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 48000)
+        else { throw Replay.Failure(errorDescription: "Replay needs 48 kHz audio.") }
+        self.buffer = buffer
+        accel = GzipCSV.read(dir.appendingPathComponent("accel.csv.gz"), columns: [0, 1, 2, 3])
+        gyro = GzipCSV.read(dir.appendingPathComponent("gyro.csv.gz"), columns: [0, 1, 2, 3])
+        baro = GzipCSV.read(dir.appendingPathComponent("baro.csv.gz"), columns: [0, 1])
+        fused = GzipCSV.read(dir.appendingPathComponent("device_motion.csv.gz"), columns: [0, 1, 2, 3, 4, 8, 9, 10])
+    }
+
+    func rewind() {
+        file.framePosition = 0
+        (ia, ig, ib, ifu) = (0, 0, 0, 0)
+    }
+
+    func feed(_ second: Int, into f: FeatureExtractor) {
+        buffer.frameLength = 0
+        try? file.read(into: buffer, frameCount: 48000)
+        if buffer.frameLength > 0, let data = buffer.floatChannelData {
+            f.addAudio48k(UnsafeBufferPointer(start: data[0], count: Int(buffer.frameLength)),
+                          at: second == 0 ? audioStart - t0 : nil)
+        }
+        let until = t0 + Double(second + 1)
+        while ia < accel.count / 4, accel[4 * ia] < until {
+            f.addAccel(accel[4 * ia] - t0, SIMD3(accel[4 * ia + 1], accel[4 * ia + 2], accel[4 * ia + 3])); ia += 1
+        }
+        while ig < gyro.count / 4, gyro[4 * ig] < until {
+            f.addGyro(gyro[4 * ig] - t0, SIMD3(gyro[4 * ig + 1], gyro[4 * ig + 2], gyro[4 * ig + 3])); ig += 1
+        }
+        while ib < baro.count / 2, baro[2 * ib] < until { f.addBaro(baro[2 * ib] - t0, kPa: baro[2 * ib + 1]); ib += 1 }
+        while ifu < fused.count / 8, fused[8 * ifu] < until {
+            let r = 8 * ifu
+            f.addAttitude(fused[r] - t0, simd_quatd(ix: fused[r + 1], iy: fused[r + 2], iz: fused[r + 3], r: fused[r + 4]),
+                          gravity: SIMD3(fused[r + 5], fused[r + 6], fused[r + 7]))
+            ifu += 1
+        }
     }
 }
 

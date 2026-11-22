@@ -116,11 +116,24 @@ final class FeatureExtractor {
         feed(x)
     }
 
+    /// Audio already at the model's rate (`fs`), straight after what came before: for
+    /// generated audio (the sample ride), which needn't be made at 48 kHz to be decimated.
+    func addAudio16k(_ x: UnsafeBufferPointer<Float>) {
+        let before = a16.count
+        a16.append(contentsOf: x)
+        fed48 += 3 * x.count
+        filterRumble(from: before)
+    }
+
     private func feed(_ x: UnsafeBufferPointer<Float>) {
         guard x.count > 0 else { return }
         fed48 += x.count
         let before = a16.count
         decimator.process(x, into: &a16)
+        filterRumble(from: before)
+    }
+
+    private func filterRumble(from before: Int) {
         for i in before..<a16.count {
             let y = rumble.step(Double(a16[i]))
             let sec = rumbleCount / fs
