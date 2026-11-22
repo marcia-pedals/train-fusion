@@ -129,8 +129,8 @@ What the online version can't do like the offline pipeline, and does instead:
 
 ### The sample ride
 
-The first time the app runs it puts a **sample ride** in History, "Sample: San Francisco
-4th & King Street → Palo Alto", so the app can be tried without a train (by the store's
+The first time the app runs it puts a **sample ride** in History, "Sample: San Francisco →
+Palo Alto", so the app can be tried without a train (by the store's
 reviewers too). It's generated as it plays (`Inference/SampleRide.swift`), so the real
 feature extraction and filter run on it as on a recording. Only the stop list and each
 stop's dwell are hard-coded (made up); the rest comes from simple models and noise. The
