@@ -54,13 +54,12 @@ Three, behind a tab bar:
      yellow fair, red missing, grey not in play. Tap for each one's state and a number.
 
   Every probability is still there under "Details".
-- **Settings**: miles and mph, or kilometres and km/h; Train Measurements (share
-  automatically or not); full recordings (whether to ask about uploading after each ride;
-  how many to keep on the phone); the account (sign in with Apple, Google or an email
-  link; sign out; delete account); the privacy policy; and last, out of the way so it isn't
-  tapped by accident, **Delete Shared Data**: a screen with "Delete all shared Train
-  Measurements" and "Delete all shared Full Recordings" (each confirmed; done by hand
-  within 30 days).
+- **Settings**: miles and mph, or kilometres and km/h; **Sharing**: Measurements (ask each
+  ride, always share, or don't ask), Recordings (ask after each ride or not), and Delete
+  Shared Data, a screen of its own so it isn't tapped by accident, with "Delete all shared
+  Train Measurements" and "Delete all shared Full Recordings" (each confirmed; done by hand
+  within 30 days); **Phone Data**: Keep Recordings (None, Last 3, All); the account (sign
+  in with Apple, Google or an email link; sign out; delete account); the privacy policy.
 - **History**: the rides on the phone (`Application Support/rides.json`; a ride outlives its
   recording), then, under "Shared, not on this phone", rides deleted from the phone that
   still have something shared. When there are both, each is a section that folds away
@@ -70,9 +69,11 @@ Three, behind a tab bar:
   shared, in words ("Not Shared", "Shared: Measurements", "Shared: Measurements,
   Recording"), followed by anything under way ("Uploading recording 43%", "Couldn't share
   measurements"). Tapping a row opens the ride: the same, the trip and car if they were typed
-  in, Play back (or why not), each kind of sharing with its state in words and Share
-  (asking first, as in [accounts-and-uploads.md](accounts-and-uploads.md)) or Unshare
-  (confirmed first; asks for that ride's to be deleted), and Delete from this phone. A ride
+  in, Play back (or why not); **Sharing**, a row each for Train Measurements and Full
+  Recording with its state in words and Share (asking first, as in
+  [accounts-and-uploads.md](accounts-and-uploads.md)) or Unshare (confirmed first; asks
+  for that ride's to be deleted); and **Phone Data Deletion**: Delete Full Recording (the
+  ride stays) and Delete Entire Trip. A ride
   that's only shared offers just Unshare. A long press offers the same actions; swiping
   left deletes. Replay (not while recording) plays a finished recording back through the
   model, to watch the beliefs without being on a train.

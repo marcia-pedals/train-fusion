@@ -301,6 +301,16 @@ final class RideStore {
         save()
     }
 
+    /// Deletes just the ride's Full Recording from the phone; the ride (its Train
+    /// Measurements) stays. One that wasn't uploaded counts as declined.
+    func deleteRecording(_ id: String) {
+        guard let recording = recordings[id] else { return }
+        try? FileManager.default.removeItem(at: recording.url)
+        Uploader.shared.forget(id)
+        recordings[id] = nil
+        update(id) { if $0.upload != .uploaded { $0.upload = .declined } }
+    }
+
     // MARK: keeping recordings
 
     /// The recordings `keep` would delete now: the settled ones beyond the newest N.

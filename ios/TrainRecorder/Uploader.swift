@@ -100,7 +100,7 @@ final class Uploader {
                 case "rate_limited":
                     let at = Date().addingTimeInterval(error.retryAfter ?? 3600)
                     retryAt[id] = at
-                    states[id] = .waiting("Today's upload limit has been reached. It will upload after \(at.formatted(date: .omitted, time: .shortened)).")
+                    states[id] = .waiting("Daily limit reached; retries \(at.formatted(date: .omitted, time: .shortened))")
                 case "too_large":
                     states[id] = nil
                     onFinished?(id, .tooLarge)

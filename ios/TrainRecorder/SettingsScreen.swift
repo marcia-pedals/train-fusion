@@ -42,26 +42,24 @@ struct SettingsScreen: View {
                     .pickerStyle(.segmented)
                 }
                 Section {
-                    shareRow(.measurements, selection: Binding(
+                    shareRow("Measurements", .measurements, selection: Binding(
                         get: { shareMeasurements ? .always : askedShare ? .never : .ask },
                         set: { (new: MeasurementSharing) in
                             shareMeasurements = new == .always
                             askedShare = new != .ask
                         }),
                         options: MeasurementSharing.allCases.map { ($0, $0.label) })
+                    shareRow("Recordings", .recordings, selection: $askToUpload,
+                             options: [(true, "Ask each ride"), (false, "Don't ask")])
+                    // a screen of its own, so it isn't tapped by accident
+                    NavigationLink("Delete Shared Data") { DeleteSharedScreen(store: store) }
                 } header: {
-                    Text("Train Measurements")
+                    Text("Sharing")
                 } footer: {
                     if let message = store.shareMessage { Text(message) }
                 }
-                Section {
-                    shareRow(.recordings, selection: $askToUpload,
-                             options: [(true, "Ask each ride"), (false, "Don't ask")])
-                } header: {
-                    Text("Full Recordings")
-                }
-                Section {
-                    Picker("On this phone", selection: Binding(
+                Section("Phone Data") {
+                    Picker("Keep Recordings", selection: Binding(
                         get: { KeepRecordings(rawValue: keep) ?? .last3 },
                         set: { choose($0) })
                     ) {
@@ -90,10 +88,6 @@ struct SettingsScreen: View {
                 if let policy = BackendConfig.privacyPolicy {
                     Section { Link("Privacy policy", destination: policy) }
                 }
-                // out of the way, a screen of its own, so it isn't tapped by accident
-                Section {
-                    NavigationLink("Delete Shared Data") { DeleteSharedScreen(store: store) }
-                }
             }
             .navigationTitle("Settings")
             .navigationDestination(isPresented: $showingAccount) { AccountScreen(store: store) }
@@ -101,12 +95,12 @@ struct SettingsScreen: View {
         .sheet(item: $info) { $0 }
     }
 
-    /// "Share", with a ? that shows what's shared (like the question that asks), and the
+    /// What's shared ("Measurements", "Recordings"), with a ? that shows what that is (like the question that asks), and the
     /// choice as a menu on the same line (a Picker moves a long value onto a line of its own).
-    private func shareRow<V: Hashable>(_ kind: SharingInfoSheet.Kind, selection: Binding<V>,
+    private func shareRow<V: Hashable>(_ title: String, _ kind: SharingInfoSheet.Kind, selection: Binding<V>,
                                        options: [(value: V, label: String)]) -> some View {
         HStack(spacing: 6) {
-            Text("Share")
+            Text(title)
             Button { info = SharingInfoSheet(kind: kind) } label: {
                 Image(systemName: "questionmark.circle")
             }
@@ -114,7 +108,7 @@ struct SettingsScreen: View {
             .accessibilityLabel("What's shared")
             Spacer(minLength: 12)
             Menu {
-                Picker("Share", selection: selection) {
+                Picker(title, selection: selection) {
                     ForEach(options, id: \.value) { Text($0.label).tag($0.value) }
                 }
             } label: {
@@ -126,7 +120,7 @@ struct SettingsScreen: View {
                 }
             }
             .tint(.secondary)  // grey, like a Picker's value ("On this phone")
-            .accessibilityLabel("Share")
+            .accessibilityLabel("Share " + title)
         }
     }
 

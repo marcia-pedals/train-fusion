@@ -76,7 +76,8 @@ struct HistoryScreen: View {
                            onShareMeasurements: { if let ride = store.ride(id) { askingMeasurements = ride } },
                            onShareRecording: { if let ride = store.ride(id) { shareRecording(ride) } },
                            onUnshare: { kind in Task { await store.unshare(kind, id) } },
-                           onDelete: deleteAction(id))
+                           onDelete: deleteAction(id),
+                           onDeleteRecording: deleteRecordingAction(id))
             }
         }
         .task { await store.syncSharing() }
@@ -171,6 +172,12 @@ struct HistoryScreen: View {
         return { delete(ride) }
     }
 
+    /// Deleting just its Full Recording, once confirmed; nil if there's none or it can't be now.
+    private func deleteRecordingAction(_ id: String) -> (() -> Void)? {
+        guard let ride = store.ride(id), store.recordings[id] != nil, canDelete(ride) else { return nil }
+        return { store.deleteRecording(id) }
+    }
+
     private func canDelete(_ ride: Ride) -> Bool {
         switch uploader.states[ride.id] {
         case .starting, .uploading: return false
@@ -203,9 +210,6 @@ enum ShareStatus: Equatable {
         if case .shared = self { return true }
         return false
     }
-
-    /// Always the share icon: its colour says the state.
-    var symbol: String { "square.and.arrow.up" }
 
     var color: Color {
         switch self {
@@ -258,10 +262,10 @@ extension RideStore {
         if ride.upload == .wanted { return .waiting("Waiting to upload") }
         if recordings[ride.id] == nil {
             if ride.recordingDeletionRequested == true { return .unavailable("Deletion requested") }
-            return .unavailable(self.ride(ride.id) == nil ? "Not shared" : "Not shared; the Full Recording isn't on this phone")
+            return .unavailable(self.ride(ride.id) == nil ? "Not shared" : "Not on this phone")
         }
         if ride.upload == .tooLarge {
-            return .unavailable("Too large to share (over \(ByteCountFormatter.string(fromByteCount: AppSettings.maxUploadBytes, countStyle: .file)))")
+            return .unavailable("Too large (over \(ByteCountFormatter.string(fromByteCount: AppSettings.maxUploadBytes, countStyle: .file)))")
         }
         return .notShared(deletionRequested: ride.recordingDeletionRequested == true)
     }
@@ -386,7 +390,9 @@ struct RideDetail: View {
     /// Done once confirmed (the confirmations are asked here, from their buttons).
     let onUnshare: (RideStore.Shared) -> Void
     let onDelete: (() -> Void)?
+    let onDeleteRecording: (() -> Void)?
     @State private var confirmDelete = false
+    @State private var confirmDeleteRecording = false
     @State private var confirmUnshare: RideStore.Shared?
 
     var body: some View {
@@ -413,12 +419,20 @@ struct RideDetail: View {
                         if let replayProblem { Text(replayProblem) }
                     }
                 }
-                sharing(.measurements, status: store.measurementsStatus(ride), onShare: onShareMeasurements)
-                sharing(.recording, status: store.recordingStatus(ride, uploadState), onShare: onShareRecording)
-                if let onDelete {
-                    Section {
-                        Button("Delete from this phone", role: .destructive) { confirmDelete = true }
-                            .confirmDelete(ride, store: store, isPresented: $confirmDelete, onDelete: onDelete)
+                Section("Sharing") {
+                    sharing(.measurements, status: store.measurementsStatus(ride), onShare: onShareMeasurements)
+                    sharing(.recording, status: store.recordingStatus(ride, uploadState), onShare: onShareRecording)
+                }
+                if onDeleteRecording != nil || onDelete != nil {
+                    Section("Phone Data Deletion") {
+                        if let onDeleteRecording {
+                            Button("Delete Full Recording", role: .destructive) { confirmDeleteRecording = true }
+                                .confirmDeleteRecording(ride, isPresented: $confirmDeleteRecording, onDelete: onDeleteRecording)
+                        }
+                        if let onDelete {
+                            Button("Delete Entire Trip", role: .destructive) { confirmDelete = true }
+                                .confirmDelete(ride, store: store, isPresented: $confirmDelete, onDelete: onDelete)
+                        }
                     }
                 }
             }
@@ -430,22 +444,26 @@ struct RideDetail: View {
         }
     }
 
+    /// One kind of sharing: its name, its state in words, and Share or Unshare.
     private func sharing(_ kind: RideStore.Shared, status: ShareStatus, onShare: @escaping () -> Void) -> some View {
-        Section(kind == .measurements ? "Train Measurements" : "Full Recording") {
-            HStack {
-                Label {
-                    Text(status.text).foregroundStyle(status.color == .red ? .red : .primary)
-                } icon: {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(kind == .measurements ? "Train Measurements" : "Full Recording")
+                HStack(spacing: 6) {
                     switch status {
                     case .working(let fraction):
-                        ProgressView(value: fraction).progressViewStyle(.circular).controlSize(.small)
+                        ProgressView(value: fraction).progressViewStyle(.circular).controlSize(.mini)
                     case .unsharing:
-                        ProgressView().controlSize(.small)
+                        ProgressView().controlSize(.mini)
                     default:
-                        Image(systemName: status.symbol).foregroundStyle(status.color)
+                        EmptyView()
                     }
+                    Text(status.text)
+                        .foregroundStyle(status.color == .red ? .red : status.canUnshare ? .green : .secondary)
                 }
-                Spacer()
+                .font(.subheadline)
+            }
+            Spacer()
                 if status.canShare {
                     Button(isFailed(status) ? "Try again" : "Share", action: onShare)
                         .buttonStyle(.bordered)
@@ -457,7 +475,6 @@ struct RideDetail: View {
                         .confirmUnshare(Binding(get: { confirmUnshare == kind ? kind : nil },
                                                 set: { if $0 == nil { confirmUnshare = nil } }),
                                         onUnshare: onUnshare)
-                }
             }
         }
     }
@@ -485,12 +502,22 @@ extension View {
     func confirmDelete(_ ride: Ride, store: RideStore, isPresented: Binding<Bool>,
                        onDelete: @escaping () -> Void) -> some View {
         let recording = store.recordings[ride.id] != nil
-        return confirmationDialog("Delete this ride from the phone?", isPresented: isPresented, titleVisibility: .visible) {
+        return confirmationDialog("Delete this entire trip from the phone?", isPresented: isPresented, titleVisibility: .visible) {
             Button("Delete", role: .destructive, action: onDelete)
         } message: {
             Text("Deletes its Train Measurements" + (recording ? " and Full Recording" : "") + " from this phone. "
                  + (recording && ride.upload == .undecided ? "Its Full Recording hasn't been shared. " : "")
                  + "What's shared stays in the cloud.")
+        }
+    }
+
+    func confirmDeleteRecording(_ ride: Ride, isPresented: Binding<Bool>, onDelete: @escaping () -> Void) -> some View {
+        confirmationDialog("Delete this ride's Full Recording from the phone?", isPresented: isPresented,
+                           titleVisibility: .visible) {
+            Button("Delete", role: .destructive, action: onDelete)
+        } message: {
+            Text("Its Train Measurements stay. "
+                 + (ride.upload == .uploaded ? "What's shared stays in the cloud." : "It hasn't been shared."))
         }
     }
 

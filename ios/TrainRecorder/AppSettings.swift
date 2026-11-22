@@ -69,9 +69,9 @@ enum KeepRecordings: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .none: return "Don't keep"
-        case .last3: return "Keep last 3"
-        case .all: return "Keep all"
+        case .none: return "None"
+        case .last3: return "Last 3"
+        case .all: return "All"
         }
     }
 
