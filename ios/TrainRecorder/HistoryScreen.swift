@@ -346,15 +346,20 @@ struct RideDetail: View {
         if let ride = store.anyRide(id) {
             List {
                 Section {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(ride.title).font(.title3.weight(.semibold))
-                        Text(details(ride)).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
-                        if let train = ride.trainText {
-                            Text(train).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
-                        }
+                    LabeledContent("Date", value: ride.date?.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute()) ?? ride.id)
+                    if let duration = ride.duration {
+                        LabeledContent("Duration", value: duration)
+                    } else if store.recordings[id] != nil {
+                        LabeledContent("Duration", value: "not stopped properly")
                     }
-                    .padding(.vertical, 4)
+                    if let recording = store.recordings[id], !ride.isSample {
+                        LabeledContent("Size", value: ByteCountFormatter.string(fromByteCount: recording.bytes, countStyle: .file))
+                    }
+                    if let train = ride.trainText {
+                        LabeledContent("Train", value: train)
+                    }
                 }
+                .monospacedDigit()
                 if store.recordings[id] != nil {  // only while there's something to play
                     Section {
                         Button(action: onReplay) { Label("Play back", systemImage: "play.fill") }
@@ -385,6 +390,7 @@ struct RideDetail: View {
             }
             .listStyle(.insetGrouped)
             .refreshable { await store.syncSharing() }
+            .navigationTitle(ride.title)
             .navigationBarTitleDisplayMode(.inline)
         } else {
             Color.clear  // gone (deleted, or nothing of it shared any more): on its way back to the list
@@ -429,15 +435,6 @@ struct RideDetail: View {
     private func isFailed(_ status: ShareStatus) -> Bool {
         if case .failed = status { return true }
         return false
-    }
-
-    private func details(_ ride: Ride) -> String {
-        var parts = [ride.date?.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute()) ?? ride.id]
-        if let duration = ride.duration { parts.append(duration) }
-        if let recording = store.recordings[ride.id], !ride.isSample {
-            parts.append(ByteCountFormatter.string(fromByteCount: recording.bytes, countStyle: .file))
-        }
-        return parts.joined(separator: " · ")
     }
 }
 

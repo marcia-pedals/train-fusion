@@ -69,8 +69,8 @@ Three, behind a tab bar:
   ride" if it named no stop), then the date, length and size (while the recording is on the phone), then what's
   shared, in words ("Not Shared", "Shared: Measurements", "Shared: Measurements,
   Recording"), followed by anything under way ("Sharing Recording 43%", "Couldn't share
-  Measurements"). Tapping a row opens the ride: the same, the trip and car if they were typed
-  in; Play back while the recording is on the phone; **Phone Data**: Delete Full Recording
+  Measurements"). Tapping a row opens the ride, titled like the row: its date, duration,
+  size and train (if typed in), one per row; Play back while the recording is on the phone; **Phone Data**: Delete Full Recording
   (with its size; the ride stays) and Delete from phone; and **Sharing**, a row each for
   Train Measurements and Full Recording with its state in words and Share (asking first, as
   in [accounts-and-uploads.md](accounts-and-uploads.md)) or Unshare (confirmed first; asks

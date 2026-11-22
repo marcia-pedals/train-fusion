@@ -15,7 +15,11 @@ targets:
   TrainRecorder:
     type: application
     platform: iOS
-    sources: [TrainRecorder]
+    sources:
+      - path: TrainRecorder
+        # the key older builds uploaded with (infra/recordings.tf): nothing uses it now, and
+        # anything in a build can be extracted from it, so never bundle it
+        excludes: [uploader-key.json]
     # Where the backend is, and the Identity Platform settings: Config.xcconfig (gitignored,
     # from `just ios-config`). Without it the app records and replays but can't upload or sign in.
     configFiles:
