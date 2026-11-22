@@ -75,8 +75,9 @@ Three, behind a tab bar:
   Train Measurements and Full Recording with its state in words and Share (asking first, as
   in [accounts-and-uploads.md](accounts-and-uploads.md)) or Unshare (confirmed first; asks
   for that ride's to be deleted). A ride
-  that's only shared offers just Unshare. A long press offers the same actions; swiping
-  left deletes. Replay (not while recording) plays a finished recording back through the
+  that's only shared offers just Unshare. A long press offers the same actions. Deleting
+  from the phone brings what's shared up to date at once, so the ride shows under "Shared,
+  not on this phone" if anything of it is shared. Replay (not while recording) plays a finished recording back through the
   model, to watch the beliefs without being on a train.
 
   What's shared is kept on the phone (rides.json; the rides not on the phone in

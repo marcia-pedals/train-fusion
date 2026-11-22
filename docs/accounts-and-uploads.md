@@ -189,8 +189,8 @@ accounts can be spotted and blocked by hand.
   deleted. "Don't keep" deletes each recording as soon as it is settled (so with Ask on,
   after the question is answered and any upload has finished).
 - Changing the setting to keep fewer asks first, saying how many recordings it deletes.
-- Swiping a ride away in History deletes it (ride and recording) from the phone only:
-  anything shared stays shared.
+- Deleting a ride in History (Delete Entire Trip) deletes it (ride and recording) from the
+  phone only: anything shared stays shared.
 
 ## App store readiness
 

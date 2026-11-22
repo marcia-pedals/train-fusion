@@ -4,8 +4,7 @@ import SwiftUI
 /// but still have something shared (`RideStore.elsewhere`), to unshare one by one. Each
 /// row: the ride, its date, length and size, and whether its Train Measurements and full
 /// recording are shared. Tap a row for the ride (play back, share or
-/// unshare either, delete); long-press for the same actions; swipe left to delete it from
-/// the phone.
+/// unshare either, delete); long-press for the same actions.
 ///
 /// What's shared is kept on the phone and brought up to date with the server when History
 /// appears, when it's pulled down, and when the app comes to the front
@@ -42,14 +41,7 @@ struct HistoryScreen: View {
                         let both = !store.elsewhere.isEmpty
                         Section {
                             if onPhoneExpanded || !both {
-                                ForEach(store.rides) { ride in
-                                    row(ride)
-                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                            if canDelete(ride) {
-                                                Button { deleting = ride } label: { Label("Delete", systemImage: "trash") }.tint(.red)
-                                            }
-                                        }
-                                }
+                                ForEach(store.rides) { row($0) }
                             }
                         } header: {
                             if both { SectionToggle(title: "On this phone", count: store.rides.count, expanded: $onPhoneExpanded) }
@@ -96,7 +88,7 @@ struct HistoryScreen: View {
         }
     }
 
-    /// A row, with the confirmations its swipe and long-press actions ask, shown from the row.
+    /// A row, with the confirmations its long-press actions ask, shown from the row.
     private func row(_ ride: Ride) -> some View {
         NavigationLink(value: ride.id) {
             RideRow(ride: ride, recording: store.recordings[ride.id],
@@ -114,9 +106,11 @@ struct HistoryScreen: View {
         }
     }
 
+    /// Deletes it from the phone; what it shared now shows under "Shared, not on this phone".
     private func delete(_ ride: Ride) {
         path.removeAll { $0 == ride.id }
         store.delete(ride)
+        Task { await store.syncSharing() }
     }
 
     @ViewBuilder
@@ -176,7 +170,10 @@ struct HistoryScreen: View {
     private func deleteRecordingAction(_ id: String) -> (() -> Void)? {
         // (the sample's recording is a few hundred bytes of meta.json: just delete the trip)
         guard let ride = store.ride(id), !ride.isSample, store.recordings[id] != nil, canDelete(ride) else { return nil }
-        return { store.deleteRecording(id) }
+        return {
+            store.deleteRecording(id)
+            Task { await store.syncSharing() }
+        }
     }
 
     private func canDelete(_ ride: Ride) -> Bool {
@@ -192,7 +189,7 @@ struct HistoryScreen: View {
 /// Whether one kind of thing (Train Measurements, or the Full Recording) is shared.
 enum ShareStatus: Equatable {
     case shared(since: Double?)
-    case notShared(deletionRequested: Bool)
+    case notShared
     case working(Double?)  // sharing; uploading, with the fraction done
     case unsharing
     case waiting(String)  // will be shared without asking again
@@ -245,10 +242,10 @@ extension RideStore {
         if ride.measurementsShared { return .shared(since: ride.sharedAt) }
         if let failure = shareFailures[ride.id] { return .failed(failure) }
         if self.ride(ride.id) == nil {  // only what the server has: can't be shared from here
-            return .unavailable(ride.measurementsDeletionRequested == true ? "Deletion requested" : "Not shared")
+            return .unavailable("Not shared")
         }
         if ride.sharePending == true, AppSettings.shareMeasurements { return .waiting("Waiting to share") }
-        return .notShared(deletionRequested: ride.measurementsDeletionRequested == true)
+        return .notShared
     }
 
     func recordingStatus(_ ride: Ride, _ state: Uploader.State?) -> ShareStatus {
@@ -264,13 +261,12 @@ extension RideStore {
         if ride.recordingShared { return .shared(since: nil) }
         if ride.upload == .wanted { return .waiting("Waiting to upload") }
         if recordings[ride.id] == nil {
-            if ride.recordingDeletionRequested == true { return .unavailable("Deletion requested") }
-            return .unavailable(self.ride(ride.id) == nil ? "Not shared" : "Not on this phone")
+            return .unavailable(self.ride(ride.id) == nil || ride.recordingDeletionRequested == true ? "Not shared" : "Not on this phone")
         }
         if ride.upload == .tooLarge {
             return .unavailable("Too large (over \(ByteCountFormatter.string(fromByteCount: AppSettings.maxUploadBytes, countStyle: .file)))")
         }
-        return .notShared(deletionRequested: ride.recordingDeletionRequested == true)
+        return .notShared
     }
 }
 
@@ -399,7 +395,6 @@ struct RideDetail: View {
 
     var body: some View {
         if let ride = store.anyRide(id) {
-            let onPhone = store.ride(id) != nil
             List {
                 Section {
                     VStack(alignment: .leading, spacing: 4) {
@@ -410,8 +405,6 @@ struct RideDetail: View {
                         }
                     }
                     .padding(.vertical, 4)
-                } footer: {
-                    if !onPhone { Text("Not on this phone any more: what's shared can be unshared.") }
                 }
                 if store.recordings[id] != nil {  // only while there's something to play
                     Section {
@@ -443,7 +436,7 @@ struct RideDetail: View {
             .refreshable { await store.syncSharing() }
             .navigationTitle(ride.date?.formatted(date: .abbreviated, time: .omitted) ?? "Ride")
         } else {
-            ContentUnavailableView("Ride deleted", systemImage: "trash")
+            Color.clear  // gone (deleted, or nothing of it shared any more): on its way back to the list
         }
     }
 
