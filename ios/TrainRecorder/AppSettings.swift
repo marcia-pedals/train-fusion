@@ -11,6 +11,9 @@ enum AppSettings {
     /// Whether the rider has been asked about sharing Train Measurements (before their first
     /// recording).
     static let askedShareMeasurementsKey = "askedShareMeasurements"
+    /// The Measure screen's warning that Motion & Fitness is off (no barometer) was
+    /// dismissed: it isn't shown again.
+    static let motionWarningDismissedKey = "motionWarningDismissed"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [

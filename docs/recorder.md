@@ -24,7 +24,12 @@ Three, behind a tab bar:
 - **Measure**: what the model believes right now (next section), under a thin header.
   The header has "Not recording" and 00:00, or "Recording" and the elapsed time, beside
   the record (stop) button. With nothing going on the middle of the screen says "Tap ⦿ to
-  start." (the button's symbol, not its colour) While recording, and the first row is the train ("Enter
+  start." (the button's symbol, not its colour). While the sample ride is on the phone, a
+  button at the top, "Not on train? Play sample ride", plays it back (not while recording). If microphone access was refused there's
+  a banner saying rides can't be recorded; if Motion & Fitness was refused (on a phone with a
+  barometer), one saying recording works without the barometer but placing the train on the
+  line is less sure (the barometer only feeds the station layer's elevation match), with
+  Dismiss, which hides it for good. Both have Open Settings, and are looked at again whenever the app comes to the front. While recording, and the first row is the train ("Enter
   trip and car number"; tap for a sheet with trip number, car number and upper / lower /
   vestibule, whose Save refuses numbers that can't be right; tap again to edit or clear;
   it goes into `meta.json` and the model doesn't use it). When a recording is being
@@ -78,8 +83,8 @@ Three, behind a tab bar:
   for that ride's to be deleted); and, on its own at the bottom, Delete Ride. A ride
   that's only shared offers just Unshare. Deleting
   from the phone brings what's shared up to date at once, so the ride shows under "Shared,
-  not on this phone" if anything of it is shared. Replay (not while recording) plays a finished recording back through the
-  model, to watch the beliefs without being on a train.
+  not on this phone" if anything of it is shared. Replay plays a finished recording back through the
+  model (while recording, Play back first asks to stop the recording), to watch the beliefs without being on a train.
 
   What's shared is kept on the phone (rides.json; the rides not on the phone in
   `shared-elsewhere.json`, made from the server's copy of their measurements) and brought

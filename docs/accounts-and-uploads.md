@@ -203,20 +203,22 @@ Done in the app or the repo:
   to the backend's `/privacy`; `infra/hosting.tf`), linked from Settings;
 - a privacy manifest (`PrivacyInfo.xcprivacy`): no tracking; required-reason APIs
   (UserDefaults, system boot time for the monotonic clock); collected data (audio, other
-  sensor data, precise location via the Train Measurements (the train's position with exact times), email, user id);
+  sensor data, precise location via the Train Measurements (the train's position with exact times), email, user id,
+  device id: the hash of the install's device secret);
 - explicit, specific consent before every upload (above), and permission texts that say
   recordings stay on the phone unless you choose to upload them.
 
 To do outside the code (checklist):
 
 - App Store Connect: privacy policy URL, App Privacy answers matching the manifest (audio
-  data, precise location, email, user id, other data; linked to the user when signed in;
+  data, precise location, email, user id, device id, other data; linked to the user when signed in;
   not used for tracking), support URL, age rating. Train Measurements are given to third
   parties who ask (researchers), which App Privacy has to say; and Google Play's Data
   Safety form counts that as "shared";
 - a **demo ride for the reviewer**, who won't be on a train: done in the app, the sample
   ride (generated, not anyone's recording; [recorder.md](recorder.md), "The sample ride");
-  still to do: review notes saying how to try it (History, the sample, Play back);
+  the idle Measure screen offers it ("Not on train? Play sample ride"); still to do: review notes
+  saying how to try it;
 - don't suggest affiliation with Caltrain in the name, icon or listing;
 - TestFlight external testing first (it goes through a lighter version of the review);
 - for Google Play later: the Data Safety form, and a web page for account deletion

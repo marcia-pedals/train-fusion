@@ -26,6 +26,9 @@ struct ContentView: View {
     /// Recordings that mustn't be deleted from under the app.
     private var protecting: Set<String> { Set([replay.recording?.id, recorder.activeID].compactMap { $0 }) }
 
+    /// The sample ride's recording, while it's on the phone.
+    private var sample: Recording? { store.rides.first(where: \.isSample).flatMap { store.recordings[$0.id] } }
+
     var body: some View {
         TabView(selection: Binding(
             get: { tab },
@@ -35,15 +38,19 @@ struct ContentView: View {
                 tab = new
             })
         ) {
-            TrackScreen(recorder: recorder, replay: replay)
+            TrackScreen(recorder: recorder, replay: replay, sample: sample, onPlay: { replay.play($0) })
                 .tabItem { Label("Measure", systemImage: "tram.fill") }
                 .tag(Tab.track)
             HistoryScreen(
-                store: store, canReplay: !recorder.isRecording, protecting: protecting,
+                store: store, isRecording: recorder.isRecording, protecting: protecting,
                 playing: replay.recording?.id,
                 onReplay: { recording in
-                    replay.play(recording)
-                    tab = .track
+                    Task {
+                        // asked first (RideDetail): playing back stops the recording
+                        if recorder.isRecording { await recorder.stop() }
+                        replay.play(recording)
+                        tab = .track
+                    }
                 },
                 onStopPlayback: { replay.exit() },
                 onUpload: { ride in
@@ -57,6 +64,7 @@ struct ContentView: View {
         }
         .onAppear {
             refresh()
+            recorder.checkPermissions()
             autoReplay()
             if ProcessInfo.processInfo.arguments.contains("-history") { tab = .recordings }  // for screenshots
             if ProcessInfo.processInfo.arguments.contains("-settings") { tab = .settings }
@@ -70,6 +78,7 @@ struct ContentView: View {
         .onChange(of: scenePhase) {
             guard scenePhase == .active else { return }
             refresh()
+            recorder.checkPermissions()
             store.resumeUploads()
             Task {
                 await store.sharePendingMeasurements()
@@ -153,9 +162,14 @@ struct ContentView: View {
 private struct TrackScreen: View {
     let recorder: Recorder
     let replay: ReplayPlayer
+    /// Offered on the idle screen, for trying the app off a train.
+    let sample: Recording?
+    let onPlay: (Recording) -> Void
     @State private var editingRide = false
     /// Asking about sharing Train Measurements, once the first recording has started.
     @State private var askingShare = false
+    /// The barometer warning, dismissed for good.
+    @AppStorage(AppSettings.motionWarningDismissedKey) private var motionWarningDismissed = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -164,6 +178,8 @@ private struct TrackScreen: View {
             }
             .padding(.horizontal)
             Divider()
+            if replay.recording == nil { permissionBanners }
+            if replay.recording == nil, !recorder.isRecording { sampleButton }
             if replay.recording == nil, !recorder.isRecording {
                 idle
             } else {
@@ -218,6 +234,33 @@ private struct TrackScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// Off a train (or for App Review), a way to see what the app does: one button at the top,
+    /// while nothing is recording or playing. Nothing while the sample isn't on the phone.
+    @ViewBuilder private var sampleButton: some View {
+        if let sample {
+            Button { onPlay(sample) } label: {
+                Label("Not on train? Play sample ride", systemImage: "play.fill").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(recorder.busy)
+            .padding(.horizontal)
+            .padding(.top, 8)
+        }
+    }
+
+    /// What was refused, and what it means, with a way to Settings (the app's own page,
+    /// where both switches are). Not in replay, which needs neither.
+    @ViewBuilder private var permissionBanners: some View {
+        if recorder.microphoneDenied {
+            PermissionBanner(symbol: "mic.slash",
+                             text: "Microphone access is off, so rides can't be recorded.")
+        } else if recorder.motionDenied, !motionWarningDismissed {
+            PermissionBanner(symbol: "barometer",
+                             text: "Motion & Fitness access is off, so there's no barometer. Recording works, but placing the train on the line is less sure.",
+                             onDismiss: { motionWarningDismissed = true })
+        }
+    }
+
     /// The first row while recording: the train this is (typed in), tap to enter or edit.
     /// Blue, like a button, until it's filled in; plain text after (still tappable).
     private var trainRow: some View {
@@ -249,7 +292,8 @@ private struct TrackScreen: View {
             RideSheet(ride: recorder.ride) { recorder.setRide($0) }
         }
         .onAppear {
-            // for screenshots from the command line: -editride, -ride <trip>,<car>,<position>
+            // for screenshots from the command line: -editride, -ride <trip>,<car>,<position>,
+            // -record (starts recording)
             let args = ProcessInfo.processInfo.arguments
             if let i = args.firstIndex(of: "-ride"), i + 1 < args.count {
                 let parts = args[i + 1].split(separator: ",").map(String.init)
@@ -259,6 +303,7 @@ private struct TrackScreen: View {
                 }
             }
             if args.contains("-editride") { editingRide = true }
+            if args.contains("-record") { Task { await recorder.start() } }
             if args.contains("-askshare") { askingShare = true }
         }
         .sheet(isPresented: $askingShare) {
@@ -355,6 +400,36 @@ private struct TrackScreen: View {
     }
 
     private func clock(_ s: Int) -> String { String(format: "%d:%02d", s / 60, s % 60) }
+}
+
+/// A permission that was refused: what that means, and Open Settings (and Dismiss, for a
+/// warning that can be lived with).
+private struct PermissionBanner: View {
+    let symbol: String
+    let text: String
+    var onDismiss: (() -> Void)?
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: symbol).foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(text).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 20) {
+                    if let settings = URL(string: UIApplication.openSettingsURLString) {
+                        Link("Open Settings", destination: settings).font(.subheadline.weight(.semibold))
+                    }
+                    if let onDismiss {
+                        Button("Dismiss", action: onDismiss).font(.subheadline)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal)
+        .padding(.top, 8)
+    }
 }
 
 /// Trip number, car number and where in the car. Save refuses bad numbers; Clear forgets
