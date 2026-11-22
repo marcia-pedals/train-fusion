@@ -41,7 +41,11 @@ final class MotionCapture {
     }
 
     private let manager = CMMotionManager()
-    private let altimeter = CMAltimeter()
+    /// One for the app, not one per recording: Core Motion keeps part of every CMAltimeter
+    /// alive (with its connection to the system) after the app lets go of it. Only one
+    /// recording runs at a time (`Recorder`), and the permission question is over before
+    /// one starts, so nothing uses it twice at once.
+    private static let altimeter = CMAltimeter()
 
     /// Asks for Motion & Fitness access (the barometer needs it) if it hasn't been asked
     /// yet, and returns once the rider has answered: whether it's allowed. There's no call
@@ -55,7 +59,7 @@ final class MotionCapture {
         default: break
         }
         final class Once: @unchecked Sendable { var done = false }  // touched on the main queue only
-        let altimeter = CMAltimeter()
+        let altimeter = Self.altimeter
         let once = Once()
         return await withCheckedContinuation { continuation in
             altimeter.startRelativeAltitudeUpdates(to: .main) { _, error in
@@ -130,7 +134,7 @@ final class MotionCapture {
         // About one sample a second. Asks for "Motion & Fitness" access the first time;
         // if that's refused, baro.csv.gz stays empty.
         if CMAltimeter.isRelativeAltitudeAvailable() {
-            altimeter.startRelativeAltitudeUpdates(to: baro.queue) { [baro] data, _ in
+            Self.altimeter.startRelativeAltitudeUpdates(to: baro.queue) { [baro] data, _ in
                 guard let d = data else { return }
                 baro.add(timestamp: d.timestamp, d.pressure.doubleValue, d.relativeAltitude.doubleValue)
                 inference?.baro(d.timestamp, kPa: d.pressure.doubleValue)
@@ -143,7 +147,7 @@ final class MotionCapture {
         manager.stopGyroUpdates()
         manager.stopMagnetometerUpdates()
         manager.stopDeviceMotionUpdates()
-        altimeter.stopRelativeAltitudeUpdates()
+        Self.altimeter.stopRelativeAltitudeUpdates()
         for stream in [accel, gyro, mag, baro, fused] { stream.close() }
     }
 

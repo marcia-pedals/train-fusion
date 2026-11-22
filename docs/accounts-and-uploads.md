@@ -43,6 +43,12 @@ the bucket without limit; anyone with a build could extract it.)
   total; when that's reached, signing in as a new user says so ("too many new accounts
   today, try again tomorrow; you can still record and upload without an account") and
   leaves the person signed out.
+- **One account per email** (Identity Platform's default). Signing in another way with an
+  email that already has an account doesn't sign in: Identity Platform answers
+  `needConfirmation`, and the app says "You already have an account with <email>. Sign in
+  the way you did before." (naming the way when the answer says). Linking a second way to
+  an account (sign in the old way, then link) isn't done yet. Not the same email, so not
+  covered: Sign in with Apple's Hide My Email address, which makes a separate account.
 - The account screen is just the account (who's signed in, with what; sign out) and
   **Delete account**. Signing out keeps everything on the phone.
 - On signing in, if this phone shared measurements or uploads before (with its device

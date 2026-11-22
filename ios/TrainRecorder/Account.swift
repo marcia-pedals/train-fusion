@@ -313,10 +313,35 @@ enum Identity {
     }
 
     static func signInWithIdp(postBody: String) async throws -> Tokens {
-        try Tokens(await post("accounts:signInWithIdp", [
+        let body = try await post("accounts:signInWithIdp", [
             "postBody": postBody, "requestUri": "http://localhost",
             "returnSecureToken": true, "returnIdpCredential": true,
-        ]))
+        ])
+        // One account per email: signing in another way with an email that already has an
+        // account answers this, with no tokens, rather than signing in. (Linking the new way
+        // to the account would mean signing in the old way first; not done yet.)
+        if body["needConfirmation"] as? Bool == true {
+            throw Failure(message: alreadyRegistered(email: body["email"] as? String,
+                                                     providers: body["verifiedProvider"] as? [String] ?? []),
+                          code: "NEED_CONFIRMATION")
+        }
+        return try Tokens(body)
+    }
+
+    /// For an email that already has an account: say so, and how it signed in if we know.
+    static func alreadyRegistered(email: String?, providers: [String]) -> String {
+        let ways = providers.compactMap { provider -> String? in
+            switch provider {
+            case "apple.com": return "Apple"
+            case "google.com": return "Google"
+            case "emailLink", "password": return "an email link"
+            default: return nil
+            }
+        }
+        let account = email.map { "You already have an account with \($0)." } ?? "You already have an account with this email."
+        let how = ways.isEmpty ? "Sign in the way you did before."
+            : "Sign in with \(ListFormatter.localizedString(byJoining: Array(Set(ways)).sorted())), as you did before."
+        return account + " " + how
     }
 
     static func refresh(_ refreshToken: String) async throws -> (idToken: String, refreshToken: String, expiresIn: Double) {
@@ -365,6 +390,7 @@ enum Identity {
         switch code {
         case "EXPIRED_OOB_CODE", "INVALID_OOB_CODE": return "This sign-in link has expired or was already used. Ask for a new one."
         case "INVALID_EMAIL": return "That doesn't look like an email address."
+        case "EMAIL_EXISTS": return alreadyRegistered(email: nil, providers: [])
         case "USER_DISABLED": return "This account has been disabled."
         case "TOKEN_EXPIRED", "USER_NOT_FOUND", "INVALID_REFRESH_TOKEN": return "the account's sign-in is no longer valid."
         default: return "Sign-in failed (\(raw))."
