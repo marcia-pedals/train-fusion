@@ -242,7 +242,8 @@ final class RideStore {
             let id = dir.lastPathComponent
             let files = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey])) ?? []
             let bytes = files.reduce(Int64(0)) { $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
-            var ride = ride(id) ?? Ride.read(dir, id: id)
+            // (the sample's ride is always read afresh: its meta.json follows the generator)
+            var ride = ride(id).flatMap { $0.isSample ? nil : $0 } ?? Ride.read(dir, id: id)
             let duration = ride.stoppedProperly ? ride.ended.flatMap { end in ride.started.map { end - $0 } } : nil
             let recording = Recording(id: id, url: dir, started: RecordingID.date(id), duration: duration, bytes: bytes)
             found[id] = recording
@@ -274,18 +275,29 @@ final class RideStore {
 
     /// The first time the app runs, a sample ride to play back (`SampleRide`): just a
     /// meta.json saying so, since it's generated as it plays. Deleted like any other ride,
-    /// and not put back.
+    /// and not put back. Later launches rewrite its meta.json (keeping its date), so its stops
+    /// and length follow the generator as it changes.
     private func installSample() {
-        guard !UserDefaults.standard.bool(forKey: Self.sampleInstalledKey),
-              let model = try? SharedModel.result.get() else { return }
+        guard let model = try? SharedModel.result.get() else { return }
+        let fm = FileManager.default
+        func write(_ sample: SampleRide, _ dir: URL, started: Double) {
+            guard let data = try? JSONSerialization.data(withJSONObject: sample.meta(startedUnix: started),
+                                                         options: [.prettyPrinted, .sortedKeys]) else { return }
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            try? data.write(to: dir.appendingPathComponent("meta.json"))
+        }
+        if UserDefaults.standard.bool(forKey: Self.sampleInstalledKey) {
+            let dirs = (try? fm.contentsOfDirectory(at: Self.root, includingPropertiesForKeys: nil)) ?? []
+            for dir in dirs where Replay.isSample(dir) {
+                let meta = (try? JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("meta.json")))) as? [String: Any]
+                if let started = meta?["started_unix_s"] as? Double { write(SampleRide(model: model), dir, started: started) }
+            }
+            return
+        }
         UserDefaults.standard.set(true, forKey: Self.sampleInstalledKey)
         let sample = SampleRide(model: model)
         let started = Date().addingTimeInterval(-sample.duration - 3600)  // as if ridden an hour ago
-        let dir = Self.root.appendingPathComponent(RecordingID.make(started))
-        guard let data = try? JSONSerialization.data(withJSONObject: sample.meta(startedUnix: started.timeIntervalSince1970),
-                                                     options: [.prettyPrinted, .sortedKeys]) else { return }
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try? data.write(to: dir.appendingPathComponent("meta.json"))
+        write(sample, Self.root.appendingPathComponent(RecordingID.make(started)), started: started.timeIntervalSince1970)
     }
 
     /// The rider answered: upload or not. Uploading one whose upload is marked for deletion

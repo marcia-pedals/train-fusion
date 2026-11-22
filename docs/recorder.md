@@ -132,15 +132,18 @@ What the online version can't do like the offline pipeline, and does instead:
 The first time the app runs it puts a **sample ride** in History, "Sample: San Francisco
 4th & King Street → Palo Alto", so the app can be tried without a train (by the store's
 reviewers too). It's generated as it plays (`Inference/SampleRide.swift`), so the real
-feature extraction and filter run on it as on a recording. Only the stop list is
-hard-coded (made up: each leg's running time and each stop's dwell); the rest comes from
-simple models and noise: the motion from a power-limited train fitted to each leg's time,
-positions, heading, curvature and elevation from the map in `model.json`, and from those
-the door chimes, motor tone and rumble, wheel lines and vibration, yaw and pressure of a
+feature extraction and filter run on it as on a recording. Only the stop list and each
+stop's dwell are hard-coded (made up); the rest comes from simple models and noise. The
+train runs as fast as the speed limits allow, with an electric train's acceleration and
+braking; the limits are the line's 79 mph, curves (from the map's curvature, at the
+sideways acceleration a canted curve allows) and 25 mph leaving 4th & King. Positions,
+heading, curvature and elevation come from the map in `model.json`, and from those the
+door chimes, motor tone and rumble, wheel lines and vibration, yaw and pressure of a
 phone lying flat. Same seed every time, so it replays the same.
 
 On the phone it's just a `meta.json` with `"sample": true` (and the stops, for History).
 It can be played back and deleted like any ride (it isn't put back), and never shared.
+Each launch rewrites its meta.json (keeping its date), so its stops follow the generator.
 
 ### Trying it in the simulator
 

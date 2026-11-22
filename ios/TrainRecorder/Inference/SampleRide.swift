@@ -7,10 +7,12 @@ import simd
 /// extraction and filter run on it as on a recording. For trying the app without a train
 /// (and for the store's reviewers).
 ///
-/// The only hard-coded data is the stop list below: how long each leg takes and how long
-/// the train stands. Everything else comes from simple models plus noise:
-///  - motion: power-limited acceleration, constant braking, a cruise speed fitted to each
-///    leg's time; positions are the map's (`model.track`);
+/// The only hard-coded data is the stop list below and how long the train stands at each.
+/// Everything else comes from simple models plus noise:
+///  - motion: as fast as the speed limits allow, with an electric train's power-limited
+///    acceleration and service braking. The limits: the line's 79 mph, curves (from the
+///    map's curvature, at the sideways acceleration a canted curve allows) and the slow
+///    approach to 4th & King. Positions are the map's (`model.track`);
 ///  - audio: a noise floor, rolling rumble that grows with speed, the traction motor's tone
 ///    (two partials proportional to speed) and the door chimes (their partials);
 ///  - accelerometer: gravity, the along-track acceleration and some of the centripetal one
@@ -20,34 +22,36 @@ import simd
 ///  - attitude: the track's heading; barometer: the track's elevation.
 /// Same seed, same ride: replaying it from the start gives the same data.
 final class SampleRide: ReplaySource {
-    /// Which station, how long the train takes to get there from the stop before (s), and
-    /// how long it stands there (s; the last one: until the sample ends).
-    private static let legs: [(station: String, run: Double, dwell: Double)] = [
-        ("22nd Street", 150, 40),
-        ("Bayshore", 240, 35),
-        ("South San Francisco", 275, 45),
-        ("San Bruno", 155, 35),
-        ("Millbrae", 190, 55),
-        ("Burlingame", 205, 40),
-        ("San Mateo", 140, 45),
-        ("Hayward Park", 140, 35),
-        ("Hillsdale", 115, 45),
-        ("Belmont", 165, 35),
-        ("San Carlos", 135, 40),
-        ("Redwood City", 175, 60),
-        ("Menlo Park", 240, 40),
-        ("Palo Alto", 135, 25),
+    /// Which station, and how long the train stands there (s; the last one: until the
+    /// sample ends).
+    private static let legs: [(station: String, dwell: Double)] = [
+        ("22nd Street", 40),
+        ("Bayshore", 35),
+        ("South San Francisco", 45),
+        ("San Bruno", 35),
+        ("Millbrae", 55),
+        ("Burlingame", 40),
+        ("San Mateo", 45),
+        ("Hayward Park", 35),
+        ("Hillsdale", 45),
+        ("Belmont", 35),
+        ("San Carlos", 40),
+        ("Redwood City", 60),
+        ("Menlo Park", 40),
+        ("Palo Alto", 25),
     ]
     private static let origin = "San Francisco 4th & King Street"
     private static let originOpen = 6.0  // s into the sample: the doors open at the origin
     private static let originDwell = 50.0
     private static let seed: UInt64 = 0x5EED_CA17
 
-    // a few physical constants of the made-up train and phone
-    private static let maxAccel = 0.7  // m/s^2
-    private static let power = 12.0  // m^2/s^3: acceleration x speed at most (a diesel's power per mass)
-    private static let braking = 0.65  // m/s^2
-    private static let maxSpeed = 35.5  // m/s (79 mph)
+    // a few physical constants of the made-up train, track and phone
+    private static let maxAccel = 0.9  // m/s^2 (an electric multiple unit's starting acceleration)
+    private static let power = 16.0  // m^2/s^3: acceleration x speed at most (power per mass)
+    private static let braking = 0.8  // m/s^2, service braking
+    private static let lineSpeed = 35.3  // m/s: 79 mph, the line's maximum
+    private static let curveAccel = 1.3  // m/s^2 sideways that a canted curve allows at its limit
+    private static let terminal = (length: 500.0, speed: 11.2)  // m past 4th & King at 25 mph
     private static let phoneYaw = 25.0  // degrees between the phone's x axis and the train's forward
     private static let gridStep = 0.1  // s, of the precomputed motion
 
@@ -83,7 +87,7 @@ final class SampleRide: ReplaySource {
         stand(until: departure)
         for leg in Self.legs {
             let target = at(leg.station)
-            for (vv, aa) in Self.drive(target - sNow, in: leg.run) {
+            for (vv, aa) in Self.drive(from: sNow, to: target, track: track, origin: at(Self.origin)) {
                 sNow += vv * Self.gridStep
                 gs.append(sNow); gv.append(vv); ga.append(aa)
                 t += Self.gridStep
@@ -116,41 +120,63 @@ final class SampleRide: ReplaySource {
         baroDrift = 0
     }
 
-    /// Speed and acceleration every grid step of a leg of `distance` m that should take
-    /// `run` s: the cruise speed is found by bisection (as fast as allowed if it can't be
-    /// done in time).
-    private static func drive(_ distance: Double, in run: Double) -> [(Double, Double)] {
-        func simulate(_ cruise: Double) -> [(Double, Double)] {
-            var out: [(Double, Double)] = []
-            var (x, vv, aa) = (0.0, 0.0, 0.0)
-            while x < distance - 0.05, out.count < 100_000 {
-                let left = distance - x
-                var want: Double
-                if vv * vv / (2 * braking) >= left {
-                    want = -vv * vv / (2 * max(left, 0.01))  // stop exactly at the platform
-                } else if vv < cruise {
-                    want = min(maxAccel, power / max(vv, 0.1))
-                } else {
-                    want = 0
-                }
-                // traction comes on and goes off gradually; braking is applied as needed
-                aa = want < 0 ? want : aa + (want - aa) * min(gridStep / 1.2, 1)
-                vv = max(vv + aa * gridStep, want < 0 ? 0.05 : 0)
-                x += vv * gridStep
-                out.append((vv, aa))
+    /// The speed limit at map position x (m): the line's, a curve's (the sharpest within
+    /// 100 m, about a train's length), or the terminal's.
+    private static func limit(_ x: Double, track: Model.Track, origin: Double) -> Double {
+        let c = track.curvature
+        let lo = max(Int((x - 100) / track.step), 0), hi = min(Int((x + 100) / track.step), c.count - 1)
+        var sharpest = 1e-9
+        if lo <= hi { for k in lo...hi { sharpest = max(sharpest, abs(c[k])) } }
+        var v = min(lineSpeed, (curveAccel / sharpest).squareRoot())
+        if x - origin < terminal.length { v = min(v, terminal.speed) }
+        return v
+    }
+
+    /// Speed and acceleration every grid step of a leg from map position `a` to a stop at
+    /// `b`: as fast as the limits allow, braking in time for lower limits ahead and the stop
+    /// (the shortest-time profile: the lower of what acceleration can reach going forwards
+    /// and what braking allows going backwards).
+    private static func drive(from a: Double, to b: Double, track: Model.Track, origin: Double) -> [(Double, Double)] {
+        let ds = 2.0
+        let n = max(Int(((b - a) / ds).rounded()), 1)
+        var envelope = (0...n).map { limit(a + Double($0) * ds, track: track, origin: origin) }
+        envelope[n] = 0
+        for i in stride(from: n - 1, through: 0, by: -1) {
+            envelope[i] = min(envelope[i], (envelope[i + 1] * envelope[i + 1] + 2 * braking * ds).squareRoot())
+        }
+        var speed = [Double](repeating: 0, count: n + 1)
+        for i in 0..<n {
+            let push = min(maxAccel, power / max(speed[i], 0.1))
+            speed[i + 1] = min(envelope[i + 1], (speed[i] * speed[i] + 2 * push * ds).squareRoot())
+        }
+        // to time: speed every grid step, then the acceleration, smoothed over a second (traction
+        // and brakes don't change instantly)
+        var out: [Double] = []
+        var (t, i) = (0.0, 0)
+        var at = 0.0  // time at distance step i
+        while i < n {
+            let dt = 2 * ds / max(speed[i] + speed[i + 1], 0.01)
+            while t < at + dt {
+                let w = (t - at) / dt
+                out.append(speed[i] + (speed[i + 1] - speed[i]) * w)
+                t += gridStep
             }
-            out.append((0, 0))
-            return out
+            at += dt
+            i += 1
         }
-        var (lo, hi) = (3.0, maxSpeed)
-        var best = simulate(hi)
-        if Double(best.count) * gridStep > run { return best }
-        for _ in 0..<30 {
-            let mid = (lo + hi) / 2
-            let trial = simulate(mid)
-            if Double(trial.count) * gridStep > run { lo = mid } else { hi = mid; best = trial }
+        out.append(0)
+        var raw = [Double](repeating: 0, count: out.count)
+        for k in 1..<out.count { raw[k] = (out[k] - out[k - 1]) / gridStep }
+        let half = Int(0.5 / gridStep)
+        var result: [(Double, Double)] = []
+        result.reserveCapacity(out.count)
+        for k in out.indices {
+            let lo = max(k - half, 0), hi = min(k + half, raw.count - 1)
+            var sum = 0.0
+            for j in lo...hi { sum += raw[j] }
+            result.append((out[k], sum / Double(hi - lo + 1)))
         }
-        return best
+        return result
     }
 
     // MARK: one second of every stream
