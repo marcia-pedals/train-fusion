@@ -47,9 +47,9 @@ the bucket without limit; anyone with a build could extract it.)
   **Delete account**. Signing out keeps everything on the phone.
 - On signing in, if this phone shared measurements or uploads before (with its device
   secret, not linked to any account), the app offers to link them to the account.
-- **Delete account** (*store*: Apple and Google require in-app account deletion). It says
-  that it deletes the account, the Train Measurements linked to it, and the recordings
-  uploaded while signed in (or linked to it). What happens:
+- **Delete account** (*store*: Apple and Google require in-app account deletion). It asks
+  "Delete your account and what it shared?": the account, the Train Measurements linked
+  to it, and the recordings uploaded while signed in (or linked to it). What happens:
   - the account is deleted at once;
   - its Train Measurements and uploaded recordings are marked for deletion, and the
     developer deletes them by hand (`just deletions`). This is deliberate: deleting must

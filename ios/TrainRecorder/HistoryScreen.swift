@@ -451,11 +451,10 @@ struct RideDetail: View {
 extension View {
     func confirmDelete(_ ride: Ride, store: RideStore, isPresented: Binding<Bool>,
                        onDelete: @escaping () -> Void) -> some View {
-        let recording = store.recordings[ride.id] != nil
-        return confirmationDialog("Delete this ride from the phone?", isPresented: isPresented, titleVisibility: .visible) {
+        confirmationDialog("Delete this ride from the phone?", isPresented: isPresented, titleVisibility: .visible) {
             Button("Delete", role: .destructive, action: onDelete)
         } message: {
-            Text((recording && !ride.recordingShared ? "Its Full Recording was never shared. " : "") + "Shared data stays in the cloud.")
+            Text("Shared data stays shared.")
         }
     }
 
@@ -464,7 +463,7 @@ extension View {
                            titleVisibility: .visible) {
             Button("Delete", role: .destructive, action: onDelete)
         } message: {
-            Text("Its Train Measurements stay. " + (ride.recordingShared ? "Shared data stays in the cloud." : "It was never shared."))
+            Text("Shared data stays shared.")
         }
     }
 
@@ -476,11 +475,6 @@ extension View {
             titleVisibility: .visible, presenting: kind.wrappedValue
         ) { kind in
             Button("Unshare", role: .destructive) { onUnshare(kind) }
-        } message: { kind in
-            switch kind {
-            case .measurements: Text("Deletes them from the cloud.")
-            case .recording: Text("Deletes it from the cloud.")
-            }
         }
     }
 }

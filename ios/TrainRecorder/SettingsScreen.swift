@@ -57,8 +57,6 @@ struct SettingsScreen: View {
                             if let pending = pendingKeep { apply(pending.setting) }
                             pendingKeep = nil
                         }
-                    } message: {
-                        Text("Their Train Measurements stay.")
                     }
                 }
                 Section {
@@ -166,8 +164,6 @@ struct DeleteSharedScreen: View {
                                 }
                             }
                         }
-                    } message: {
-                        Text("Deletes all your shared Train Measurements from the cloud. Train Measurements on your phone stay on your phone.")
                     }
             } footer: {
                 if let message = deleteMeasurementsMessage ?? store.shareMessage { Text(message) }
@@ -178,8 +174,6 @@ struct DeleteSharedScreen: View {
                     .confirmationDialog("Delete all shared Full Recordings?", isPresented: $confirmDeleteUploads,
                                         titleVisibility: .visible) {
                         Button("Delete", role: .destructive) { Task { await requestDeletion() } }
-                    } message: {
-                        Text("Deletes all your shared Full Recordings from the cloud. Full Recordings on your phone stay on your phone.")
                     }
             } footer: {
                 if let deleteUploadsMessage { Text(deleteUploadsMessage) }
@@ -317,7 +311,8 @@ struct AccountScreen: View {
         }
         Section {
             Button("Delete account", role: .destructive) { confirmDeleteAccount = true }
-                .confirmationDialog("Delete your account?", isPresented: $confirmDeleteAccount, titleVisibility: .visible) {
+                // (the title says that what it shared goes too: the one thing that isn't obvious)
+                .confirmationDialog("Delete your account and what it shared?", isPresented: $confirmDeleteAccount, titleVisibility: .visible) {
                     Button("Delete account", role: .destructive) {
                         if user.provider == "apple.com" {
                             appleDeletion = true
@@ -325,8 +320,6 @@ struct AccountScreen: View {
                             Task { if await account.deleteAccount() { await store.syncSharing() } }
                         }
                     }
-                } message: {
-                    Text("Deletes your account and what it shared. Your phone keeps everything. This can't be undone.")
                 }
         }
         .sheet(isPresented: $appleDeletion) {
