@@ -84,7 +84,7 @@ the bucket without limit; anyone with a build could extract it.)
   - dismissing it (swiping it down, tapping outside it) answers nothing: this ride isn't
     shared, and it's asked again next recording.
 - Settings, **Train Measurements** section:
-  - **Share** (with a ? that shows the question's lines, with just OK): **Ask each ride**
+  - **Share** (with a ? that shows the question's lines, with just OK): **Ask**
     (the default: the question above) / **Always** / **Never** (nothing shared). The question's answers set it the same way. With Always, each ride's
     measurements are shared when its recording stops (retried when the app is next opened
     if there's no network). Rides recorded while it wasn't on aren't shared later.
@@ -120,7 +120,7 @@ the bucket without limit; anyone with a build could extract it.)
   - "Only this app's devs get it";
   - "Unshare any time in History".
 - "Don't ask again" declines this one and sets Settings' Full Recordings **Share** (with
-  a ? like the one above) from **Ask each ride** to **Never** (nothing shared). With the setting off, new recordings count as declined
+  a ? like the one above) from **Ask** to **Never** (nothing shared). With the setting off, new recordings count as declined
   (they can still be shared from History). Nothing in the question pairs "Share" with
   remembering, so nothing can read as "share from now on".
 - A recording over the size limit isn't offered; History says it's too large.

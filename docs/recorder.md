@@ -55,8 +55,8 @@ Three, behind a tab bar:
      the motor tone, the along-track acceleration, and the wheel vibration. Green good,
      yellow fair, red missing, grey not in play. Tap for each one's state and a number.
 - **Settings**: miles and mph, or kilometres and km/h; **Phone Data**: Keep Recordings
-  (None, Last 3, All); **Sharing**: Measurements (Ask each ride, Always, or Never),
-  Recordings (Ask each ride or Never), and Delete Shared Data, a screen of its own
+  (None, Last 3, All); **Sharing**: Measurements (Ask, Always, or Never),
+  Recordings (Ask or Never), and Delete Shared Data, a screen of its own
   so it isn't tapped by accident, with "Delete all shared Train Measurements" and "Delete
   all shared Full Recordings" (each confirmed; done by hand within 30 days); the account
   (sign in with Apple, Google or an email link; sign out; delete account); the privacy

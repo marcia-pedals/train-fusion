@@ -9,7 +9,7 @@ enum MeasurementSharing: CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .ask: return "Ask each ride"
+        case .ask: return "Ask"
         case .always: return "Always"
         case .never: return "Never"
         }
@@ -70,7 +70,7 @@ struct SettingsScreen: View {
                         }),
                         options: MeasurementSharing.allCases.map { ($0, $0.label) })
                     shareRow("Recordings", .recordings, selection: $askToUpload,
-                             options: [(true, "Ask each ride"), (false, "Never")])
+                             options: [(true, "Ask"), (false, "Never")])
                     // a screen of its own, so it isn't tapped by accident
                     NavigationLink("Delete Shared Data") { DeleteSharedScreen(store: store) }
                 } header: {
@@ -100,7 +100,7 @@ struct SettingsScreen: View {
     private func shareRow<V: Hashable>(_ title: String, _ kind: SharingInfoSheet.Kind, selection: Binding<V>,
                                        options: [(value: V, label: String)]) -> some View {
         HStack(spacing: 6) {
-            Text(title)
+            Text(title).lineLimit(1).layoutPriority(1)
             Button { info = SharingInfoSheet(kind: kind) } label: {
                 Image(systemName: "questionmark.circle")
             }
@@ -115,7 +115,7 @@ struct SettingsScreen: View {
                 HStack(spacing: 4) {
                     Text(options.first { $0.value == selection.wrappedValue }?.label ?? "")
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .fixedSize()
                     Image(systemName: "chevron.up.chevron.down").font(.footnote.weight(.medium))
                 }
             }
