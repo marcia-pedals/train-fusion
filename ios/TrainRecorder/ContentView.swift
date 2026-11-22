@@ -196,9 +196,17 @@ private struct TrackScreen: View {
             Image(systemName: "tram")
                 .font(.system(size: 64, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text(recorder.starting ? "Starting…" : recorder.busy ? "Saving…" : "Tap the red button to start.")
-                .font(.title3)
-                .foregroundStyle(.secondary)
+            Group {
+                if recorder.starting || recorder.busy {
+                    Text(recorder.starting ? "Starting…" : "Saving…")
+                } else {
+                    // the button's own symbol, not its colour: readable whatever colours one sees
+                    Text("Tap \(Image(systemName: "record.circle")) to start.")
+                        .accessibilityLabel("Tap the record button to start.")
+                }
+            }
+            .font(.title3)
+            .foregroundStyle(.secondary)
             if let error = recorder.error {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }

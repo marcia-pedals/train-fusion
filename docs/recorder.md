@@ -23,8 +23,8 @@ Three, behind a tab bar:
 
 - **Measure**: what the model believes right now (next section), under a thin header.
   The header has "Not recording" and 00:00, or "Recording" and the elapsed time, beside
-  the record (stop) button. With nothing going on the middle of the screen says "Tap the
-  red button to start." While recording, and the first row is the train ("Enter
+  the record (stop) button. With nothing going on the middle of the screen says "Tap ⦿ to
+  start." (the button's symbol, not its colour) While recording, and the first row is the train ("Enter
   trip and car number"; tap for a sheet with trip number, car number and upper / lower /
   vestibule, whose Save refuses numbers that can't be right; tap again to edit or clear;
   it goes into `meta.json` and the model doesn't use it). When a recording is being
