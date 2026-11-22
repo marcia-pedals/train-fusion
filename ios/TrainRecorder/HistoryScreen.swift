@@ -14,7 +14,10 @@ struct HistoryScreen: View {
     let store: RideStore
     let canReplay: Bool  // not while a recording is in progress
     let protecting: Set<String>
+    /// The recording being played back, if any.
+    let playing: String?
     let onReplay: (Recording) -> Void
+    let onStopPlayback: () -> Void
     /// Upload this ride's recording: asks first.
     let onUpload: (Ride) -> Void
     @State private var path: [String] = []  // ride ids
@@ -57,7 +60,9 @@ struct HistoryScreen: View {
             .navigationDestination(for: String.self) { id in
                 RideDetail(store: store, id: id, uploadState: uploader.states[id],
                            replayProblem: replayProblem(id),
+                           isPlaying: playing == id,
                            onReplay: { if let recording = store.recordings[id] { onReplay(recording) } },
+                           onStopPlayback: onStopPlayback,
                            onShareMeasurements: { if let ride = store.ride(id) { askingMeasurements = ride } },
                            onShareRecording: { if let ride = store.ride(id) { shareRecording(ride) } },
                            onUnshare: { kind in Task { await store.unshare(kind, id) } },
@@ -331,7 +336,9 @@ struct RideDetail: View {
     let id: String
     let uploadState: Uploader.State?
     let replayProblem: String?
+    let isPlaying: Bool
     let onReplay: () -> Void
+    let onStopPlayback: () -> Void
     let onShareMeasurements: () -> Void
     let onShareRecording: () -> Void
     /// Done once confirmed (the confirmations are asked here, from their buttons).
@@ -359,10 +366,14 @@ struct RideDetail: View {
                 .monospacedDigit()
                 if store.recordings[id] != nil {  // only while there's something to play
                     Section {
-                        Button(action: onReplay) { Label("Play back", systemImage: "play.fill") }
-                            .disabled(replayProblem != nil)
+                        if isPlaying {
+                            Button(action: onStopPlayback) { Label("Stop playback", systemImage: "stop.fill") }
+                        } else {
+                            Button(action: onReplay) { Label("Play back", systemImage: "play.fill") }
+                                .disabled(replayProblem != nil)
+                        }
                     } footer: {
-                        if let replayProblem { Text(replayProblem) }
+                        if let replayProblem, !isPlaying { Text(replayProblem) }
                     }
                 }
                 // freeing space (the ride stays) apart from deleting the ride (at the bottom)

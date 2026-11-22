@@ -40,10 +40,12 @@ struct ContentView: View {
                 .tag(Tab.track)
             HistoryScreen(
                 store: store, canReplay: !recorder.isRecording, protecting: protecting,
+                playing: replay.recording?.id,
                 onReplay: { recording in
                     replay.play(recording)
                     tab = .track
                 },
+                onStopPlayback: { replay.exit() },
                 onUpload: { ride in
                     consent = UploadConsent(rideID: ride.id, bytes: store.recordings[ride.id]?.bytes ?? 0, afterRide: false)
                 })

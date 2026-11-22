@@ -70,7 +70,8 @@ Three, behind a tab bar:
   shared, in words ("Not Shared", "Shared: Measurements", "Shared: Measurements,
   Recording"), followed by anything under way ("Sharing Recording 43%", "Couldn't share
   Measurements"). Tapping a row opens the ride, titled like the row: its date, duration
-  and train (if typed in), one per row (the size is on Delete Full Recording); Play back while the recording is on the phone; **Phone Data**: Delete Full Recording
+  and train (if typed in), one per row (the size is on Delete Full Recording); Play back while the recording is on the phone (Stop playback for
+  the ride being played back); **Phone Data**: Delete Full Recording
   (with its size, and "Keeps the ride in History"); **Sharing**, a row each for
   Train Measurements and Full Recording with its state in words and Share (asking first, as
   in [accounts-and-uploads.md](accounts-and-uploads.md)) or Unshare (confirmed first; asks
