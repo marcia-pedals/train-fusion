@@ -22,6 +22,8 @@ struct HistoryScreen: View {
     @State private var deleting: Ride?
     @State private var askingMeasurements: Ride?
     @State private var unsharing: Unshare?
+    @State private var onPhoneExpanded = true
+    @State private var elsewhereExpanded = ProcessInfo.processInfo.arguments.contains("-elsewhere")  // for screenshots
     private let uploader = Uploader.shared
 
     struct Unshare {
@@ -36,23 +38,28 @@ struct HistoryScreen: View {
                     ContentUnavailableView("No rides", systemImage: "waveform")
                 } else {
                     List {
+                        // headers (and collapsing) only once there are two kinds of ride
+                        let both = !store.elsewhere.isEmpty
                         Section {
-                            ForEach(store.rides) { ride in
-                                row(ride)
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                        if canDelete(ride) {
-                                            Button { deleting = ride } label: { Label("Delete", systemImage: "trash") }.tint(.red)
+                            if onPhoneExpanded || !both {
+                                ForEach(store.rides) { ride in
+                                    row(ride)
+                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                            if canDelete(ride) {
+                                                Button { deleting = ride } label: { Label("Delete", systemImage: "trash") }.tint(.red)
+                                            }
                                         }
-                                    }
+                                }
                             }
                         } header: {
-                            if !store.elsewhere.isEmpty, !store.rides.isEmpty { Text("On this phone") }
+                            if both { SectionToggle(title: "On this phone", count: store.rides.count, expanded: $onPhoneExpanded) }
                         }
-                        if !store.elsewhere.isEmpty {
+                        if both {
                             Section {
-                                ForEach(store.elsewhere) { row($0) }
+                                if elsewhereExpanded { ForEach(store.elsewhere) { row($0) } }
                             } header: {
-                                Text("Shared, not on this phone")
+                                SectionToggle(title: "Shared, not on this phone", count: store.elsewhere.count,
+                                              expanded: $elsewhereExpanded)
                             }
                         }
                     }
@@ -244,13 +251,6 @@ enum ShareStatus: Equatable {
         }
     }
 
-    /// For the row, after the kind's name.
-    var short: String? {
-        switch self {
-        case .working(let fraction?): return "\(Int(fraction * 100))%"
-        default: return nil
-        }
-    }
 }
 
 extension RideStore {
@@ -290,6 +290,34 @@ extension RideStore {
 
 // MARK: - the list
 
+/// A section's header that folds it away: its title, how many rides, and a chevron.
+struct SectionToggle: View {
+    let title: String
+    let count: Int
+    @Binding var expanded: Bool
+
+    var body: some View {
+        Button {
+            withAnimation { expanded.toggle() }
+        } label: {
+            HStack {
+                Text(title)
+                Text(String(count)).foregroundStyle(.secondary).monospacedDigit()
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .rotationEffect(.degrees(expanded ? 90 : 0))
+                    .foregroundStyle(.secondary)
+            }
+            .font(.headline)
+            .foregroundStyle(.primary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+    }
+}
+
 struct RideRow: View {
     let ride: Ride
     let recording: Recording?
@@ -301,26 +329,32 @@ struct RideRow: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(ride.title).font(.body.weight(.medium)).lineLimit(1).minimumScaleFactor(0.7)
             Text(ride.summary(recording, onPhone: onPhone)).font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
-            HStack(spacing: 14) {
-                StatusBadge(name: "Measurements", status: measurements)
-                StatusBadge(name: "Recording", status: recordingStatus)
-            }
+            sharing
+                .font(.footnote.monospacedDigit())
         }
     }
-}
 
-struct StatusBadge: View {
-    let name: String
-    let status: ShareStatus
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: status.symbol).foregroundStyle(status.color)
-            Text(name + (status.short.map { " " + $0 } ?? "")).foregroundStyle(.secondary)
+    /// "Not Shared" / "Shared: Measurements, Recording", then anything going on.
+    private var sharing: Text {
+        let shared = [("Measurements", measurements), ("Recording", recordingStatus)].filter { $0.1.canUnshare }.map(\.0)
+        var text = Text(shared.isEmpty ? "Not Shared" : "Shared: " + shared.joined(separator: ", ")).foregroundStyle(.secondary)
+        for (name, status) in [("measurements", measurements), ("recording", recordingStatus)] {
+            if let (activity, color) = Self.activity(name, status) {
+                text = text + Text(" · ").foregroundStyle(.secondary) + Text(activity).foregroundStyle(color)
+            }
         }
-        .font(.footnote.monospacedDigit())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(name): \(status.text)")
+        return text
+    }
+
+    private static func activity(_ name: String, _ status: ShareStatus) -> (String, Color)? {
+        switch status {
+        case .working(let fraction?): return ("Uploading \(name) \(Int(fraction * 100))%", .accentColor)
+        case .working(nil): return ("Sharing \(name)…", .accentColor)
+        case .unsharing: return ("Unsharing \(name)…", .accentColor)
+        case .waiting: return ("\(name.capitalized) waiting to share", .orange)
+        case .failed: return ("Couldn't share \(name)", .red)
+        default: return nil
+        }
     }
 }
 

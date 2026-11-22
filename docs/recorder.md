@@ -61,12 +61,13 @@ Three, behind a tab bar:
   out; delete account); the privacy policy.
 - **History**: the rides on the phone (`Application Support/rides.json`; a ride outlives its
   recording), then, under "Shared, not on this phone", rides deleted from the phone that
-  still have something shared. A row is titled by where the model heard the ride start and
-  end ("Millbrae → San Jose Diridon"; "Unknown trip" if it named no stop), then the date,
-  length and size (or "recording not kept"), then a share icon each for its Train
-  Measurements and its full recording: green shared, grey not, faint grey can't be (too
-  large, or not on the phone), blue sharing (with the upload's progress), orange waiting,
-  red failed. Tapping a row opens the ride: the same, the trip and car if they were typed
+  still have something shared. When there are both, each is a section that folds away
+  (tap its header); the first starts open, the second folded. A row is titled by where the
+  model heard the ride start and end ("Millbrae → San Jose Diridon"; "Unknown trip" if it
+  named no stop), then the date, length and size (or "recording not kept"), then what's
+  shared, in words ("Not Shared", "Shared: Measurements", "Shared: Measurements,
+  Recording"), followed by anything under way ("Uploading recording 43%", "Couldn't share
+  measurements"). Tapping a row opens the ride: the same, the trip and car if they were typed
   in, Play back (or why not), each kind of sharing with its state in words and Share
   (asking first, as in [accounts-and-uploads.md](accounts-and-uploads.md)) or Unshare
   (confirmed first; asks for that ride's to be deleted), and Delete from this phone. A ride
