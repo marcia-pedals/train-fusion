@@ -462,7 +462,7 @@ extension View {
         confirmationDialog("Delete this ride from the phone?", isPresented: isPresented, titleVisibility: .visible) {
             Button("Delete", role: .destructive, action: onDelete)
         } message: {
-            Text("Shared data stays shared.")
+            if ride.measurementsShared || ride.recordingShared { Text("Shared data stays shared.") }
         }
     }
 
@@ -471,7 +471,8 @@ extension View {
                            titleVisibility: .visible) {
             Button("Delete", role: .destructive, action: onDelete)
         } message: {
-            Text("Shared data stays shared.")
+            // (deleting the recording leaves the measurements alone: only its being shared matters)
+            if ride.recordingShared { Text("Shared data stays shared.") }
         }
     }
 
