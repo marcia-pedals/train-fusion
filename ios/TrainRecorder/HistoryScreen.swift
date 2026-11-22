@@ -12,7 +12,7 @@ import SwiftUI
 /// sharing it again undoes that.
 struct HistoryScreen: View {
     let store: RideStore
-    /// A recording is in progress: playing back asks to stop it first.
+    /// A recording is in progress: playing back says to stop it first.
     let isRecording: Bool
     let protecting: Set<String>
     /// The recording being played back, if any.
@@ -349,7 +349,8 @@ struct RideDetail: View {
     @State private var confirmDelete = false
     @State private var confirmDeleteRecording = false
     @State private var confirmUnshare: RideStore.Shared?
-    @State private var confirmStopRecording = false
+    /// Play back was tapped while recording: saying to stop it first.
+    @State private var mustStopRecording = false
 
     var body: some View {
         if let ride = store.anyRide(id) {
@@ -372,14 +373,13 @@ struct RideDetail: View {
                             Button(action: onStopPlayback) { Label("Stop playback", systemImage: "stop.fill") }
                         } else {
                             Button {
-                                if isRecording { confirmStopRecording = true } else { onReplay() }
+                                if isRecording { mustStopRecording = true } else { onReplay() }
                             } label: { Label("Play back", systemImage: "play.fill") }
                             .disabled(replayProblem != nil)
-                            .confirmationDialog("Stop recording to play back?", isPresented: $confirmStopRecording,
-                                                titleVisibility: .visible) {
-                                Button("Stop Recording and Play Back", action: onReplay)
+                            .alert("Stop recording to play back", isPresented: $mustStopRecording) {
+                                Button("OK", role: .cancel) {}
                             } message: {
-                                Text("The ride being recorded is saved to History.")
+                                Text("Stop the recording on the Measure tab, then play this ride back.")
                             }
                         }
                     } footer: {

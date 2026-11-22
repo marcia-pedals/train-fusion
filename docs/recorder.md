@@ -84,7 +84,7 @@ Three, behind a tab bar:
   that's only shared offers just Unshare. Deleting
   from the phone brings what's shared up to date at once, so the ride shows under "Shared,
   not on this phone" if anything of it is shared. Replay plays a finished recording back through the
-  model (while recording, Play back first asks to stop the recording), to watch the beliefs without being on a train.
+  model (while recording, Play back says to stop the recording first), to watch the beliefs without being on a train.
 
   What's shared is kept on the phone (rides.json; the rides not on the phone in
   `shared-elsewhere.json`, made from the server's copy of their measurements) and brought

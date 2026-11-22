@@ -45,12 +45,8 @@ struct ContentView: View {
                 store: store, isRecording: recorder.isRecording, protecting: protecting,
                 playing: replay.recording?.id,
                 onReplay: { recording in
-                    Task {
-                        // asked first (RideDetail): playing back stops the recording
-                        if recorder.isRecording { await recorder.stop() }
-                        replay.play(recording)
-                        tab = .track
-                    }
+                    replay.play(recording)
+                    tab = .track
                 },
                 onStopPlayback: { replay.exit() },
                 onUpload: { ride in
