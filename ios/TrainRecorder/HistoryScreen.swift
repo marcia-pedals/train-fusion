@@ -352,9 +352,6 @@ struct RideDetail: View {
                     } else if store.recordings[id] != nil {
                         LabeledContent("Duration", value: "not stopped properly")
                     }
-                    if let recording = store.recordings[id], !ride.isSample {
-                        LabeledContent("Size", value: ByteCountFormatter.string(fromByteCount: recording.bytes, countStyle: .file))
-                    }
                     if let train = ride.trainText {
                         LabeledContent("Train", value: train)
                     }
