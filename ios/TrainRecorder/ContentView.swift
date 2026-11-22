@@ -209,19 +209,19 @@ private struct TrackScreen: View {
     }
 
     /// The first row while recording: the train this is (typed in), tap to enter or edit.
+    /// Blue, like a button, until it's filled in; plain text after (still tappable).
     private var trainRow: some View {
         Button { editingRide = true } label: {
             HStack(spacing: 10) {
-                Image(systemName: "tram").foregroundStyle(.secondary)
+                Image(systemName: "tram").foregroundStyle(recorder.ride == nil ? Color.accentColor : Color(.secondaryLabel))
                 if let ride = recorder.ride {
                     Text("Trip \(String(ride.trip)) · Car \(String(ride.car))" + (ride.position == .unspecified ? "" : " · \(ride.position.rawValue)"))
                         .monospacedDigit()
-                        .foregroundStyle(.primary)
                 } else {
                     Text("Enter trip and car number")
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Color(.tertiaryLabel))
             }
             .font(.subheadline)
             .lineLimit(1).minimumScaleFactor(0.7)
@@ -230,7 +230,7 @@ private struct TrackScreen: View {
             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Color.accentColor)
+        .foregroundStyle(recorder.ride == nil ? Color.accentColor : Color.primary)
     }
 
     private var recordHeader: some View {
