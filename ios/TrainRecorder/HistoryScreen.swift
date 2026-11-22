@@ -75,7 +75,7 @@ struct HistoryScreen: View {
                            onReplay: { if let recording = store.recordings[id] { onReplay(recording) } },
                            onShareMeasurements: { if let ride = store.ride(id) { askingMeasurements = ride } },
                            onShareRecording: { if let ride = store.ride(id) { shareRecording(ride) } },
-                           onUnshare: { kind in if let ride = store.anyRide(id) { unsharing = Unshare(ride: ride, kind: kind) } },
+                           onUnshare: { kind in Task { await store.unshare(kind, id) } },
                            onDelete: deleteAction(id))
             }
         }
@@ -93,51 +93,29 @@ struct HistoryScreen: View {
                 if share { Task { await store.share([ride.id], undoDeletion: true) } }
             }
         }
-        .confirmationDialog(
-            "Delete this ride from the phone?",
-            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                if let ride = deleting {
-                    path.removeAll { $0 == ride.id }
-                    store.delete(ride)
-                }
-                deleting = nil
-            }
-        } message: {
-            Text(deleting.map { ride in
-                "Its timings" + (store.recordings[ride.id] != nil ? " and recording" : "") + " are deleted from this phone."
-                    + (ride.upload == .undecided && store.recordings[ride.id] != nil ? " The recording hasn't been uploaded." : "")
-                    + " What's shared stays shared."
-            } ?? "")
-        }
-        .confirmationDialog(
-            unsharing?.kind == .recording ? "Unshare this ride's full recording?" : "Unshare this ride's Train Measurements?",
-            isPresented: Binding(get: { unsharing != nil }, set: { if !$0 { unsharing = nil } }),
-            titleVisibility: .visible, presenting: unsharing
-        ) { request in
-            Button("Unshare", role: .destructive) {
-                Task { await store.unshare(request.kind, request.ride.id) }
-                unsharing = nil
-            }
-        } message: { request in
-            switch request.kind {
-            case .measurements:
-                Text("The developers delete them within 30 days. Copies already given to researchers can't be recalled (they had your identifiers removed).")
-            case .recording:
-                Text("The developers delete it within 30 days.")
-            }
-        }
     }
 
+    /// A row, with the confirmations its swipe and long-press actions ask, shown from the row.
     private func row(_ ride: Ride) -> some View {
         NavigationLink(value: ride.id) {
             RideRow(ride: ride, recording: store.recordings[ride.id], onPhone: store.ride(ride.id) != nil,
                     measurements: store.measurementsStatus(ride),
                     recordingStatus: store.recordingStatus(ride, uploader.states[ride.id]))
+                .confirmUnshare(Binding(get: { unsharing?.ride.id == ride.id ? unsharing?.kind : nil },
+                                        set: { if $0 == nil { unsharing = nil } })) { kind in
+                    Task { await store.unshare(kind, ride.id) }
+                }
         }
         .contextMenu { actions(ride) }
+        .confirmDelete(ride, store: store,
+                       isPresented: Binding(get: { deleting?.id == ride.id }, set: { if !$0 { deleting = nil } })) {
+            delete(ride)
+        }
+    }
+
+    private func delete(_ ride: Ride) {
+        path.removeAll { $0 == ride.id }
+        store.delete(ride)
     }
 
     @ViewBuilder
@@ -151,7 +129,7 @@ struct HistoryScreen: View {
             Button { askingMeasurements = ride } label: { Label("Share Train Measurements", systemImage: "square.and.arrow.up") }
         }
         if recording.canShare {
-            Button { shareRecording(ride) } label: { Label("Share full recording", systemImage: "square.and.arrow.up") }
+            Button { shareRecording(ride) } label: { Label("Share Full Recording", systemImage: "square.and.arrow.up") }
         }
         if measurements.canUnshare {
             Button(role: .destructive) { unsharing = Unshare(ride: ride, kind: .measurements) } label: {
@@ -160,7 +138,7 @@ struct HistoryScreen: View {
         }
         if recording.canUnshare {
             Button(role: .destructive) { unsharing = Unshare(ride: ride, kind: .recording) } label: {
-                Label("Unshare full recording", systemImage: "xmark.circle")
+                Label("Unshare Full Recording", systemImage: "xmark.circle")
             }
         }
         if canDelete(ride) {
@@ -176,8 +154,8 @@ struct HistoryScreen: View {
 
     /// Why this ride can't be played back, or nil if it can.
     private func replayProblem(_ id: String) -> String? {
-        guard let recording = store.recordings[id] else { return "The recording isn't on this phone any more." }
-        if recording.duration == nil { return "The recording wasn't stopped properly, so it can't be played back." }
+        guard let recording = store.recordings[id] else { return "The Full Recording isn't on this phone any more." }
+        if recording.duration == nil { return "This ride wasn't stopped properly, so it can't be played back." }
         if !canReplay { return "Not while recording." }
         return nil
     }
@@ -187,9 +165,10 @@ struct HistoryScreen: View {
         return { onReplay(recording) }
     }
 
+    /// Deleting it from the phone, once confirmed; nil if it can't be now.
     private func deleteAction(_ id: String) -> (() -> Void)? {
         guard let ride = store.ride(id), canDelete(ride) else { return nil }
-        return { deleting = ride }
+        return { delete(ride) }
     }
 
     private func canDelete(_ ride: Ride) -> Bool {
@@ -202,7 +181,7 @@ struct HistoryScreen: View {
 
 // MARK: - what's shared
 
-/// Whether one kind of thing (Train Measurements, or the full recording) is shared.
+/// Whether one kind of thing (Train Measurements, or the Full Recording) is shared.
 enum ShareStatus: Equatable {
     case shared(since: Double?)
     case notShared(deletionRequested: Bool)
@@ -279,7 +258,7 @@ extension RideStore {
         if ride.upload == .wanted { return .waiting("Waiting to upload") }
         if recordings[ride.id] == nil {
             if ride.recordingDeletionRequested == true { return .unavailable("Deletion requested") }
-            return .unavailable(self.ride(ride.id) == nil ? "Not shared" : "Not shared; the recording isn't on this phone")
+            return .unavailable(self.ride(ride.id) == nil ? "Not shared" : "Not shared; the Full Recording isn't on this phone")
         }
         if ride.upload == .tooLarge {
             return .unavailable("Too large to share (over \(ByteCountFormatter.string(fromByteCount: AppSettings.maxUploadBytes, countStyle: .file)))")
@@ -338,7 +317,7 @@ struct RideRow: View {
     private var sharing: Text {
         let shared = [("Measurements", measurements), ("Recording", recordingStatus)].filter { $0.1.canUnshare }.map(\.0)
         var text = Text(shared.isEmpty ? "Not Shared" : "Shared: " + shared.joined(separator: ", ")).foregroundStyle(.secondary)
-        for (name, status) in [("measurements", measurements), ("recording", recordingStatus)] {
+        for (name, status) in [("Measurements", measurements), ("Recording", recordingStatus)] {
             if let (activity, color) = Self.activity(name, status) {
                 text = text + Text(" · ").foregroundStyle(.secondary) + Text(activity).foregroundStyle(color)
             }
@@ -351,7 +330,7 @@ struct RideRow: View {
         case .working(let fraction?): return ("Uploading \(name) \(Int(fraction * 100))%", .accentColor)
         case .working(nil): return ("Sharing \(name)…", .accentColor)
         case .unsharing: return ("Unsharing \(name)…", .accentColor)
-        case .waiting: return ("\(name.capitalized) waiting to share", .orange)
+        case .waiting: return ("\(name) waiting to share", .orange)
         case .failed: return ("Couldn't share \(name)", .red)
         default: return nil
         }
@@ -384,7 +363,7 @@ extension Ride {
             parts.append("not stopped properly")
         }
         if onPhone {
-            parts.append(recording.map { ByteCountFormatter.string(fromByteCount: $0.bytes, countStyle: .file) } ?? "recording not kept")
+            parts.append(recording.map { ByteCountFormatter.string(fromByteCount: $0.bytes, countStyle: .file) } ?? "Recording not kept")
         }
         return parts.joined(separator: " · ")
     }
@@ -404,8 +383,11 @@ struct RideDetail: View {
     let onReplay: () -> Void
     let onShareMeasurements: () -> Void
     let onShareRecording: () -> Void
+    /// Done once confirmed (the confirmations are asked here, from their buttons).
     let onUnshare: (RideStore.Shared) -> Void
     let onDelete: (() -> Void)?
+    @State private var confirmDelete = false
+    @State private var confirmUnshare: RideStore.Shared?
 
     var body: some View {
         if let ride = store.anyRide(id) {
@@ -431,13 +413,12 @@ struct RideDetail: View {
                         if let replayProblem { Text(replayProblem) }
                     }
                 }
-                sharing("Train Measurements", status: store.measurementsStatus(ride),
-                        onShare: onShareMeasurements, onUnshare: { onUnshare(.measurements) })
-                sharing("Full Recording", status: store.recordingStatus(ride, uploadState),
-                        onShare: onShareRecording, onUnshare: { onUnshare(.recording) })
+                sharing(.measurements, status: store.measurementsStatus(ride), onShare: onShareMeasurements)
+                sharing(.recording, status: store.recordingStatus(ride, uploadState), onShare: onShareRecording)
                 if let onDelete {
                     Section {
-                        Button("Delete from this phone", role: .destructive, action: onDelete)
+                        Button("Delete from this phone", role: .destructive) { confirmDelete = true }
+                            .confirmDelete(ride, store: store, isPresented: $confirmDelete, onDelete: onDelete)
                     }
                 }
             }
@@ -449,9 +430,8 @@ struct RideDetail: View {
         }
     }
 
-    private func sharing(_ title: String, status: ShareStatus,
-                         onShare: @escaping () -> Void, onUnshare: @escaping () -> Void) -> some View {
-        Section(title) {
+    private func sharing(_ kind: RideStore.Shared, status: ShareStatus, onShare: @escaping () -> Void) -> some View {
+        Section(kind == .measurements ? "Train Measurements" : "Full Recording") {
             HStack {
                 Label {
                     Text(status.text).foregroundStyle(status.color == .red ? .red : .primary)
@@ -471,9 +451,12 @@ struct RideDetail: View {
                         .buttonStyle(.bordered)
                         .disabled(!BackendConfig.configured)
                 } else if status.canUnshare {
-                    Button("Unshare", role: .destructive, action: onUnshare)
+                    Button("Unshare", role: .destructive) { confirmUnshare = kind }
                         .buttonStyle(.bordered)
                         .disabled(!BackendConfig.configured)
+                        .confirmUnshare(Binding(get: { confirmUnshare == kind ? kind : nil },
+                                                set: { if $0 == nil { confirmUnshare = nil } }),
+                                        onUnshare: onUnshare)
                 }
             }
         }
@@ -488,8 +471,44 @@ struct RideDetail: View {
         var parts = [ride.date?.formatted(date: .complete, time: .shortened) ?? ride.id]
         if let duration = ride.duration { parts.append(duration) }
         if onPhone {
-            parts.append(store.recordings[ride.id].map { ByteCountFormatter.string(fromByteCount: $0.bytes, countStyle: .file) } ?? "recording not kept")
+            parts.append(store.recordings[ride.id].map { ByteCountFormatter.string(fromByteCount: $0.bytes, countStyle: .file) } ?? "Full Recording not kept")
         }
         return parts.joined(separator: " · ")
+    }
+}
+
+// MARK: - confirmations
+
+/// The questions asked before deleting a ride from the phone, or unsharing part of it. A
+/// modifier, so each is attached to (and shown from) what was tapped.
+extension View {
+    func confirmDelete(_ ride: Ride, store: RideStore, isPresented: Binding<Bool>,
+                       onDelete: @escaping () -> Void) -> some View {
+        let recording = store.recordings[ride.id] != nil
+        return confirmationDialog("Delete this ride from the phone?", isPresented: isPresented, titleVisibility: .visible) {
+            Button("Delete", role: .destructive, action: onDelete)
+        } message: {
+            Text("Deletes its Train Measurements" + (recording ? " and Full Recording" : "") + " from this phone. "
+                 + (recording && ride.upload == .undecided ? "Its Full Recording hasn't been shared. " : "")
+                 + "What's shared stays in the cloud.")
+        }
+    }
+
+    /// `kind`: what's being asked about; nil when not asking.
+    func confirmUnshare(_ kind: Binding<RideStore.Shared?>, onUnshare: @escaping (RideStore.Shared) -> Void) -> some View {
+        confirmationDialog(
+            kind.wrappedValue == .recording ? "Unshare this ride's Full Recording?" : "Unshare this ride's Train Measurements?",
+            isPresented: Binding(get: { kind.wrappedValue != nil }, set: { if !$0 { kind.wrappedValue = nil } }),
+            titleVisibility: .visible, presenting: kind.wrappedValue
+        ) { kind in
+            Button("Unshare", role: .destructive) { onUnshare(kind) }
+        } message: { kind in
+            switch kind {
+            case .measurements:
+                Text("Deletes this ride's Train Measurements from the cloud. Train Measurements on your phone stay on your phone.")
+            case .recording:
+                Text("Deletes this ride's Full Recording from the cloud. Full Recordings on your phone stay on your phone.")
+            }
+        }
     }
 }

@@ -67,6 +67,18 @@ struct SettingsScreen: View {
                     ) {
                         ForEach(KeepRecordings.allCases) { Text($0.label).tag($0) }
                     }
+                    .confirmationDialog(
+                        "Delete \(pendingKeep?.deletes ?? 0) Full Recording\(pendingKeep?.deletes == 1 ? "" : "s") from this phone now?",
+                        isPresented: Binding(get: { pendingKeep != nil }, set: { if !$0 { pendingKeep = nil } }),
+                        titleVisibility: .visible
+                    ) {
+                        Button("Delete", role: .destructive) {
+                            if let pending = pendingKeep { apply(pending.setting) }
+                            pendingKeep = nil
+                        }
+                    } message: {
+                        Text("Only ones that are shared, or that you chose not to share. Their Train Measurements stay.")
+                    }
                 }
                 Section("Account") {
                     NavigationLink {
@@ -87,18 +99,6 @@ struct SettingsScreen: View {
             .navigationDestination(isPresented: $showingAccount) { AccountScreen(store: store) }
         }
         .sheet(item: $info) { $0 }
-        .confirmationDialog(
-            "Delete \(pendingKeep?.deletes ?? 0) recording\(pendingKeep?.deletes == 1 ? "" : "s") from this phone now?",
-            isPresented: Binding(get: { pendingKeep != nil }, set: { if !$0 { pendingKeep = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                if let pending = pendingKeep { apply(pending.setting) }
-                pendingKeep = nil
-            }
-        } message: {
-            Text("They're shared, or you chose not to share them. Their Train Measurements stay.")
-        }
     }
 
     /// "Share", with a ? that shows what's shared (like the question that asks), and the
@@ -155,43 +155,44 @@ struct DeleteSharedScreen: View {
     var body: some View {
         Form {
             Section {
-                Text("Asks the developers to delete everything shared from this phone, and everything linked to your account. They do it within 30 days. Nothing is deleted from this phone.\n\nTo unshare just one ride, open it in History.")
+                Text("Delete everything shared from this phone, and linked to your account. To delete just one ride, open it in History.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             Section {
                 Button("Delete all shared Train Measurements", role: .destructive) { confirmDeleteMeasurements = true }
                     .disabled(store.sharing || !BackendConfig.configured)
+                    .confirmationDialog("Delete all shared Train Measurements?", isPresented: $confirmDeleteMeasurements,
+                                        titleVisibility: .visible) {
+                        Button("Delete", role: .destructive) {
+                            Task {
+                                if let n = await store.deleteShared() {
+                                    deleteMeasurementsMessage = n == 0 ? "Nothing was shared."
+                                        : "\(n) ride\(n == 1 ? "'s" : "s'") Train Measurements will be deleted within 30 days."
+                                }
+                            }
+                        }
+                    } message: {
+                        Text("Deletes all your shared Train Measurements from the cloud. Train Measurements on your phone stay on your phone.")
+                    }
             } footer: {
                 if let message = deleteMeasurementsMessage ?? store.shareMessage { Text(message) }
             }
             Section {
                 Button("Delete all shared Full Recordings", role: .destructive) { confirmDeleteUploads = true }
                     .disabled(working || !BackendConfig.configured)
+                    .confirmationDialog("Delete all shared Full Recordings?", isPresented: $confirmDeleteUploads,
+                                        titleVisibility: .visible) {
+                        Button("Delete", role: .destructive) { Task { await requestDeletion() } }
+                    } message: {
+                        Text("Deletes all your shared Full Recordings from the cloud. Full Recordings on your phone stay on your phone.")
+                    }
             } footer: {
                 if let deleteUploadsMessage { Text(deleteUploadsMessage) }
             }
         }
         .navigationTitle("Delete Shared Data")
         .navigationBarTitleDisplayMode(.inline)
-        .confirmationDialog("Delete all your shared Train Measurements?", isPresented: $confirmDeleteMeasurements,
-                            titleVisibility: .visible) {
-            Button("Delete", role: .destructive) {
-                Task {
-                    if let n = await store.deleteShared() {
-                        deleteMeasurementsMessage = n == 0 ? "Nothing was shared."
-                            : "\(n) ride\(n == 1 ? "'s" : "s'") Train Measurements will be deleted within 30 days."
-                    }
-                }
-            }
-        } message: {
-            Text("The developers delete them within 30 days. They stay on this phone.")
-        }
-        .confirmationDialog("Delete all your shared Full Recordings?", isPresented: $confirmDeleteUploads, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { Task { await requestDeletion() } }
-        } message: {
-            Text("The developers delete them within 30 days. They stay on this phone.")
-        }
     }
 
     private func requestDeletion() async {
@@ -202,7 +203,7 @@ struct DeleteSharedScreen: View {
             let n = body["requested"] as? Int ?? 0
             deleteUploadsMessage = n == 0
                 ? "Nothing was shared."
-                : "\(n) shared recording\(n == 1 ? "" : "s") will be deleted within 30 days."
+                : "\(n) shared Full Recording\(n == 1 ? "" : "s") will be deleted within 30 days."
             await store.syncSharing()  // History shows them as not shared
         } catch {
             deleteUploadsMessage = "Couldn't delete: \(error.localizedDescription)"
@@ -322,17 +323,17 @@ struct AccountScreen: View {
         }
         Section {
             Button("Delete account", role: .destructive) { confirmDeleteAccount = true }
-        }
-        .confirmationDialog("Delete your account?", isPresented: $confirmDeleteAccount, titleVisibility: .visible) {
-            Button("Delete account", role: .destructive) {
-                if user.provider == "apple.com" {
-                    appleDeletion = true
-                } else {
-                    Task { if await account.deleteAccount() { await store.syncSharing() } }
+                .confirmationDialog("Delete your account?", isPresented: $confirmDeleteAccount, titleVisibility: .visible) {
+                    Button("Delete account", role: .destructive) {
+                        if user.provider == "apple.com" {
+                            appleDeletion = true
+                        } else {
+                            Task { if await account.deleteAccount() { await store.syncSharing() } }
+                        }
+                    }
+                } message: {
+                    Text("Deletes your account, and its Train Measurements and Full Recordings from the cloud. Everything on your phone stays on your phone. This can't be undone.")
                 }
-            }
-        } message: {
-            Text("Its Train Measurements and full recordings are deleted within 30 days. Everything on this phone stays. This can't be undone.")
         }
         .sheet(isPresented: $appleDeletion) {
             VStack(spacing: 20) {

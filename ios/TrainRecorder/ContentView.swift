@@ -97,7 +97,7 @@ struct ContentView: View {
     private static func describe(_ found: Unlinked) -> String {
         var parts: [String] = []
         if found.measurements > 0 { parts.append(found.measurements == 1 ? "1 ride's Train Measurements" : "\(found.measurements) rides' Train Measurements") }
-        if found.uploads > 0 { parts.append(found.uploads == 1 ? "1 full recording" : "\(found.uploads) full recordings") }
+        if found.uploads > 0 { parts.append(found.uploads == 1 ? "1 Full Recording" : "\(found.uploads) Full Recordings") }
         return parts.joined(separator: " and ")
     }
 

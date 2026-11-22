@@ -54,7 +54,7 @@ struct SharingInfoSheet: View, Identifiable {
             ConsentSheet(title: "Sharing Train Measurements", subtitle: SharingInfo.measurementsPurpose,
                          rows: SharingInfo.measurementsRows, choices: [.init("OK", primary: true) { dismiss() }])
         case .recordings:
-            ConsentSheet(title: "Sharing full recordings", subtitle: SharingInfo.recordingPurpose,
+            ConsentSheet(title: "Sharing Full Recordings", subtitle: SharingInfo.recordingPurpose,
                          rows: SharingInfo.recordingRows, choices: [.init("OK", primary: true) { dismiss() }])
         }
     }
@@ -66,7 +66,7 @@ struct UploadConsentSheet: View {
 
     var body: some View {
         ConsentSheet(
-            title: "Share full recording?",
+            title: "Share Full Recording?",
             subtitle: SharingInfo.recordingPurpose + " · " + ByteCountFormatter.string(fromByteCount: request.bytes, countStyle: .file),
             rows: SharingInfo.recordingRows + [SharingInfo.deleteRow],
             choices: [
