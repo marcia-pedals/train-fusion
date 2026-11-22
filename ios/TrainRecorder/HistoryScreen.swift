@@ -3,8 +3,8 @@ import SwiftUI
 /// The rides on the phone, newest first, then the rides that aren't on the phone any more
 /// but still have something shared (`RideStore.elsewhere`), to unshare one by one. Each
 /// row: the ride, its date, length and size, and whether its Train Measurements and full
-/// recording are shared. Tap a row for the ride (play back, share or
-/// unshare either, delete); long-press for the same actions.
+/// recording are shared. Tap a row for the ride (play back, share or unshare either,
+/// delete).
 ///
 /// What's shared is kept on the phone and brought up to date with the server when History
 /// appears, when it's pulled down, and when the app comes to the front
@@ -18,17 +18,10 @@ struct HistoryScreen: View {
     /// Upload this ride's recording: asks first.
     let onUpload: (Ride) -> Void
     @State private var path: [String] = []  // ride ids
-    @State private var deleting: Ride?
     @State private var askingMeasurements: Ride?
-    @State private var unsharing: Unshare?
     @State private var onPhoneExpanded = true
     @State private var elsewhereExpanded = ProcessInfo.processInfo.arguments.contains("-elsewhere")  // for screenshots
     private let uploader = Uploader.shared
-
-    struct Unshare {
-        let ride: Ride
-        let kind: RideStore.Shared
-    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -73,9 +66,9 @@ struct HistoryScreen: View {
             }
         }
         .task { await store.syncSharing() }
-        .onAppear {  // for screenshots: -ride opens the newest ride, -elsewhere the newest not on the phone
+        .onAppear {  // for screenshots: -openride opens the newest ride, -elsewhere the newest not on the phone
             let args = ProcessInfo.processInfo.arguments
-            if args.contains("-ride"), path.isEmpty, let ride = store.rides.first { path = [ride.id] }
+            if args.contains("-openride"), path.isEmpty, let ride = store.rides.first { path = [ride.id] }
             if args.contains("-elsewhere"), path.isEmpty, let ride = store.elsewhere.first { path = [ride.id] }
         }
         // a ride that's gone (deleted, or nothing of it shared any more): back to the list
@@ -88,21 +81,11 @@ struct HistoryScreen: View {
         }
     }
 
-    /// A row, with the confirmations its long-press actions ask, shown from the row.
     private func row(_ ride: Ride) -> some View {
         NavigationLink(value: ride.id) {
             RideRow(ride: ride, recording: store.recordings[ride.id],
                     measurements: store.measurementsStatus(ride),
                     recordingStatus: store.recordingStatus(ride, uploader.states[ride.id]))
-                .confirmUnshare(Binding(get: { unsharing?.ride.id == ride.id ? unsharing?.kind : nil },
-                                        set: { if $0 == nil { unsharing = nil } })) { kind in
-                    Task { await store.unshare(kind, ride.id) }
-                }
-        }
-        .contextMenu { actions(ride) }
-        .confirmDelete(ride, store: store,
-                       isPresented: Binding(get: { deleting?.id == ride.id }, set: { if !$0 { deleting = nil } })) {
-            delete(ride)
         }
     }
 
@@ -111,34 +94,6 @@ struct HistoryScreen: View {
         path.removeAll { $0 == ride.id }
         store.delete(ride)
         Task { await store.syncSharing() }
-    }
-
-    @ViewBuilder
-    private func actions(_ ride: Ride) -> some View {
-        if let play = replay(ride) {
-            Button(action: play) { Label("Play back", systemImage: "play") }
-        }
-        let measurements = store.measurementsStatus(ride)
-        let recording = store.recordingStatus(ride, uploader.states[ride.id])
-        if measurements.canShare {
-            Button { askingMeasurements = ride } label: { Label("Share Train Measurements", systemImage: "square.and.arrow.up") }
-        }
-        if recording.canShare {
-            Button { shareRecording(ride) } label: { Label("Share Full Recording", systemImage: "square.and.arrow.up") }
-        }
-        if measurements.canUnshare {
-            Button(role: .destructive) { unsharing = Unshare(ride: ride, kind: .measurements) } label: {
-                Label("Unshare Train Measurements", systemImage: "xmark.circle")
-            }
-        }
-        if recording.canUnshare {
-            Button(role: .destructive) { unsharing = Unshare(ride: ride, kind: .recording) } label: {
-                Label("Unshare Full Recording", systemImage: "xmark.circle")
-            }
-        }
-        if canDelete(ride) {
-            Button(role: .destructive) { deleting = ride } label: { Label("Delete from phone", systemImage: "trash") }
-        }
     }
 
     private func shareRecording(_ ride: Ride) {
@@ -153,11 +108,6 @@ struct HistoryScreen: View {
         if recording.duration == nil { return "This ride wasn't stopped properly, so it can't be played back." }
         if !canReplay { return "Not while recording." }
         return nil
-    }
-
-    private func replay(_ ride: Ride) -> (() -> Void)? {
-        guard replayProblem(ride.id) == nil, let recording = store.recordings[ride.id] else { return nil }
-        return { onReplay(recording) }
     }
 
     /// Deleting it from the phone, once confirmed; nil if it can't be now.
@@ -494,7 +444,7 @@ struct RideDetail: View {
 // MARK: - confirmations
 
 /// The questions asked before deleting a ride from the phone, or unsharing part of it. A
-/// modifier, so each is attached to (and shown from) what was tapped.
+/// modifier, so each is attached to (and shown from) the button that asks.
 extension View {
     func confirmDelete(_ ride: Ride, store: RideStore, isPresented: Binding<Bool>,
                        onDelete: @escaping () -> Void) -> some View {

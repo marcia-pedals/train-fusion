@@ -145,8 +145,9 @@ struct ContentView: View {
     }
 }
 
-/// A thin header (record controls, or replay controls when a recording is being
-/// replayed) over the model's beliefs.
+/// A thin header (the record button, with "Recording" and the time while recording; or
+/// replay controls when a recording is being played back) over the model's beliefs, or,
+/// with nothing going on, a word on how to start.
 private struct TrackScreen: View {
     let recorder: Recorder
     let replay: ReplayPlayer
@@ -161,49 +162,79 @@ private struct TrackScreen: View {
             }
             .padding(.horizontal)
             Divider()
-            ScrollView {
-                VStack(spacing: 12) {
-                    if replay.recording != nil {
-                        BeliefView(belief: replay.store.belief, start: replay.recording?.started,
-                                   message: replay.store.message, waiting: "Loading the recording…")
-                    } else if recorder.isRecording {
-                        BeliefView(belief: recorder.inference.belief, start: recorder.startedAt,
-                                   message: recorder.inference.message, waiting: "Listening…")
-                        if let problem = recorder.live.audio.error {
-                            Text(problem).font(.footnote).foregroundStyle(.red)
+            if replay.recording == nil, !recorder.isRecording {
+                idle
+            } else {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        if replay.recording != nil {
+                            BeliefView(belief: replay.store.belief, start: replay.recording?.started,
+                                       message: replay.store.message, waiting: "Loading the recording…")
+                        } else {
+                            trainRow
+                            BeliefView(belief: recorder.inference.belief, start: recorder.startedAt,
+                                       message: recorder.inference.message, waiting: "Listening…")
+                            if let problem = recorder.live.audio.error {
+                                Text(problem).font(.footnote).foregroundStyle(.red)
+                            }
                         }
-                    } else {
-                        Text(recorder.starting ? "Starting…" : recorder.busy ? "Saving…" : "Tap the red button to start measuring a ride.\nOr play back an earlier one from History.")
-                            .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                            .padding(.top, 40)
+                        if let error = recorder.error {
+                            Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center)
+                        }
                     }
-                    if let error = recorder.error {
-                        Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center)
-                    }
+                    .padding()
+                    .padding(.bottom, 40)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding()
-                .padding(.bottom, 40)
-                .frame(maxWidth: .infinity)
             }
         }
     }
 
-    private var recordHeader: some View {
-        ZStack {
-            // in the middle whatever is on either side: the train this is, tap to edit
-            Button { editingRide = true } label: {
+    /// Nothing recording or playing: in the middle of the screen, how to start.
+    private var idle: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "tram")
+                .font(.system(size: 64, weight: .light))
+                .foregroundStyle(.tertiary)
+            Text(recorder.starting ? "Starting…" : recorder.busy ? "Saving…" : "Tap the red button to start.")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+            if let error = recorder.error {
+                Text(error).font(.footnote).foregroundStyle(.red)
+            }
+        }
+        .multilineTextAlignment(.center)
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The first row while recording: the train this is (typed in), tap to enter or edit.
+    private var trainRow: some View {
+        Button { editingRide = true } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "tram").foregroundStyle(.secondary)
                 if let ride = recorder.ride {
                     Text("Trip \(String(ride.trip)) · Car \(String(ride.car))" + (ride.position == .unspecified ? "" : " · \(ride.position.rawValue)"))
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(Color.secondary)  // grey, not the button tint: quiet once it's filled in
+                        .monospacedDigit()
+                        .foregroundStyle(.primary)
                 } else {
-                    Text("Enter trip and car number").font(.subheadline)
+                    Text("Enter trip and car number")
                 }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
             }
+            .font(.subheadline)
             .lineLimit(1).minimumScaleFactor(0.7)
-            .padding(.horizontal, 62)  // clear of the timer and the record button
-            recordControls
+            .padding(.horizontal, 12).padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
         }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.accentColor)
+    }
+
+    private var recordHeader: some View {
+        recordControls
         .sheet(isPresented: $editingRide) {
             RideSheet(ride: recorder.ride) { recorder.setRide($0) }
         }
@@ -237,9 +268,11 @@ private struct TrackScreen: View {
     }
 
     private var recordControls: some View {
-        HStack(spacing: 12) {
-            if let started = recorder.startedAt {
-                Text(started, style: .timer).font(.title3.monospacedDigit())
+        HStack(spacing: 8) {
+            if recorder.isRecording, let started = recorder.startedAt {
+                Circle().fill(.red).frame(width: 8, height: 8)
+                Text("Recording").font(.subheadline.weight(.medium))
+                Text(started, style: .timer).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
             }
             Spacer()
             Button {

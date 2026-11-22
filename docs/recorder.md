@@ -22,10 +22,12 @@ made since uploads went through the backend; plain `<id>` for older ones.
 Three, behind a tab bar:
 
 - **Measure**: what the model believes right now (next section), under a thin header.
-  Normally the header has the elapsed time, in the middle the train ("Enter trip and car
-  number"; tap for a sheet with trip number, car number and upper / lower / vestibule,
-  whose Save refuses numbers that can't be right; tap again to edit or clear; it goes into
-  `meta.json` and the model doesn't use it) and, on the right, the record button. When a recording is being
+  With nothing going on, the header is just the record button, and the middle of the
+  screen says "Tap the red button to start." While recording, the header has "Recording"
+  and the elapsed time beside the (stop) button, and the first row is the train ("Enter
+  trip and car number"; tap for a sheet with trip number, car number and upper / lower /
+  vestibule, whose Save refuses numbers that can't be right; tap again to edit or clear;
+  it goes into `meta.json` and the model doesn't use it). When a recording is being
   replayed it has two lines: a progress bar with elapsed / total time and which recording
   it is; and previous stop, play / pause, next stop and the replay speed (1× to 64×, or as
   fast as it goes). "Stop" means a door opening the model heard; with none left in that
@@ -73,7 +75,7 @@ Three, behind a tab bar:
   Train Measurements and Full Recording with its state in words and Share (asking first, as
   in [accounts-and-uploads.md](accounts-and-uploads.md)) or Unshare (confirmed first; asks
   for that ride's to be deleted). A ride
-  that's only shared offers just Unshare. A long press offers the same actions. Deleting
+  that's only shared offers just Unshare. Deleting
   from the phone brings what's shared up to date at once, so the ride shows under "Shared,
   not on this phone" if anything of it is shared. Replay (not while recording) plays a finished recording back through the
   model, to watch the beliefs without being on a train.
