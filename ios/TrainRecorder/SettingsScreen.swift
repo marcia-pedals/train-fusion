@@ -27,13 +27,8 @@ struct SettingsScreen: View {
     @State private var info: SharingInfoSheet?
     /// For screenshots from the command line: -account opens the account screen.
     @State private var showingAccount = ProcessInfo.processInfo.arguments.contains("-account")
-    @State private var confirmDeleteMeasurements = false
-    @State private var deleteMeasurementsMessage: String?
     /// A "keep" setting that deletes recordings now, waiting to be confirmed.
     @State private var pendingKeep: (setting: KeepRecordings, deletes: Int)?
-    @State private var confirmDeleteUploads = false
-    @State private var deleteUploadsMessage: String?
-    @State private var working = false
     private let account = Account.shared
 
     var body: some View {
@@ -54,22 +49,16 @@ struct SettingsScreen: View {
                             askedShare = new != .ask
                         }),
                         options: MeasurementSharing.allCases.map { ($0, $0.label) })
-                    Button("Delete shared measurements", role: .destructive) { confirmDeleteMeasurements = true }
-                        .disabled(store.sharing || !BackendConfig.configured)
                 } header: {
                     Text("Train Measurements")
                 } footer: {
-                    if let message = deleteMeasurementsMessage ?? store.shareMessage { Text(message) }
+                    if let message = store.shareMessage { Text(message) }
                 }
                 Section {
                     shareRow(.recordings, selection: $askToUpload,
                              options: [(true, "Ask each ride"), (false, "Don't ask")])
-                    Button("Delete shared recordings", role: .destructive) { confirmDeleteUploads = true }
-                        .disabled(working || !BackendConfig.configured)
                 } header: {
                     Text("Full Recordings")
-                } footer: {
-                    if let deleteUploadsMessage { Text(deleteUploadsMessage) }
                 }
                 Section {
                     Picker("On this phone", selection: Binding(
@@ -89,6 +78,10 @@ struct SettingsScreen: View {
                 if let policy = BackendConfig.privacyPolicy {
                     Section { Link("Privacy policy", destination: policy) }
                 }
+                // out of the way, a screen of its own, so it isn't tapped by accident
+                Section {
+                    NavigationLink("Delete Shared Data") { DeleteSharedScreen(store: store) }
+                }
             }
             .navigationTitle("Settings")
             .navigationDestination(isPresented: $showingAccount) { AccountScreen(store: store) }
@@ -105,24 +98,6 @@ struct SettingsScreen: View {
             }
         } message: {
             Text("They're shared, or you chose not to share them. Their Train Measurements stay.")
-        }
-        .confirmationDialog("Delete your shared Train Measurements?", isPresented: $confirmDeleteMeasurements,
-                            titleVisibility: .visible) {
-            Button("Delete", role: .destructive) {
-                Task {
-                    if let n = await store.deleteShared() {
-                        deleteMeasurementsMessage = n == 0 ? "Nothing was shared."
-                            : "\(n) ride\(n == 1 ? "'s" : "s'") Train Measurements will be deleted within 30 days."
-                    }
-                }
-            }
-        } message: {
-            Text("The developers delete them within 30 days. They stay on this phone.")
-        }
-        .confirmationDialog("Delete your shared recordings?", isPresented: $confirmDeleteUploads, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { Task { await requestDeletion() } }
-        } message: {
-            Text("The developers delete them within 30 days. They stay on this phone.")
         }
     }
 
@@ -163,6 +138,60 @@ struct SettingsScreen: View {
     private func apply(_ setting: KeepRecordings) {
         keep = setting.rawValue
         store.prune(protecting: protecting)
+    }
+}
+
+/// Asking for everything shared to be deleted: all Train Measurements, all recordings.
+/// Behind its own row at the bottom of Settings so it isn't tapped by accident (one ride's
+/// can be unshared from History).
+struct DeleteSharedScreen: View {
+    let store: RideStore
+    @State private var confirmDeleteMeasurements = false
+    @State private var deleteMeasurementsMessage: String?
+    @State private var confirmDeleteUploads = false
+    @State private var deleteUploadsMessage: String?
+    @State private var working = false
+
+    var body: some View {
+        Form {
+            Section {
+                Text("Asks the developers to delete everything shared from this phone, and everything linked to your account. They do it within 30 days. Nothing is deleted from this phone.\n\nTo unshare just one ride, open it in History.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                Button("Delete all shared Train Measurements", role: .destructive) { confirmDeleteMeasurements = true }
+                    .disabled(store.sharing || !BackendConfig.configured)
+            } footer: {
+                if let message = deleteMeasurementsMessage ?? store.shareMessage { Text(message) }
+            }
+            Section {
+                Button("Delete all shared Full Recordings", role: .destructive) { confirmDeleteUploads = true }
+                    .disabled(working || !BackendConfig.configured)
+            } footer: {
+                if let deleteUploadsMessage { Text(deleteUploadsMessage) }
+            }
+        }
+        .navigationTitle("Delete Shared Data")
+        .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog("Delete all your shared Train Measurements?", isPresented: $confirmDeleteMeasurements,
+                            titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                Task {
+                    if let n = await store.deleteShared() {
+                        deleteMeasurementsMessage = n == 0 ? "Nothing was shared."
+                            : "\(n) ride\(n == 1 ? "'s" : "s'") Train Measurements will be deleted within 30 days."
+                    }
+                }
+            }
+        } message: {
+            Text("The developers delete them within 30 days. They stay on this phone.")
+        }
+        .confirmationDialog("Delete all your shared Full Recordings?", isPresented: $confirmDeleteUploads, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { Task { await requestDeletion() } }
+        } message: {
+            Text("The developers delete them within 30 days. They stay on this phone.")
+        }
     }
 
     private func requestDeletion() async {

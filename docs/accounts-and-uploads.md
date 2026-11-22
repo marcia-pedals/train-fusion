@@ -88,7 +88,9 @@ the bucket without limit; anyone with a build could extract it.)
     (the default: the question above) / **Always share** / **Don't ask** (nothing shared). The question's answers set it the same way. With Always share, each ride's
     measurements are shared when its recording stops (retried when the app is next opened
     if there's no network). Rides recorded while it wasn't on aren't shared later.
-  - **Delete shared measurements** (confirmed first): marks every ride's measurements
+- Settings, **Delete Shared Data** (the last row, a screen of its own so it isn't tapped
+  by accident):
+  - **Delete all shared Train Measurements** (confirmed first): marks every ride's measurements
     shared from this phone, and every one linked to the signed-in account, for deletion;
     the developer deletes them by hand within 30 days, as with recordings. They stay on the
     phone. A ride whose measurements are waiting to be deleted isn't shared again
@@ -167,7 +169,7 @@ accounts can be spotted and blocked by hand.
 
 ### Asking for uploads to be deleted
 
-- Settings has **Delete shared recordings** (confirmed first): it marks every recording uploaded
+- Settings, Delete Shared Data, has **Delete all shared Full Recordings** (confirmed first): it marks every recording uploaded
   from this phone, and every one linked to the signed-in account, for deletion. As with
   account deletion, the developer deletes them by hand, within 30 days.
 - History can do the same for one ride's recording (**Unshare**, confirmed first), also for

@@ -55,10 +55,12 @@ Three, behind a tab bar:
 
   Every probability is still there under "Details".
 - **Settings**: miles and mph, or kilometres and km/h; Train Measurements (share
-  automatically; delete what's shared); full recordings (how many to keep on the phone;
-  whether to ask about uploading after each ride; deleting shared recordings, done by
-  hand within 30 days); the account (sign in with Apple, Google or an email link; sign
-  out; delete account); the privacy policy.
+  automatically or not); full recordings (whether to ask about uploading after each ride;
+  how many to keep on the phone); the account (sign in with Apple, Google or an email
+  link; sign out; delete account); the privacy policy; and last, out of the way so it isn't
+  tapped by accident, **Delete Shared Data**: a screen with "Delete all shared Train
+  Measurements" and "Delete all shared Full Recordings" (each confirmed; done by hand
+  within 30 days).
 - **History**: the rides on the phone (`Application Support/rides.json`; a ride outlives its
   recording), then, under "Shared, not on this phone", rides deleted from the phone that
   still have something shared. When there are both, each is a section that folds away
