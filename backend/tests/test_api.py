@@ -208,12 +208,48 @@ def test_measurements_without_an_account(env):
     # asking again finds nothing new
     assert env.client.post("/v1/measurements/deletion-request", headers=env.headers(device=DEVICE)).json() == {"requested": 0}
     assert len(env.docs.query("deletion_requests")) == 1
+    # just one ride's
+    assert put(env, rec="20300101T140000Z").status_code == 201
+    assert put(env, rec="20300101T150000Z").status_code == 201
+    r = env.client.post("/v1/measurements/deletion-request?ride_id=20300101T140000Z", headers=env.headers(device=DEVICE))
+    assert r.json() == {"requested": 1}
+    found = {m["id"]: m["deletion_requested"] for m in
+             env.client.get("/v1/measurements", headers=env.headers(device=DEVICE)).json()["measurements"]}
+    assert found["20300101T140000Z"] and not found["20300101T150000Z"]
+    assert len(env.docs.query("deletion_requests")) == 2
     # a marked one can't be shared again (it's waiting to be deleted)
     r = put(env)
     assert r.status_code == 409 and r.json()["error"] == "deletion_pending"
     # the other phone's is untouched
     other = env.client.get("/v1/measurements", headers=env.headers(device=OTHER_DEVICE)).json()["measurements"]
     assert [m["deletion_requested"] for m in other] == [False]
+
+
+def test_sharing_again_undoes_a_deletion_request(env):
+    env.register("u1")
+    assert put(env, uid="u1").status_code == 201
+    assert put(env, uid="u1", rec=REC2).status_code == 201
+    env.client.delete("/v1/account", headers=env.headers("u1"))  # marks both
+    [(_, req)] = env.docs.query("deletion_requests")
+    # asked for explicitly, signed out: unmarked, no longer linked to the deleted account, not counted
+    r = env.client.put(f"/v1/measurements/{REC}?undo_deletion=true", headers=env.headers(device=DEVICE),
+                       json=MEASUREMENT)
+    assert r.status_code == 200
+    found = {m["id"]: m for m in env.client.get("/v1/measurements", headers=env.headers(device=DEVICE)).json()["measurements"]}
+    assert found[REC]["deletion_requested"] is False and found[REC]["linked"] is False
+    assert found[REC2]["deletion_requested"] is True
+    assert env.docs.get(f"counters/anon-measurements-{env.clock.t:%Y-%m-%d}") is None
+    # the request still lists it (deleting skips what's no longer marked)
+    [(_, again)] = env.docs.query("deletion_requests")
+    assert again["measurement_ids"] == req["measurement_ids"]
+    # without asking, a marked one is still refused
+    assert put(env, rec=REC2).status_code == 409
+    # undo on one that isn't marked is an ordinary share
+    env.register("u2")
+    r = env.client.put(f"/v1/measurements/{REC}?undo_deletion=true", headers=env.headers("u2", DEVICE),
+                       json=MEASUREMENT)
+    assert r.status_code == 200
+    assert env.client.get("/v1/measurements", headers=env.headers("u2")).json()["measurements"][0]["linked"] is True
 
 
 def test_measurements_with_an_account(env):
@@ -504,6 +540,22 @@ def test_deletion_request(env):
     # by device alone
     r = env.client.post("/v1/uploads/deletion-request", headers=env.headers(device="f" * 40))
     assert r.json() == {"requested": 1}
+
+
+def test_deletion_request_for_one_recording(env):
+    a = start(env).json()["upload_id"]
+    put_objects(env, a)
+    env.client.post(f"/v1/uploads/{a}/complete", headers=env.headers(device=DEVICE))
+    again = start(env).json()["upload_id"]  # complete ones aren't reused: a second upload
+    other = start(env, rec=REC2).json()["upload_id"]
+    r = env.client.post(f"/v1/uploads/deletion-request?recording_id={REC}", headers=env.headers(device=DEVICE))
+    assert r.json() == {"requested": 2}
+    [(_, req)] = env.docs.query("deletion_requests")
+    assert sorted(req["upload_ids"]) == sorted([a, again])
+    assert env.docs.get(f"uploads/{other}")["deletion_requested_at"] is None
+    # someone else's recording, or one there isn't: nothing
+    assert env.client.post(f"/v1/uploads/deletion-request?recording_id={REC2}",
+                           headers=env.headers(device=OTHER_DEVICE)).json() == {"requested": 0}
 
 
 # ------------------------------------------------------------------ pages

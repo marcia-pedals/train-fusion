@@ -60,13 +60,26 @@ Three, behind a tab bar:
   hand within 30 days); the account (sign in with Apple, Google or an email link; sign
   out; delete account); the privacy policy.
 - **History**: the rides on the phone (`Application Support/rides.json`; a ride outlives its
-  recording), each with upload and replay while its recording is still here; swipe a row
-  left to delete it from the phone. A row is
-  titled by where the model heard the ride start and end ("Millbrae → San Jose Diridon";
-  "Unknown trip" if it named no stop), then the date, length and size (or "recording not
-  kept"), whether it's uploaded and its measurements shared, then the trip and car if they were typed in. Replay
-  (not offered while recording) plays a finished recording back through the model, to watch
-  the beliefs without being on a train.
+  recording), then, under "Shared, not on this phone", rides deleted from the phone that
+  still have something shared. A row is titled by where the model heard the ride start and
+  end ("Millbrae → San Jose Diridon"; "Unknown trip" if it named no stop), then the date,
+  length and size (or "recording not kept"), then a share icon each for its Train
+  Measurements and its full recording: green shared, grey not, faint grey can't be (too
+  large, or not on the phone), blue sharing (with the upload's progress), orange waiting,
+  red failed. Tapping a row opens the ride: the same, the trip and car if they were typed
+  in, Play back (or why not), each kind of sharing with its state in words and Share
+  (asking first, as in [accounts-and-uploads.md](accounts-and-uploads.md)) or Unshare
+  (confirmed first; asks for that ride's to be deleted), and Delete from this phone. A ride
+  that's only shared offers just Unshare. A long press offers the same actions; swiping
+  left deletes. Replay (not while recording) plays a finished recording back through the
+  model, to watch the beliefs without being on a train.
+
+  What's shared is kept on the phone (rides.json; the rides not on the phone in
+  `shared-elsewhere.json`, made from the server's copy of their measurements) and brought
+  up to date from the server (`GET /v1/measurements`, `GET /v1/uploads`, with the device
+  secret and the account if signed in) when History appears, when it's pulled down and
+  when the app comes to the front. Anything marked for deletion shows as not shared;
+  sharing it again undoes that.
 
 ## Online inference (experimental)
 

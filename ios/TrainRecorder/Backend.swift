@@ -44,12 +44,14 @@ enum API {
     enum Auth { case none, required, ifSignedIn }
 
     @discardableResult
-    static func call(_ method: String, _ path: String, json: Any? = nil,
+    static func call(_ method: String, _ path: String, query: [String: String] = [:], json: Any? = nil,
                      auth: Auth = .none, device: Bool = false) async throws -> [String: Any] {
         guard let base = BackendConfig.baseURL else {
             throw APIError(status: 0, code: "not_configured", message: BackendConfig.notConfigured)
         }
-        var request = URLRequest(url: base.appendingPathComponent(path))
+        var url = base.appendingPathComponent(path)
+        if !query.isEmpty { url.append(queryItems: query.map { URLQueryItem(name: $0.key, value: $0.value) }) }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = 30
         if let json {

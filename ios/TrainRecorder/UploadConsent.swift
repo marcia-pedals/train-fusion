@@ -100,7 +100,24 @@ struct MeasurementsConsentSheet: View {
     }
 }
 
-/// The layout both questions share: a title and what it's for, a few icon lines, then the
+/// Sharing one ride's Train Measurements, from History: Share / Don't share. Leaves the
+/// setting as it is.
+struct RideMeasurementsConsentSheet: View {
+    let share: (Bool) -> Void
+
+    var body: some View {
+        ConsentSheet(
+            title: "Share Train Measurements?",
+            subtitle: SharingInfo.measurementsPurpose + " · this ride",
+            rows: SharingInfo.measurementsRows + [SharingInfo.deleteRow],
+            choices: [
+                .init("Share", primary: true) { share(true) },
+                .init("Don't share") { share(false) },
+            ])
+    }
+}
+
+/// The layout the questions share: a title and what it's for, a few icon lines, then the
 /// answers as full-width buttons, one per row. Sized to its content.
 struct ConsentSheet: View {
     struct Row: Identifiable {

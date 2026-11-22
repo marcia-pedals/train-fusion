@@ -174,6 +174,7 @@ struct SettingsScreen: View {
             deleteUploadsMessage = n == 0
                 ? "Nothing was shared."
                 : "\(n) shared recording\(n == 1 ? "" : "s") will be deleted within 30 days."
+            await store.syncSharing()  // History shows them as not shared
         } catch {
             deleteUploadsMessage = "Couldn't delete: \(error.localizedDescription)"
         }
@@ -244,14 +245,31 @@ struct AccountScreen: View {
                 .textContentType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            Button("Email me a sign-in link") { Task { await account.sendEmailLink(to: email) } }
-                .disabled(email.isEmpty)
         } header: {
             Text("Or with an email link")
         } footer: {
-            if let notice = account.notice { Text(notice) }
+            if let notice = account.notice, !hasEmail { Text(notice) }
+        }
+        // only once there's an address, and on its own like the buttons above, so it can't be
+        // taken for a second text field
+        if hasEmail {
+            Section {
+                Button { Task { await account.sendEmailLink(to: email.trimmingCharacters(in: .whitespaces)) } } label: {
+                    Text("Email me a sign-in link")
+                        .font(.system(size: 19, weight: .semibold))
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                }
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.capsule)
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+            } footer: {
+                if let notice = account.notice { Text(notice) }
+            }
         }
     }
+
+    private var hasEmail: Bool { !email.trimmingCharacters(in: .whitespaces).isEmpty }
 
     private func signInWithGoogle() async {
         guard let request = account.googleRequest() else { return }
@@ -281,7 +299,7 @@ struct AccountScreen: View {
                 if user.provider == "apple.com" {
                     appleDeletion = true
                 } else {
-                    Task { if await account.deleteAccount() { await store.reconcileShared() } }
+                    Task { if await account.deleteAccount() { await store.syncSharing() } }
                 }
             }
         } message: {
@@ -294,7 +312,7 @@ struct AccountScreen: View {
                     .multilineTextAlignment(.center)
                 SignInWithAppleButton(.continue, onRequest: account.prepare) { result in
                     appleDeletion = false
-                    Task { if await account.deleteAccount(apple: result) { await store.reconcileShared() } }
+                    Task { if await account.deleteAccount(apple: result) { await store.syncSharing() } }
                 }
                 .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
                 .frame(height: 50)

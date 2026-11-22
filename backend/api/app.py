@@ -341,16 +341,23 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     @app.put("/v1/measurements/{ride_id}")
     def put_measurement(ride_id: str, device_hash: str = Depends(device),
                         uid: str | None = Depends(optional_account),
-                        raw: bytes = Depends(body_reader(MAX_MEASUREMENT_BODY))):
+                        raw: bytes = Depends(body_reader(MAX_MEASUREMENT_BODY)),
+                        undo_deletion: bool = False):
         path = measurement_path(ride_id, device_hash)
         m = parse(Measurement, raw)
         now = deps.now()
         existing = docs.get(path)
+        linked_to = (existing or {}).get("uid") or uid
         if existing is not None and existing.get("deletion_requested_at") is not None:
-            raise ApiError(409, "deletion_pending",
-                           "These measurements are waiting to be deleted, so they can't be shared again.")
+            # Only a person sharing this ride again asks to undo: never an automatic share.
+            if not undo_deletion:
+                raise ApiError(409, "deletion_pending",
+                               "These measurements are waiting to be deleted, so they can't be shared again.")
+            # Shared afresh: linked to whoever shares it now (the old account may be deleted).
+            # The deletion request still lists it; deleting skips what's no longer marked.
+            linked_to = uid
         doc = {**m.model_dump(), "ride_id": ride_id, "device_hash": device_hash,
-               "uid": (existing or {}).get("uid") or uid, "shared_at": now, "deletion_requested_at": None}
+               "uid": linked_to, "shared_at": now, "deletion_requested_at": None}
         if existing is not None:
             docs.set(path, doc)
             return {"id": ride_id}
@@ -385,9 +392,12 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         return {"measurements": out}
 
     @app.post("/v1/measurements/deletion-request")
-    def ask_measurement_deletion(who: tuple = Depends(device_or_account)):
+    def ask_measurement_deletion(who: tuple = Depends(device_or_account), ride_id: str | None = None):
         device_hash, uid = who
-        ids = unmarked(my_measurements(device_hash, uid).items())
+        found = my_measurements(device_hash, uid).items()
+        if ride_id is not None:  # just this ride's
+            found = [(i, d) for i, d in found if d.get("ride_id") == ride_id]
+        ids = unmarked(found)
         request_deletion([], ids, "requested", uid=uid, device_hash=device_hash)
         return {"requested": len(ids)}
 
@@ -459,9 +469,12 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         return u
 
     @app.post("/v1/uploads/deletion-request")
-    def ask_deletion(who: tuple = Depends(device_or_account)):
+    def ask_deletion(who: tuple = Depends(device_or_account), recording_id: str | None = None):
         device_hash, uid = who
-        ids = unmarked(mine(device_hash, uid).items())
+        found = mine(device_hash, uid).items()
+        if recording_id is not None:  # just this recording's (every upload of it)
+            found = [(i, u) for i, u in found if u.get("recording_id") == recording_id]
+        ids = unmarked(found)
         request_deletion(ids, [], "requested", uid=uid, device_hash=device_hash)
         return {"requested": len(ids)}
 

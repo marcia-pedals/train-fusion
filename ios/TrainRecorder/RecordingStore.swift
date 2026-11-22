@@ -73,8 +73,14 @@ struct Ride: Codable, Identifiable, Equatable {
     /// To be shared as soon as possible (it ended with sharing on). Optional so that
     /// rides.json from before it decodes.
     var sharePending: Bool?
+    /// What's shared is marked for deletion (the server says so; `RideStore.syncSharing`).
+    /// Counts as not shared; sharing again from History undoes it. Optional, like sharePending.
+    var measurementsDeletionRequested: Bool?
+    var recordingDeletionRequested: Bool?
 
     var settled: Bool { [.uploaded, .declined, .tooLarge].contains(upload) }
+    var measurementsShared: Bool { sharedAt != nil && measurementsDeletionRequested != true }
+    var recordingShared: Bool { upload == .uploaded && recordingDeletionRequested != true }
 
     /// Where the model heard the ride start and end.
     var title: String {
@@ -98,6 +104,25 @@ struct Ride: Codable, Identifiable, Equatable {
                  "doors_closed_unix_s": $0.doorsClosed ?? NSNull()] as [String: Any]
             },
         ]
+    }
+
+    /// From what the server has (GET /v1/measurements), for a ride that isn't on the phone.
+    static func fromServer(_ id: String, _ m: [String: Any]) -> Ride {
+        var ride = Ride(id: id)
+        ride.started = m["started_unix_s"] as? Double
+        ride.ended = m["ended_unix_s"] as? Double
+        ride.stoppedProperly = ride.ended != nil
+        ride.appVersion = m["app_version"] as? String
+        if let train = m["train"] as? [String: Any], let trip = train["trip_number"] as? Int, let car = train["car_number"] as? Int {
+            ride.train = Train(trip: trip, car: car, position: train["car_position"] as? String ?? "unspecified")
+        }
+        ride.direction = m["direction"] as? String
+        ride.stationConfidence = m["station_confidence"] as? Double
+        ride.stops = (m["stops"] as? [[String: Any]] ?? []).compactMap { stop in
+            guard let opened = stop["doors_opened_unix_s"] as? Double else { return nil }
+            return Stop(station: stop["station"] as? String, doorsOpened: opened, doorsClosed: stop["doors_closed_unix_s"] as? Double)
+        }
+        return ride
     }
 
     /// From a recording's meta.json, with its times converted from uptime to clock time
@@ -158,10 +183,28 @@ final class RideStore {
     private(set) var recordings: [String: Recording] = [:]
     private(set) var sharing = false
     var shareMessage: String?
+    /// Rides whose measurements are being shared right now, and why the last try failed.
+    private(set) var sharingNow: Set<String> = []
+    private(set) var shareFailures: [String: String] = [:]
+    private var syncing = false
+    /// What's shared (from this phone, or linked to the account) of rides that aren't on the
+    /// phone any more, newest first: made from what the server has (its measurements, if
+    /// shared), so they can be unshared one by one. Kept in shared-elsewhere.json.
+    private(set) var elsewhere: [Ride] = []
+    /// What's being unshared right now: `unshareKey`s.
+    private(set) var unsharing: Set<String> = []
+    private static let elsewhereFile = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("shared-elsewhere.json")
+
+    enum Shared { case measurements, recording }
+    static func unshareKey(_ kind: Shared, _ id: String) -> String { (kind == .measurements ? "m:" : "r:") + id }
 
     init() {
         if let data = try? Data(contentsOf: Self.file), let saved = try? JSONDecoder().decode([Ride].self, from: data) {
             rides = saved
+        }
+        if let data = try? Data(contentsOf: Self.elsewhereFile), let saved = try? JSONDecoder().decode([Ride].self, from: data) {
+            elsewhere = saved
         }
         Uploader.shared.onFinished = { [weak self] id, outcome in self?.uploadFinished(id, outcome) }
     }
@@ -173,6 +216,8 @@ final class RideStore {
     }
 
     func ride(_ id: String) -> Ride? { rides.first { $0.id == id } }
+    /// On the phone, or only shared.
+    func anyRide(_ id: String) -> Ride? { ride(id) ?? elsewhere.first { $0.id == id } }
 
     private func update(_ id: String, _ change: (inout Ride) -> Void) {
         guard let i = rides.firstIndex(where: { $0.id == id }) else { return }
@@ -219,10 +264,18 @@ final class RideStore {
         return ride
     }
 
-    /// The rider answered: upload or not.
+    /// The rider answered: upload or not. Uploading one whose upload is marked for deletion
+    /// uploads it afresh (the marked upload is still deleted).
     func decide(_ id: String, upload: Bool, protecting: Set<String>) {
-        update(id) { $0.upload = upload ? .wanted : .declined }
-        if upload, let recording = recordings[id] { Uploader.shared.start(recording) }
+        if upload {
+            update(id) { $0.upload = .wanted; $0.recordingDeletionRequested = nil }
+            if let recording = recordings[id] {
+                try? FileManager.default.removeItem(at: recording.url.appendingPathComponent(Self.uploadedMarker))
+                Uploader.shared.start(recording)
+            }
+        } else if ride(id)?.upload != .uploaded {  // "no" to sharing again leaves it as it was
+            update(id) { $0.upload = .declined }
+        }
         prune(protecting: protecting)
     }
 
@@ -271,21 +324,33 @@ final class RideStore {
     // MARK: sharing Train Measurements
 
     /// Share these rides' measurements (linked to the account if signed in).
-    func share(_ ids: [String]) async {
+    /// `undoDeletion`: the rider asked to share these rides (from History), so measurements
+    /// marked for deletion are shared again; never for automatic sharing.
+    func share(_ ids: [String], undoDeletion: Bool = false) async {
         guard !ids.isEmpty else { return }
         sharing = true
         shareMessage = nil
         defer { sharing = false }
         for id in ids {
-            guard let ride = ride(id) else { continue }
+            guard let ride = ride(id), !sharingNow.contains(id) else { continue }
+            sharingNow.insert(id)
+            shareFailures[id] = nil
+            defer { sharingNow.remove(id) }
             do {
-                try await API.call("PUT", "v1/measurements/\(id)", json: ride.apiBody, auth: .ifSignedIn, device: true)
-                update(id) { $0.sharedAt = Date().timeIntervalSince1970; $0.sharePending = nil }
+                try await API.call("PUT", "v1/measurements/\(id)", query: undoDeletion ? ["undo_deletion": "true"] : [:],
+                                   json: ride.apiBody, auth: .ifSignedIn, device: true)
+                update(id) {
+                    $0.sharedAt = Date().timeIntervalSince1970
+                    $0.sharePending = nil
+                    $0.measurementsDeletionRequested = nil
+                }
             } catch let error as APIError where error.code == "deletion_pending" {
-                update(id) { $0.sharePending = nil }  // waiting to be deleted: not shared again
+                // waiting to be deleted: not shared again unless asked for
+                update(id) { $0.sharePending = nil; $0.sharedAt = nil; $0.measurementsDeletionRequested = true }
             } catch {
-                // left pending: tried again when the app is next opened
+                // left pending (if it was): tried again when the app is next opened
                 shareMessage = "Couldn't share: \(error.localizedDescription)"
+                shareFailures[id] = shareMessage
                 return
             }
         }
@@ -306,8 +371,12 @@ final class RideStore {
         defer { sharing = false }
         do {
             let body = try await API.call("POST", "v1/measurements/deletion-request", auth: .ifSignedIn, device: true)
-            for i in rides.indices { (rides[i].sharedAt, rides[i].sharePending) = (nil, nil) }
+            for i in rides.indices {
+                if rides[i].sharedAt != nil { rides[i].measurementsDeletionRequested = true }
+                (rides[i].sharedAt, rides[i].sharePending) = (nil, nil)
+            }
             save()
+            await syncSharing()
             return body["requested"] as? Int ?? 0
         } catch {
             shareMessage = "Couldn't delete: \(error.localizedDescription)"
@@ -315,13 +384,91 @@ final class RideStore {
         }
     }
 
-    /// Marks as shared exactly the rides the server still has from this phone, not waiting
-    /// to be deleted (e.g. after the account, and so its measurements, were deleted).
-    func reconcileShared() async {
-        guard let body = try? await API.call("GET", "v1/measurements", device: true),
-              let found = body["measurements"] as? [[String: Any]] else { return }
-        let ids = Set(found.filter { $0["deletion_requested"] as? Bool != true }.compactMap { $0["id"] as? String })
-        for i in rides.indices where !ids.contains(rides[i].id) { rides[i].sharedAt = nil }
+    /// Asks for one ride's shared measurements, or every upload of its recording, to be
+    /// deleted (by hand, within 30 days). Returns whether the request went through.
+    func unshare(_ kind: Shared, _ id: String) async -> Bool {
+        let key = Self.unshareKey(kind, id)
+        guard !unsharing.contains(key) else { return false }
+        unsharing.insert(key)
+        defer { unsharing.remove(key) }
+        shareMessage = nil
+        do {
+            switch kind {
+            case .measurements:
+                try await API.call("POST", "v1/measurements/deletion-request", query: ["ride_id": id], auth: .ifSignedIn, device: true)
+                update(id) { $0.sharedAt = nil; $0.sharePending = nil; $0.measurementsDeletionRequested = true }
+            case .recording:
+                try await API.call("POST", "v1/uploads/deletion-request", query: ["recording_id": id], auth: .ifSignedIn, device: true)
+                update(id) { $0.recordingDeletionRequested = true }
+            }
+        } catch {
+            shareMessage = "Couldn't unshare: \(error.localizedDescription)"
+            return false
+        }
+        await syncSharing()
+        return true
+    }
+
+    /// Brings what's shared up to date with the server (this phone's measurements and
+    /// uploads, and the account's if signed in): each ride's flags, and `elsewhere`. E.g.
+    /// after asking for deletion, deleting the account, or the developers deleting what was
+    /// asked for. Kept on the phone, so History shows the last known state offline.
+    func syncSharing() async {
+        guard BackendConfig.configured, !syncing else { return }
+        syncing = true
+        defer { syncing = false }
+        guard let measurementsBody = try? await API.call("GET", "v1/measurements", auth: .ifSignedIn, device: true),
+              let measurements = measurementsBody["measurements"] as? [[String: Any]],
+              let uploadsBody = try? await API.call("GET", "v1/uploads", auth: .ifSignedIn, device: true),
+              let uploads = uploadsBody["uploads"] as? [[String: Any]] else { return }
+
+        var server: [String: (body: [String: Any], marked: Bool)] = [:]
+        for m in measurements {
+            guard let id = m["id"] as? String else { continue }
+            server[id] = (m, m["deletion_requested"] as? Bool == true)
+        }
+        for i in rides.indices where !sharingNow.contains(rides[i].id) {
+            // not listed: never shared, or deleted by the developers
+            let s = server[rides[i].id]
+            rides[i].measurementsDeletionRequested = s?.marked == true ? true : nil
+            rides[i].sharedAt = s.flatMap {
+                $0.marked ? nil : $0.body["shared_at_unix_s"] as? Double ?? rides[i].sharedAt ?? Date().timeIntervalSince1970
+            }
+        }
+
+        // a recording may have been uploaded more than once (again after a deletion request)
+        var live: Set<String> = [], marked: Set<String> = []
+        for u in uploads where u["status"] as? String == "complete" {
+            guard let id = u["recording_id"] as? String else { continue }
+            if u["deletion_requested"] as? Bool == true { marked.insert(id) } else { live.insert(id) }
+        }
+        for i in rides.indices {
+            let id = rides[i].id
+            if live.contains(id) {
+                rides[i].upload = .uploaded
+                rides[i].recordingDeletionRequested = nil
+            } else if marked.contains(id), rides[i].upload != .wanted {  // .wanted: being uploaded again
+                rides[i].upload = .uploaded
+                rides[i].recordingDeletionRequested = true
+            }
+            // not listed: never uploaded, or uploaded before uploads went through the
+            // backend (the server doesn't know those): left as it is
+        }
         save()
+
+        // rides not on the phone with something still shared
+        let onPhone = Set(rides.map(\.id))
+        let sharedIDs = Set(server.filter { !$0.value.marked }.keys).union(live).subtracting(onPhone)
+        elsewhere = sharedIDs.sorted(by: >).map { id in
+            var ride = server[id].map { Ride.fromServer(id, $0.body) } ?? Ride(id: id)
+            let s = server[id]
+            ride.sharedAt = s.flatMap { $0.marked ? nil : $0.body["shared_at_unix_s"] as? Double ?? Date().timeIntervalSince1970 }
+            ride.measurementsDeletionRequested = s?.marked == true ? true : nil
+            ride.upload = live.contains(id) || marked.contains(id) ? .uploaded : .declined
+            ride.recordingDeletionRequested = !live.contains(id) && marked.contains(id) ? true : nil
+            return ride
+        }
+        try? FileManager.default.createDirectory(at: Self.elsewhereFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? JSONEncoder().encode(elsewhere).write(to: Self.elsewhereFile, options: .atomic)
     }
 }

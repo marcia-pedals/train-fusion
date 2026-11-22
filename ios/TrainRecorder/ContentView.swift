@@ -69,7 +69,10 @@ struct ContentView: View {
             guard scenePhase == .active else { return }
             refresh()
             store.resumeUploads()
-            Task { await store.sharePendingMeasurements() }
+            Task {
+                await store.sharePendingMeasurements()
+                await store.syncSharing()
+            }
         }
         .sheet(item: $consent) { request in
             UploadConsentSheet(request: request) { answer in

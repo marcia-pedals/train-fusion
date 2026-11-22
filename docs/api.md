@@ -68,6 +68,11 @@ most 64 KB):
 }
 ```
 
+Query: `undo_deletion=true` when the person asked to share this ride (a button), never for
+automatic sharing: measurements marked for deletion are then shared again (unmarked, and
+linked to the account signed in now, or to none). The deletion request still lists them;
+`just delete-measurements` skips what's no longer marked.
+
 `ended_unix_s`, `train`, `direction`, `station_confidence`, a stop's `station` and
 `doors_closed_unix_s` may be null. `car_position`: `unspecified` / `upper` / `lower` /
 `vestibule`. At most 200 stops. Unknown fields are refused.
@@ -88,9 +93,9 @@ Auth: device secret and/or account. This device's and the account's:
 
 Auth: device secret and/or account. Marks every measurement put from this device or linked
 to the account, not already marked, for deletion, and records a deletion request for the
-developer (`just deletions`), who deletes them by hand. `200 {"requested": n}` (0 if there
-was nothing). A marked measurement is listed with `"deletion_requested": true`, and putting
-it again is refused: `409 deletion_pending`.
+developer (`just deletions`), who deletes them by hand. Query `ride_id=<id>`: only that
+ride's. `200 {"requested": n}` (0 if there was nothing). A marked measurement is listed with `"deletion_requested": true`, and putting
+it again is refused, `409 deletion_pending`, unless with `undo_deletion=true`.
 
 ### `POST /v1/claim`
 
@@ -162,7 +167,8 @@ linked to this account:
 
 Auth: device secret and/or account. Marks every upload made by this device or linked to
 the account, not already marked, for deletion, and records a deletion request for the
-developer (`just deletions`). `200 {"requested": n}` (0 if there was nothing).
+developer (`just deletions`). Query `recording_id=<id>`: only that recording's uploads.
+`200 {"requested": n}` (0 if there was nothing).
 
 ## Pages
 

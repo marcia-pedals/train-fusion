@@ -91,8 +91,16 @@ the bucket without limit; anyone with a build could extract it.)
   - **Delete shared measurements** (confirmed first): marks every ride's measurements
     shared from this phone, and every one linked to the signed-in account, for deletion;
     the developer deletes them by hand within 30 days, as with recordings. They stay on the
-    phone. A ride whose measurements are waiting to be deleted isn't shared again. Copies
-    already given to researchers can't be recalled (they had identifiers removed).
+    phone. A ride whose measurements are waiting to be deleted isn't shared again
+    automatically; History shows it as not shared, and sharing it from there (asked first)
+    undoes its deletion. Copies already given to researchers can't be recalled (they had
+    identifiers removed).
+- History can also **unshare** one ride's measurements (confirmed first): the same, for
+  that ride only. Rides deleted from the phone whose measurements or recording are still
+  shared are listed there ("Shared, not on this phone") for this.
+- History can share any ride's measurements, whatever the setting: its Share button asks
+  "Share Train Measurements?" for that ride (Share / Don't share), and leaves the setting
+  as it is.
 - Limits on new measurements (updating one already shared isn't counted): **10,000 a day**
   without an account, all devices together, and **1,000 a day** per account. Over the limit
   they stay pending and are shared another day.
@@ -117,8 +125,10 @@ the bucket without limit; anyone with a build could extract it.)
 
 ### Uploading from History
 
-- Each ride in History whose recording is still on the phone and hasn't been uploaded has
-  an upload button. It shows the same explanation and asks **Yes / No** every time.
+- Each ride in History whose recording is still on the phone and isn't shared has a Share
+  button. It shows the same explanation and asks **Share / Don't share** every time. A
+  recording whose upload is marked for deletion counts as not shared; sharing it again
+  uploads it afresh (the marked upload is still deleted).
 
 ### How uploads run
 
@@ -160,6 +170,8 @@ accounts can be spotted and blocked by hand.
 - Settings has **Delete shared recordings** (confirmed first): it marks every recording uploaded
   from this phone, and every one linked to the signed-in account, for deletion. As with
   account deletion, the developer deletes them by hand, within 30 days.
+- History can do the same for one ride's recording (**Unshare**, confirmed first), also for
+  rides no longer on the phone.
 - Copies on developers' laptops are dealt with by occasionally deleting the local data and
   downloading again from the bucket.
 
