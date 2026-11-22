@@ -368,23 +368,29 @@ struct RideDetail: View {
                         if let replayProblem { Text(replayProblem) }
                     }
                 }
-                if onDeleteRecording != nil || onDelete != nil {
+                // freeing space (the ride stays) apart from deleting the ride (at the bottom)
+                if let onDeleteRecording, let recording = store.recordings[id] {
                     Section("Phone Data") {
-                        if let onDeleteRecording, let recording = store.recordings[id] {
-                            Button("Delete Full Recording (\(ByteCountFormatter.string(fromByteCount: recording.bytes, countStyle: .file)))",
-                                   role: .destructive) { confirmDeleteRecording = true }
-                                .confirmDeleteRecording(ride, isPresented: $confirmDeleteRecording, onDelete: onDeleteRecording)
+                        Button(role: .destructive) { confirmDeleteRecording = true } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Delete Full Recording (\(ByteCountFormatter.string(fromByteCount: recording.bytes, countStyle: .file)))")
+                                Text("Keeps the ride in History").font(.footnote).foregroundStyle(Color(.secondaryLabel))
+                            }
                         }
-                        if let onDelete {
-                            Button("Delete from phone", role: .destructive) { confirmDelete = true }
-                                .confirmDelete(ride, store: store, isPresented: $confirmDelete, onDelete: onDelete)
-                        }
+                        .confirmDeleteRecording(ride, isPresented: $confirmDeleteRecording, onDelete: onDeleteRecording)
                     }
                 }
                 if !ride.isSample {  // (made up: never shared)
                     Section("Sharing") {
                         sharing(.measurements, status: store.measurementsStatus(ride), onShare: onShareMeasurements)
                         sharing(.recording, status: store.recordingStatus(ride, uploadState), onShare: onShareRecording)
+                    }
+                }
+                if let onDelete {
+                    Section {
+                        Button("Delete Ride", role: .destructive) { confirmDelete = true }
+                            .frame(maxWidth: .infinity)
+                            .confirmDelete(ride, store: store, isPresented: $confirmDelete, onDelete: onDelete)
                     }
                 }
             }

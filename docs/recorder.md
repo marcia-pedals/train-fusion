@@ -71,10 +71,10 @@ Three, behind a tab bar:
   Recording"), followed by anything under way ("Sharing Recording 43%", "Couldn't share
   Measurements"). Tapping a row opens the ride, titled like the row: its date, duration,
   size and train (if typed in), one per row; Play back while the recording is on the phone; **Phone Data**: Delete Full Recording
-  (with its size; the ride stays) and Delete from phone; and **Sharing**, a row each for
+  (with its size, and "Keeps the ride in History"); **Sharing**, a row each for
   Train Measurements and Full Recording with its state in words and Share (asking first, as
   in [accounts-and-uploads.md](accounts-and-uploads.md)) or Unshare (confirmed first; asks
-  for that ride's to be deleted). A ride
+  for that ride's to be deleted); and, on its own at the bottom, Delete Ride. A ride
   that's only shared offers just Unshare. Deleting
   from the phone brings what's shared up to date at once, so the ride shows under "Shared,
   not on this phone" if anything of it is shared. Replay (not while recording) plays a finished recording back through the
