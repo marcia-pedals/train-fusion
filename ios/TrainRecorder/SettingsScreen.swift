@@ -41,23 +41,6 @@ struct SettingsScreen: View {
                     }
                     .pickerStyle(.segmented)
                 }
-                Section {
-                    shareRow("Measurements", .measurements, selection: Binding(
-                        get: { shareMeasurements ? .always : askedShare ? .never : .ask },
-                        set: { (new: MeasurementSharing) in
-                            shareMeasurements = new == .always
-                            askedShare = new != .ask
-                        }),
-                        options: MeasurementSharing.allCases.map { ($0, $0.label) })
-                    shareRow("Recordings", .recordings, selection: $askToUpload,
-                             options: [(true, "Ask each ride"), (false, "Don't ask")])
-                    // a screen of its own, so it isn't tapped by accident
-                    NavigationLink("Delete Shared Data") { DeleteSharedScreen(store: store) }
-                } header: {
-                    Text("Sharing")
-                } footer: {
-                    if let message = store.shareMessage { Text(message) }
-                }
                 Section("Phone Data") {
                     Picker("Keep Recordings", selection: Binding(
                         get: { KeepRecordings(rawValue: keep) ?? .last3 },
@@ -77,6 +60,23 @@ struct SettingsScreen: View {
                     } message: {
                         Text("Only ones that are shared, or that you chose not to share. Their Train Measurements stay.")
                     }
+                }
+                Section {
+                    shareRow("Measurements", .measurements, selection: Binding(
+                        get: { shareMeasurements ? .always : askedShare ? .never : .ask },
+                        set: { (new: MeasurementSharing) in
+                            shareMeasurements = new == .always
+                            askedShare = new != .ask
+                        }),
+                        options: MeasurementSharing.allCases.map { ($0, $0.label) })
+                    shareRow("Recordings", .recordings, selection: $askToUpload,
+                             options: [(true, "Ask each ride"), (false, "Don't ask")])
+                    // a screen of its own, so it isn't tapped by accident
+                    NavigationLink("Delete Shared Data") { DeleteSharedScreen(store: store) }
+                } header: {
+                    Text("Sharing")
+                } footer: {
+                    if let message = store.shareMessage { Text(message) }
                 }
                 Section("Account") {
                     NavigationLink {

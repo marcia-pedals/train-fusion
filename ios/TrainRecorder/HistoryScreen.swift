@@ -99,7 +99,7 @@ struct HistoryScreen: View {
     /// A row, with the confirmations its swipe and long-press actions ask, shown from the row.
     private func row(_ ride: Ride) -> some View {
         NavigationLink(value: ride.id) {
-            RideRow(ride: ride, recording: store.recordings[ride.id], onPhone: store.ride(ride.id) != nil,
+            RideRow(ride: ride, recording: store.recordings[ride.id],
                     measurements: store.measurementsStatus(ride),
                     recordingStatus: store.recordingStatus(ride, uploader.states[ride.id]))
                 .confirmUnshare(Binding(get: { unsharing?.ride.id == ride.id ? unsharing?.kind : nil },
@@ -304,14 +304,13 @@ struct SectionToggle: View {
 struct RideRow: View {
     let ride: Ride
     let recording: Recording?
-    let onPhone: Bool
     let measurements: ShareStatus
     let recordingStatus: ShareStatus
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(ride.title).font(.body.weight(.medium)).lineLimit(1).minimumScaleFactor(0.7)
-            Text(ride.summary(recording, onPhone: onPhone)).font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+            Text(ride.summary(recording)).font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
             sharing
                 .font(.footnote.monospacedDigit())
         }
@@ -358,16 +357,16 @@ extension Ride {
         return Duration.seconds(duration.rounded()).formatted(.time(pattern: duration >= 3600 ? .hourMinuteSecond : .minuteSecond))
     }
 
-    /// Date · length · size, for the row. `onPhone`: false for one that's only shared.
-    func summary(_ recording: Recording?, onPhone: Bool = true) -> String {
+    /// Date · length · size (while the recording is on the phone), for the row.
+    func summary(_ recording: Recording?) -> String {
         var parts = [date.map(Self.dateFormat.string) ?? id]
         if let duration {
             parts.append(duration)
         } else if recording != nil {
             parts.append("not stopped properly")
         }
-        if onPhone {
-            parts.append(recording.map { ByteCountFormatter.string(fromByteCount: $0.bytes, countStyle: .file) } ?? "Recording not kept")
+        if let recording {  // nothing when it isn't on the phone
+            parts.append(ByteCountFormatter.string(fromByteCount: recording.bytes, countStyle: .file))
         }
         return parts.joined(separator: " · ")
     }
@@ -402,7 +401,7 @@ struct RideDetail: View {
                 Section {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(ride.title).font(.title3.weight(.semibold))
-                        Text(details(ride, onPhone: onPhone)).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                        Text(details(ride)).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
                         if let train = ride.trainText {
                             Text(train).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
                         }
@@ -411,7 +410,7 @@ struct RideDetail: View {
                 } footer: {
                     if !onPhone { Text("Not on this phone any more: what's shared can be unshared.") }
                 }
-                if onPhone {
+                if store.recordings[id] != nil {  // only while there's something to play
                     Section {
                         Button(action: onReplay) { Label("Play back", systemImage: "play.fill") }
                             .disabled(replayProblem != nil)
@@ -419,14 +418,11 @@ struct RideDetail: View {
                         if let replayProblem { Text(replayProblem) }
                     }
                 }
-                Section("Sharing") {
-                    sharing(.measurements, status: store.measurementsStatus(ride), onShare: onShareMeasurements)
-                    sharing(.recording, status: store.recordingStatus(ride, uploadState), onShare: onShareRecording)
-                }
                 if onDeleteRecording != nil || onDelete != nil {
-                    Section("Phone Data Deletion") {
-                        if let onDeleteRecording {
-                            Button("Delete Full Recording", role: .destructive) { confirmDeleteRecording = true }
+                    Section("Phone Data") {
+                        if let onDeleteRecording, let recording = store.recordings[id] {
+                            Button("Delete Full Recording (\(ByteCountFormatter.string(fromByteCount: recording.bytes, countStyle: .file)))",
+                                   role: .destructive) { confirmDeleteRecording = true }
                                 .confirmDeleteRecording(ride, isPresented: $confirmDeleteRecording, onDelete: onDeleteRecording)
                         }
                         if let onDelete {
@@ -434,6 +430,10 @@ struct RideDetail: View {
                                 .confirmDelete(ride, store: store, isPresented: $confirmDelete, onDelete: onDelete)
                         }
                     }
+                }
+                Section("Sharing") {
+                    sharing(.measurements, status: store.measurementsStatus(ride), onShare: onShareMeasurements)
+                    sharing(.recording, status: store.recordingStatus(ride, uploadState), onShare: onShareRecording)
                 }
             }
             .listStyle(.insetGrouped)
@@ -484,11 +484,11 @@ struct RideDetail: View {
         return false
     }
 
-    private func details(_ ride: Ride, onPhone: Bool) -> String {
+    private func details(_ ride: Ride) -> String {
         var parts = [ride.date?.formatted(date: .complete, time: .shortened) ?? ride.id]
         if let duration = ride.duration { parts.append(duration) }
-        if onPhone {
-            parts.append(store.recordings[ride.id].map { ByteCountFormatter.string(fromByteCount: $0.bytes, countStyle: .file) } ?? "Full Recording not kept")
+        if let recording = store.recordings[ride.id] {
+            parts.append(ByteCountFormatter.string(fromByteCount: recording.bytes, countStyle: .file))
         }
         return parts.joined(separator: " · ")
     }
