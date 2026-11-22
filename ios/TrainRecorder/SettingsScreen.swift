@@ -10,8 +10,8 @@ enum MeasurementSharing: CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .ask: return "Ask each ride"
-        case .always: return "Always share"
-        case .never: return "Don't ask"
+        case .always: return "Always"
+        case .never: return "Never"
         }
     }
 }
@@ -58,7 +58,7 @@ struct SettingsScreen: View {
                             pendingKeep = nil
                         }
                     } message: {
-                        Text("Only ones that are shared, or that you chose not to share. Their Train Measurements stay.")
+                        Text("Their Train Measurements stay.")
                     }
                 }
                 Section {
@@ -70,7 +70,7 @@ struct SettingsScreen: View {
                         }),
                         options: MeasurementSharing.allCases.map { ($0, $0.label) })
                     shareRow("Recordings", .recordings, selection: $askToUpload,
-                             options: [(true, "Ask each ride"), (false, "Don't ask")])
+                             options: [(true, "Ask each ride"), (false, "Never")])
                     // a screen of its own, so it isn't tapped by accident
                     NavigationLink("Delete Shared Data") { DeleteSharedScreen(store: store) }
                 } header: {
@@ -326,13 +326,13 @@ struct AccountScreen: View {
                         }
                     }
                 } message: {
-                    Text("Deletes your account, and its Train Measurements and Full Recordings from the cloud. Everything on your phone stays on your phone. This can't be undone.")
+                    Text("Deletes your account and what it shared. Your phone keeps everything. This can't be undone.")
                 }
         }
         .sheet(isPresented: $appleDeletion) {
             VStack(spacing: 20) {
                 Text("Confirm with Apple").font(.title2.bold())
-                Text("Confirm with Apple once more. This also ends the app's access to your Apple ID.")
+                Text("This also ends the app's access to your Apple ID.")
                     .multilineTextAlignment(.center)
                 SignInWithAppleButton(.continue, onRequest: account.prepare) { result in
                     appleDeletion = false

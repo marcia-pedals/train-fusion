@@ -75,9 +75,9 @@ the bucket without limit; anyone with a build could extract it.)
   "Position, speed, stops, times"; "No audio"; "**Anyone who asks gets it**" (with
   details behind an ⓘ: "We remove your account and device IDs first. They must agree to use the data only for train
   operations research, and only publish aggregated statistics, but we cannot guarantee
-  what they do after they receive the data."); delete any time in Settings. It's asked at
+  what they do after they receive the data."); "Unshare any time in History". It's asked at
   every recording until answered for good:
-  - **Always share**: turns the setting below on (this ride is shared too); not asked again;
+  - **Always share**: turns the setting below (Always) on (this ride is shared too); not asked again;
   - **Share just this ride**: shares the ride being recorded, leaves the setting off, and
     asks again next recording;
   - **No, and don't ask again**: leaves the setting off; not asked again;
@@ -85,7 +85,7 @@ the bucket without limit; anyone with a build could extract it.)
     shared, and it's asked again next recording.
 - Settings, **Train Measurements** section:
   - **Share** (with a ? that shows the question's lines, with just OK): **Ask each ride**
-    (the default: the question above) / **Always share** / **Don't ask** (nothing shared). The question's answers set it the same way. With Always share, each ride's
+    (the default: the question above) / **Always** / **Never** (nothing shared). The question's answers set it the same way. With Always, each ride's
     measurements are shared when its recording stops (retried when the app is next opened
     if there's no network). Rides recorded while it wasn't on aren't shared later.
 - Settings, **Delete Shared Data** (the last row, a screen of its own so it isn't tapped
@@ -112,15 +112,15 @@ the bucket without limit; anyone with a build could extract it.)
 
 ### Asking after each ride
 
-- When a recording is stopped (with the app's stop button), the app asks "Share full
-  recording?" ("To improve the localizer", and its size): **Share** / **Don't share** / **Don't ask again**. There's deliberately no way to upload every
+- When a recording is stopped (with the app's stop button), the app asks "Share Full
+  Recording?" ("To improve train tracking", and its size): **Share** / **Don't share** / **Don't ask again**. There's deliberately no way to upload every
   recording automatically: each upload is a yes to that recording. The question says:
   - "Audio, including nearby voices";
   - "Motion, compass, barometer";
   - "Only this app's devs get it";
-  - delete any time in Settings.
+  - "Unshare any time in History".
 - "Don't ask again" declines this one and sets Settings' Full Recordings **Share** (with
-  a ? like the one above) from **Ask each ride** to **Don't ask** (nothing shared). With the setting off, new recordings count as declined
+  a ? like the one above) from **Ask each ride** to **Never** (nothing shared). With the setting off, new recordings count as declined
   (they can still be shared from History). Nothing in the question pairs "Share" with
   remembering, so nothing can read as "share from now on".
 - A recording over the size limit isn't offered; History says it's too large.
@@ -189,7 +189,7 @@ accounts can be spotted and blocked by hand.
   deleted. "Don't keep" deletes each recording as soon as it is settled (so with Ask on,
   after the question is answered and any upload has finished).
 - Changing the setting to keep fewer asks first, saying how many recordings it deletes.
-- Deleting a ride in History (Delete Entire Trip) deletes it (ride and recording) from the
+- Deleting a ride in History (Delete from phone) deletes it (ride and recording) from the
   phone only: anything shared stays shared.
 
 ## App store readiness

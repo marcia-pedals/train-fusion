@@ -22,7 +22,7 @@ struct UploadConsent: Identifiable {
 /// What each kind of sharing is, as icon lines: in the questions, and behind Settings' ?
 /// (`SharingInfoSheet`), so the two always say the same.
 enum SharingInfo {
-    static let recordingPurpose = "To improve the localizer"
+    static let recordingPurpose = "To improve train tracking"
     static let recordingRows: [ConsentSheet.Row] = [
         .init("waveform", "Audio, including nearby voices"),
         .init("sensor", "Motion, compass, barometer"),
@@ -37,7 +37,7 @@ enum SharingInfo {
               more: "We remove your account and device IDs first. They must agree to use the data only for train operations research, and only publish aggregated statistics, but we cannot guarantee what they do after they receive the data."),
     ]
 
-    static let deleteRow = ConsentSheet.Row("trash", "Delete any time in Settings")
+    static let deleteRow = ConsentSheet.Row("trash", "Unshare any time in History")
 }
 
 /// Settings' ?: what's shared, laid out like the question, with just an OK.
@@ -108,7 +108,7 @@ struct RideMeasurementsConsentSheet: View {
     var body: some View {
         ConsentSheet(
             title: "Share Train Measurements?",
-            subtitle: SharingInfo.measurementsPurpose + " · this ride",
+            subtitle: SharingInfo.measurementsPurpose,
             rows: SharingInfo.measurementsRows + [SharingInfo.deleteRow],
             choices: [
                 .init("Share", primary: true) { share(true) },

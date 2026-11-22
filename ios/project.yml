@@ -41,8 +41,8 @@ targets:
         # Recording keeps the app running when backgrounded or locked.
         # Uploads finish in a background URL session, which needs no background mode.
         UIBackgroundModes: [audio]
-        NSMicrophoneUsageDescription: Records audio to sense the train. Recordings stay on your phone unless you choose to upload one.
-        NSMotionUsageDescription: Records motion and barometer to sense the train. Recordings stay on your phone unless you choose to upload one.
+        NSMicrophoneUsageDescription: Records audio to sense the train. Recordings stay on your phone unless you choose to share one.
+        NSMotionUsageDescription: Records motion and barometer to sense the train. Recordings stay on your phone unless you choose to share one.
         # from Config.xcconfig (Backend.swift)
         TRBackendHost: $(API_HOST)
         TRIdentityAPIKey: $(IDENTITY_API_KEY)

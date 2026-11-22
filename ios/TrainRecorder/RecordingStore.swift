@@ -88,8 +88,8 @@ struct Ride: Codable, Identifiable, Equatable {
 
     /// Where the model heard the ride start and end.
     var title: String {
-        guard let origin = stops.first?.station else { return "Unknown trip" }
-        let destination = stops.count > 1 ? stops.last?.station : nil
+        guard let origin = stops.first?.station.map(stationShortName) else { return isSample ? "Sample ride" : "Unknown ride" }
+        let destination = stops.count > 1 ? stops.last?.station.map(stationShortName) : nil
         let sure = (stationConfidence ?? 0) > 0.9
         return (isSample ? "Sample: " : "") + origin + (destination.map { " → " + $0 } ?? "") + (sure ? "" : " (unsure)")
     }

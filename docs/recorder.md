@@ -52,11 +52,9 @@ Three, behind a tab bar:
   4. icons for how good the information is: the phone (lying still / held / being moved),
      the motor tone, the along-track acceleration, and the wheel vibration. Green good,
      yellow fair, red missing, grey not in play. Tap for each one's state and a number.
-
-  Every probability is still there under "Details".
 - **Settings**: miles and mph, or kilometres and km/h; **Phone Data**: Keep Recordings
-  (None, Last 3, All); **Sharing**: Measurements (ask each ride, always share, or don't
-  ask), Recordings (ask after each ride or not), and Delete Shared Data, a screen of its own
+  (None, Last 3, All); **Sharing**: Measurements (Ask each ride, Always, or Never),
+  Recordings (Ask each ride or Never), and Delete Shared Data, a screen of its own
   so it isn't tapped by accident, with "Delete all shared Train Measurements" and "Delete
   all shared Full Recordings" (each confirmed; done by hand within 30 days); the account
   (sign in with Apple, Google or an email link; sign out; delete account); the privacy
@@ -65,13 +63,13 @@ Three, behind a tab bar:
   recording), then, under "Shared, not on this phone", rides deleted from the phone that
   still have something shared. When there are both, each is a section that folds away
   (tap its header); the first starts open, the second folded. A row is titled by where the
-  model heard the ride start and end ("Millbrae → San Jose Diridon"; "Unknown trip" if it
-  named no stop), then the date, length and size (while the recording is on the phone), then what's
+  model heard the ride start and end with the short station names ("Millbrae → San Jose"; "Unknown
+  ride" if it named no stop), then the date, length and size (while the recording is on the phone), then what's
   shared, in words ("Not Shared", "Shared: Measurements", "Shared: Measurements,
-  Recording"), followed by anything under way ("Uploading recording 43%", "Couldn't share
-  measurements"). Tapping a row opens the ride: the same, the trip and car if they were typed
+  Recording"), followed by anything under way ("Sharing Recording 43%", "Couldn't share
+  Measurements"). Tapping a row opens the ride: the same, the trip and car if they were typed
   in; Play back while the recording is on the phone; **Phone Data**: Delete Full Recording
-  (with its size; the ride stays) and Delete Entire Trip; and **Sharing**, a row each for
+  (with its size; the ride stays) and Delete from phone; and **Sharing**, a row each for
   Train Measurements and Full Recording with its state in words and Share (asking first, as
   in [accounts-and-uploads.md](accounts-and-uploads.md)) or Unshare (confirmed first; asks
   for that ride's to be deleted). A ride

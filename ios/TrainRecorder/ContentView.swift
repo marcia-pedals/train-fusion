@@ -89,16 +89,9 @@ struct ContentView: View {
                presenting: unlinked) { _ in
             Button("Link") { Task { try? await API.call("POST", "v1/claim", auth: .required, device: true) } }
             Button("Not now", role: .cancel) {}
-        } message: { found in
-            Text("This phone shared \(Self.describe(found)) before you signed in. Link \(found.measurements + found.uploads == 1 ? "it" : "them") to your account, so you'll be able to see \(found.measurements + found.uploads == 1 ? "it" : "them") with it later?")
+        } message: { _ in
+            Text("Link what this phone shared before you signed in?")
         }
-    }
-
-    private static func describe(_ found: Unlinked) -> String {
-        var parts: [String] = []
-        if found.measurements > 0 { parts.append(found.measurements == 1 ? "1 ride's Train Measurements" : "\(found.measurements) rides' Train Measurements") }
-        if found.uploads > 0 { parts.append(found.uploads == 1 ? "1 Full Recording" : "\(found.uploads) Full Recordings") }
-        return parts.joined(separator: " and ")
     }
 
     private func refresh() {
@@ -180,7 +173,7 @@ private struct TrackScreen: View {
                             Text(problem).font(.footnote).foregroundStyle(.red)
                         }
                     } else {
-                        Text(recorder.starting ? "Starting…" : recorder.busy ? "Saving…" : "Tap the red button to start measuring a ride.\nOr replay an earlier one from History.")
+                        Text(recorder.starting ? "Starting…" : recorder.busy ? "Saving…" : "Tap the red button to start measuring a ride.\nOr play back an earlier one from History.")
                             .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                             .padding(.top, 40)
                     }

@@ -185,9 +185,9 @@ final class Uploader {
             // start over with fresh URLs next time (files that are there answer 412)
             jobs[id] = nil
             save()
-            states[id] = .failed("The upload didn't arrive complete. Tap to try again.")
+            states[id] = .failed("Sharing didn't finish.")
         } catch {
-            states[id] = .failed("Couldn't finish the upload: \(error.localizedDescription)")
+            states[id] = .failed("Sharing didn't finish.")
         }
     }
 
@@ -219,7 +219,7 @@ final class Uploader {
                 jobs[id] = nil
                 save()
             }
-            states[id] = .failed("Upload of \(name) failed (\(error ?? "HTTP \(status)")). Tap to try again.")
+            states[id] = .failed("Sharing failed.")
         }
     }
 

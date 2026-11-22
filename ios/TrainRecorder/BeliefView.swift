@@ -2,7 +2,7 @@ import SwiftUI
 
 /// What the model believes, for someone glancing at their phone on a train: what the
 /// train is doing, where it is, where it has stopped, and how good the measurements
-/// behind that are. The numbers are under "Details".
+/// behind that are.
 ///
 /// Every card keeps its size whether or not it has anything to show yet (a greyed-out
 /// skeleton stands in), so the screen doesn't jump as fixes arrive.
@@ -11,7 +11,6 @@ struct BeliefView: View {
     let start: Date?  // when the recording started, to show door times as clock times
     let message: String?
     let waiting: String
-    @State private var showDetails = false
 
     var body: some View {
         let b = belief ?? Belief()
@@ -21,12 +20,6 @@ struct BeliefView: View {
             PlaceCard(belief: b)
             StopsCard(belief: b, start: start)
             SensorRow(belief: b)
-            if belief != nil {
-                DisclosureGroup("Details", isExpanded: $showDetails) { DetailsView(belief: b).padding(.top, 8) }
-                    .font(.subheadline)
-                    .tint(.secondary)
-                    .padding(.horizontal, 4)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -415,12 +408,12 @@ private struct SensorRow: View {
 
         let idle = b.stops > 0 ? "stopped" : "waiting"
         if phone != 0 {
-            out.append(Item(id: "Acceleration", icon: "spring", color: .gray, state: "needs phone still"))
+            out.append(Item(id: "Acceleration", icon: "spring", color: .gray, state: "phone moving"))
         } else if let a = b.accelReading {
             out.append(Item(id: "Acceleration", icon: "spring", color: .green, state: "in use",
                             number: String(format: "%+.2f m/s²", a)))
         } else {
-            out.append(Item(id: "Acceleration", icon: "spring", color: .yellow, state: "finding forward"))
+            out.append(Item(id: "Acceleration", icon: "spring", color: .yellow, state: "calibrating"))
         }
 
         if !moving {
@@ -559,104 +552,5 @@ private struct SegmentBar: View {
             .frame(height: 28)
         }
         .frame(height: 28)
-    }
-}
-
-/// Everything the model believes, as numbers: for the curious, and for debugging.
-private struct DetailsView: View {
-    let belief: Belief
-    private static let modeColors: [Color] = [.gray, .blue, .orange, .teal, .yellow, .pink]
-
-    var body: some View {
-        let b = belief
-        VStack(alignment: .leading, spacing: 14) {
-            section("Speed") {
-                Text(String(format: "%.1f ± %.1f m/s (%.0f mph)", b.speedMean, b.speedSd, b.speedMean * 2.23694)).font(.footnote.monospacedDigit())
-                SpeedDistribution(belief: b).frame(height: 80)
-            }
-            section("What the train is doing") {
-                ForEach(0..<b.modeP.count, id: \.self) { m in bar(modeNames[m], b.modeP[m], Self.modeColors[m]) }
-            }
-            section("What the phone is doing") {
-                ForEach(0..<b.phoneP.count, id: \.self) { s in bar(phoneNames[s], b.phoneP[s], .secondary) }
-                Text(b.accelInUse ? "Using the accelerometer for speed changes" : "Accelerometer not in use (needs a resting phone and one clear acceleration)")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            section("Stations") {
-                if b.stations.isEmpty {
-                    Text(b.stops == 0 ? "No door opening heard yet." : "One stop heard: every station is still possible.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                } else {
-                    ForEach(b.stations) { s in bar("\(s.name) \(s.southbound ? "↓" : "↑")", s.p, .blue) }
-                }
-                Text(String(format: "%d stops heard · %.2f km since the last", b.stops, b.distanceSinceStop / 1000)).font(.footnote.monospacedDigit())
-                if !b.stopLog.isEmpty {
-                    Text("Door chimes, seconds into the recording (open / close): "
-                         + b.stopLog.map { "\($0.opened) / \($0.closed.map(String.init) ?? "–")" }.joined(separator: ", "))
-                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                }
-                if !b.legs.isEmpty {
-                    Text("Legs: " + b.legs.map { String(format: "%.2f", $0 / 1000) }.joined(separator: ", ") + " km")
-                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                }
-            }
-            Text("\(b.second / 60):\(String(format: "%02d", b.second % 60)) into the recording. Uses only what has been heard and felt so far; stops and stations are confirmed about 3 s after the door chime.")
-                .font(.caption).foregroundStyle(.secondary)
-        }
-        .foregroundStyle(.primary)
-    }
-
-    private func section<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            content()
-        }
-    }
-
-    private func bar(_ name: String, _ p: Double, _ color: Color) -> some View {
-        HStack(spacing: 8) {
-            Text(name).font(.footnote).frame(width: 150, alignment: .leading)
-            GeometryReader { g in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.quaternary)
-                    Capsule().fill(color).frame(width: max(g.size.width * p, p > 0.005 ? 3 : 0))
-                }
-            }
-            .frame(height: 7)
-            Text(String(format: "%.2f", p)).font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
-                .frame(width: 36, alignment: .trailing)
-        }
-    }
-}
-
-/// P(speed) in 1 m/s bins, with the probability of standing as its own bar on the left.
-private struct SpeedDistribution: View {
-    let belief: Belief
-
-    var body: some View {
-        Canvas { ctx, size in
-            let n = belief.speedHist.count
-            let gap: CGFloat = 14, labelH: CGFloat = 14
-            let w = (size.width - gap - 14) / CGFloat(n)
-            let h = size.height - labelH
-            let top = max(belief.speedHist.max() ?? 0, Float(belief.pStanding), 0.05)
-            func rect(_ x: CGFloat, _ p: Float, _ width: CGFloat) -> CGRect {
-                let bh = CGFloat(p / top) * h
-                return CGRect(x: x, y: h - bh, width: width, height: bh)
-            }
-            ctx.fill(Path(roundedRect: rect(0, Float(belief.pStanding), 12), cornerRadius: 2), with: .color(.teal))
-            for k in 0..<n {
-                ctx.fill(Path(roundedRect: rect(14 + gap + CGFloat(k) * w, belief.speedHist[k], max(w - 1, 1)), cornerRadius: 1.5),
-                         with: .color(.blue))
-            }
-            ctx.stroke(Path { p in p.move(to: CGPoint(x: 0, y: h)); p.addLine(to: CGPoint(x: size.width, y: h)) },
-                       with: .color(.secondary.opacity(0.4)), lineWidth: 0.5)
-            ctx.draw(Text("still").font(.caption2).foregroundStyle(.secondary), at: CGPoint(x: 6, y: h + 8), anchor: .center)
-            for v in stride(from: 0, through: 30, by: 10) {
-                ctx.draw(Text("\(v)").font(.caption2).foregroundStyle(.secondary),
-                         at: CGPoint(x: 14 + gap + CGFloat(v) * w, y: h + 8), anchor: .center)
-            }
-            ctx.draw(Text("m/s").font(.caption2).foregroundStyle(.secondary), at: CGPoint(x: size.width - 10, y: h + 8), anchor: .center)
-        }
     }
 }
