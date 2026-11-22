@@ -272,7 +272,14 @@ private struct TrackScreen: View {
             if recorder.isRecording, let started = recorder.startedAt {
                 Circle().fill(.red).frame(width: 8, height: 8)
                 Text("Recording").font(.subheadline.weight(.medium))
-                Text(started, style: .timer).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                TimelineView(.periodic(from: started, by: 1)) { context in
+                    Text(Self.elapsed(context.date.timeIntervalSince(started)))
+                        .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                }
+            } else {
+                Circle().fill(Color(.systemGray3)).frame(width: 8, height: 8)
+                Text("Not recording").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                Text("00:00").font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
             }
             Spacer()
             Button {
@@ -294,6 +301,12 @@ private struct TrackScreen: View {
             .disabled(recorder.busy)
             .accessibilityLabel(recorder.isRecording ? "Stop recording" : "Start recording")
         }
+    }
+
+    /// 00:07, 12:34, 1:02:03: the same width from the start (the idle header shows 00:00).
+    private static func elapsed(_ seconds: Double) -> String {
+        let t = max(Int(seconds), 0)
+        return t >= 3600 ? String(format: "%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60) : String(format: "%02d:%02d", t / 60, t % 60)
     }
 
     private func replayHeader(_ recording: Recording) -> some View {
