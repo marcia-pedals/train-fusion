@@ -16,8 +16,8 @@ struct RideInfo: Equatable {
     /// trip and car numbers change with the timetable and the fleet.
     static func problem(trip: String, car: String) -> String? {
         let digits = { (text: String) in !text.isEmpty && text.allSatisfy { $0.isASCII && $0.isNumber } }
-        guard digits(trip), trip.count == 3, "1459".contains(trip.first!) else {
-            return "A trip number has 3 digits and starts with 1, 4, 5 or 9."
+        guard digits(trip), trip.count == 3, "14569".contains(trip.first!) else {
+            return "A trip number has 3 digits and starts with 1, 4, 5, 6 or 9."
         }
         guard digits(car), car.count == 3 || car.count == 4, car.first == "3" else {
             return "A car number has 3 or 4 digits and starts with 3."
