@@ -90,14 +90,10 @@ api-deploy:
     gcloud run services update api --project train-fusion --region us-west1 --image "$image"
     curl -fsS "$(tf api_url)/health" && echo " <- $(tf api_url)"
 
-# recordings and Train Measurements people asked to have deleted, with what to run for
-# each; `just deletions --done <request id>` once all of it is (backend/admin.py)
-deletions *args:
-    python backend/admin.py deletions {{args}}
-
-# delete the Train Measurements that one deletion request lists (run by hand, like the rest)
-delete-measurements request:
-    python backend/admin.py delete-measurements {{request}}
+# backend/admin.py: what people asked to have deleted, in the bucket and Firestore
+# list pending deletion requests, then delete all of it if you type "delete"
+deletions:
+    python backend/admin.py deletions
 
 # refuse an account: disable it in Identity Platform and mark it blocked in the API
 block-account uid:
