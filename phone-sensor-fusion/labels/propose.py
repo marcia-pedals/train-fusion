@@ -6,7 +6,7 @@ The two chimes (found in exploration/tones.py):
   door-open chime : ~6 s steady tone at 2200 Hz with harmonics at 4400 and 6600 Hz
   door-close chime: 3520 Hz (harmonics of 1760 Hz), ~5 s then ~3 s
 
-    python -m labels.propose
+    python -m labels.propose [recording-id ...]
 """
 
 import numpy as np
@@ -28,8 +28,10 @@ def runs(on, t, min_s):
     return out
 
 
-def main():
+def main(only=()):
     for rec in load_all():
+        if only and rec.id not in only:
+            continue
         t0, x = rec.audio()
         f, t, S = signal.spectrogram(np.asarray(x), fs=FS, nperseg=NFFT, noverlap=NFFT - HOP)
         db = 10 * np.log10(S + 1e-16)
@@ -44,4 +46,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    main(sys.argv[1:])

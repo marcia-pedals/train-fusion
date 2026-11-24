@@ -13,7 +13,7 @@ on tone legs wherever the ridge isn't actually visible (below 250 Hz, or under s
 Writes <labels>/<id>/speed.csv (t, v_mps, source, confident, leg) and prints how well
 the two leg sources agree where both exist.
 
-    python -m labels.build_speed
+    python -m labels.build_speed [recording-id ...]
 """
 
 import csv
@@ -47,9 +47,11 @@ def accel_leg(rec, still, dep, arr):
     return tt, v - v[-1] * frac
 
 
-def main():
+def main(only=()):
     s_of = load.station_s()
     for rec in load_all():
+        if only and rec.id not in only:
+            continue
         stops = load.stops(rec.id)
         resting = [(a, b) for a, b, st in load.phone(rec.id) if st == "resting"]
         trace = load.table(rec.id, "tone_trace.csv")
@@ -106,4 +108,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    main(sys.argv[1:])

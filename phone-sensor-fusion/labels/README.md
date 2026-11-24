@@ -16,6 +16,7 @@ of the recording.
 | `phone.csv` | intervals of `resting` (lying on a surface), `held` (in a hand, fairly still), `handled` (being moved about) | read off the gyro energy and the low-passed accelerometer in the overview plots | ±2 s; `held` / `handled` is a judgement |
 | `tone_trace.csv` | the motor tone's frequency through every leg, 4 per second | `trace_tone.py`, overlays checked by eye | see below |
 | `speed.csv` | speed, 1 per second, with its source and whether it is trustworthy | `build_speed.py` from the files above and the map | see below |
+| `modes.csv` (optional) | the train's mode (`labels/frames.py`: `MODE_KEYS`, or `unknown`) over intervals that `stops.csv` can't describe, e.g. doors reopening during a long hold; overrides what `stops.csv` implies | by hand, from the chimes on a zoom | as the chimes |
 
 `load.py` reads the files; `frames.py` turns them into per-second arrays (speed, mode,
 on the train or not, phone state), which is what `features/` and `model/` train and score against.
@@ -90,13 +91,13 @@ How good:
 ```sh
 python -m exploration.overview                 # look at it
 python -m exploration.transcribe               # announcements -> journey.toml
-python -m labels.propose                       # chime times -> stops.csv, after checking each with exploration.zoom
+python -m labels.propose <id>                  # chime times -> stops.csv, after checking each with exploration.zoom
 python -m labels.stop_times_accel <id> <t0> <t1> "<opens>" "<closes>"   # resting stretches only: t_arrive, t_depart
 python -m labels.stop_sheets <id> "<opens>" "<closes>"                  # ... to check them
 python -m labels.presence_sheets               # first / last 150 s -> presence.csv
 #   write phone.csv from the overview
-python -m labels.trace_tone                    # tone_trace.csv; check data/phone-sensor-fusion/labels/*.trace_*.png
-python -m labels.build_speed                   # speed.csv; prints tone-vs-accelerometer agreement
+python -m labels.trace_tone <id>               # tone_trace.csv; check data/phone-sensor-fusion/labels/*.trace_*.png
+python -m labels.build_speed <id>              # speed.csv; prints tone-vs-accelerometer agreement
 ```
 
 **Stations (`journey.toml`)**: the announcements are the evidence to use first. Grep the

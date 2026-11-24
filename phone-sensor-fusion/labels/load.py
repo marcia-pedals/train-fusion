@@ -49,6 +49,16 @@ def presence(rid: str) -> list[tuple[float, float, str]]:
     return [(float(r["t0"]), float(r["t1"]), r["where"]) for r in rows]
 
 
+def modes(rid: str) -> list[tuple[float, float, str]]:
+    """Optional modes.csv: the train's mode over intervals that stops.csv (one opening and one
+    closing per station) can't describe, e.g. doors reopening during a long hold. `mode` is a
+    labels.frames.MODE_KEYS name or "unknown"; these override what stops.csv implies."""
+    path = paths.LABELS / rid / "modes.csv"
+    if not path.exists():
+        return []
+    return [(float(r["t0"]), float(r["t1"]), r["mode"]) for r in csv.DictReader(path.open())]
+
+
 def table(rid: str, name: str) -> dict[str, np.ndarray]:
     """A numeric/str CSV in <labels>/<id>/ as columns."""
     rows = list(csv.DictReader((paths.LABELS / rid / name).open()))

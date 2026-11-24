@@ -100,7 +100,8 @@ def fit_chime(xs, labels, mode) -> dict:
     out = {}
     for name, m in (("in", is_mode), ("out", ~is_mode)):
         n = np.bincount(cat[m], minlength=3) + CHIME_PSEUDO
-        out[name] = (n / n.sum()).round(5).tolist()
+        # significant figures, not decimals: the pseudo-count must not round to 0 (log 0)
+        out[name] = [float(f"{x:.4g}") for x in n / n.sum()]
     return out
 
 

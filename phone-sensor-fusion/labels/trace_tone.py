@@ -15,7 +15,7 @@ Writes, per recording:
   <labels>/<id>/tone_trace.csv     t, f_hz, prominence_db, leg   (4 Hz)
   data/phone-sensor-fusion/labels/<id>.trace_<n>.png  overlays to verify by eye
 
-    python -m labels.trace_tone
+    python -m labels.trace_tone [recording-id ...]
 """
 
 import csv
@@ -101,8 +101,10 @@ def trace(E, ramp_bins):
     return path
 
 
-def main():
+def main(only=()):
     for rec in load_all():
+        if only and rec.id not in only:
+            continue
         stops = list(csv.DictReader((paths.LABELS / rec.id / "stops.csv").open()))
         t0, x = rec.audio()
         f, t, prom = prominence(np.asarray(x))
@@ -149,4 +151,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    main(sys.argv[1:])

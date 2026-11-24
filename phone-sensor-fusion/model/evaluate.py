@@ -53,7 +53,8 @@ def evaluate(rid: str, res: Result, lab: FrameLabels) -> dict:
             dep_err.append(float(cand[np.argmin(np.abs(cand - st.t_depart))] - st.t_depart))
     return {
         "legs": legs, "matched_stops": sorted(match),
-        "stops_labelled": len(stops), "stops_found": len(match), "stops_spurious": int(len(found) - len(match)),
+        # a stop whose door-open chime isn't in the recording (boarded with the doors open) can't be found
+        "stops_labelled": int(np.isfinite(truth).sum()), "stops_found": len(match), "stops_spurious": int(len(found) - len(match)),
         "leg_err_mean_abs": float(np.mean(np.abs(err))) if len(err) else np.nan,
         "leg_err_max_abs": float(np.max(np.abs(err))) if len(err) else np.nan,
         "leg_err_bias": float(np.mean(err)) if len(err) else np.nan,
