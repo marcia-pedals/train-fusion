@@ -197,7 +197,7 @@ which cuts those builds off.
 
 **Deletion requests** (someone asked for their recordings or Train Measurements to be
 deleted, or deleted their account): run `just deletions`. Nothing is deleted automatically,
-and nothing is deleted until you've seen it: it lists every pending request, grouped by the
+and nothing is deleted until you've seen it: it gives the number of pending requests and when the first is due, then lists what they cover, grouped by the
 account (with its email, if the account still exists) or the device that asked, with each
 Train Measurement's duration and number of stops and each Full Recording's duration, size
 and labels. Type `delete` and it deletes all of it: the measurements (skipping any shared

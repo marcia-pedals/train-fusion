@@ -69,11 +69,13 @@ def test_lists_grouped_and_deletes_nothing_without_confirmation():
     ok, text = run(d, bucket, "yes")
     assert ok and "Nothing deleted." in text
     assert (dict(d.data), dict(bucket.objects)) == before
+    assert "1 deletion request, first due 2030-02-07\n" in text and "request r1" not in text
     assert "account u1 (someone@example.com)" in text
+    assert "researchers" not in text
     assert "20300101T080000Z  41 min, 3 stops" in text
     assert "1 shared again since: kept" in text
     assert f"{UPLOAD}  30 min, 2 MB; labels (1 file); in RIDES.md" in text
-    assert "Not yet: request r2" in text
+    assert "Not yet: 1 request whose upload URLs work until 2030-01-10 23:00 UTC" in text
 
 
 def test_delete_does_everything():

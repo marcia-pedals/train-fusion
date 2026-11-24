@@ -182,14 +182,18 @@ def recording_line(upload_id: str, bucket: Bucket, rides_md: str) -> str:
     return f"    {upload_id}  " + "; ".join(parts)
 
 
+def waiting_line(p: Plan) -> str:
+    until = max(t for _, t in p.waiting)
+    return (f"Not yet: {plural(len(p.waiting), 'request')} whose upload URLs work until "
+            f"{until.astimezone(timezone.utc):%Y-%m-%d %H:%M} UTC; listed once they've expired.")
+
+
 def show(p: Plan, bucket: Bucket, now: datetime, out: Callable[[str], None]) -> None:
+    due = min(r["requested_at"] for _, r in p.requests) + DUE_WITHIN
+    out(f"{plural(len(p.requests), 'deletion request')}, first due {day(due)}"
+        + ("  OVERDUE" if due < now else "") + "\n")
     for g in p.groups:
         out(g.who)
-        for request_id, r in g.requests:
-            due = r["requested_at"] + DUE_WITHIN
-            what = "account deleted" if r["reason"] == "account_deleted" else "asked"
-            out(f"  request {request_id}: {what} {day(r['requested_at'])}, due {day(due)}"
-                + ("  OVERDUE" if due < now else ""))
         if g.measurements or g.reshared:
             kept = f" ({g.reshared} shared again since: kept)" if g.reshared else ""
             out(f"  Train Measurements: {len(g.measurements)}{kept}")
@@ -201,11 +205,8 @@ def show(p: Plan, bucket: Bucket, now: datetime, out: Callable[[str], None]) -> 
             for u in sorted(g.uploads):
                 out(recording_line(u, bucket, p.rides_md))
         out("")
-    for request_id, until in p.waiting:
-        out(f"Not yet: request {request_id}. Upload URLs handed out before it work until "
-            f"{until.astimezone(timezone.utc):%Y-%m-%d %H:%M} UTC; it's listed once they've expired.")
-    if any(g.measurements for g in p.groups):
-        out("Copies of Train Measurements already given to researchers (identifiers removed) can't be recalled.")
+    if p.waiting:
+        out(waiting_line(p))
 
 
 # ------------------------------------------------------------------ deleting
@@ -274,9 +275,8 @@ def deletions(d, bucket: Bucket, now: datetime,
     p = plan(d, bucket, now)
     if p.empty():
         out("Nothing to delete.")
-        for request_id, until in p.waiting:
-            out(f"Not yet: request {request_id}, listed after "
-                f"{until.astimezone(timezone.utc):%Y-%m-%d %H:%M} UTC (its upload URLs work until then).")
+        if p.waiting:
+            out(waiting_line(p))
         return True
     show(p, bucket, now, out)
     try:
