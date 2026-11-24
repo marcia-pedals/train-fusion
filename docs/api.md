@@ -71,7 +71,7 @@ most 64 KB):
 Query: `undo_deletion=true` when the person asked to share this ride (a button), never for
 automatic sharing: measurements marked for deletion are then shared again (unmarked, and
 linked to the account signed in now, or to none). The deletion request still lists them;
-`just delete-measurements` skips what's no longer marked.
+`just deletions` skips what's no longer marked.
 
 `ended_unix_s`, `train`, `direction`, `station_confidence`, a stop's `station` and
 `doors_closed_unix_s` may be null. `car_position`: `unspecified` / `upper` / `lower` /
@@ -184,7 +184,7 @@ developer (`just deletions`). Query `recording_id=<id>`: only that recording's u
 | Collection | Document | Fields |
 |---|---|---|
 | `users` | `<uid>` | `created_at`, `email`, `blocked` |
-| `measurements` | `<ride_id>-<first 16 of device_hash>` | the body, `ride_id`, `device_hash`, `uid` (or null), `shared_at` |
+| `measurements` | `<ride_id>-<first 16 of device_hash>` | the body, `ride_id`, `device_hash`, `uid` (or null), `shared_at`, `deletion_requested_at` |
 | `uploads` | `<upload_id>` | `recording_id`, `uid` (or null), `device_hash`, `files` [{name, size, content_type}], `total_bytes`, `status`, `created_at`, `completed_at`, `deletion_requested_at` |
 | `deletion_requests` | auto id | `requested_at`, `reason` (`requested` / `account_deleted`), `uid`, `device_hash`, `upload_ids`, `measurement_ids`, `done_at` |
 | `counters` | `signups-<YYYY-MM-DD>`, `anon-uploads-<day>`, `user-uploads-<uid>-<day>`, `anon-measurements-<day>`, `user-measurements-<uid>-<day>` | `count` |

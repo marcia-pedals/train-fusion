@@ -191,22 +191,26 @@ which cuts those builds off.
 | `just api-deploy` | build `backend/` (Cloud Build) and deploy it |
 | `just tf apply` | change the service's settings (env vars in `api.tf`), scaling, IAM |
 | `gcloud run services logs tail api --region us-west1` | its logs (never tokens or device secrets) |
-| `just deletions` | pending deletion requests (recordings and Train Measurements), and what to run for each |
+| `just deletions` | pending deletion requests (recordings and Train Measurements); type `delete` to carry them all out |
 | `just block-account <uid>` | refuse an account |
 | `just test` | includes the backend's tests (against in-memory fakes, no GCP) |
 
 **Deletion requests** (someone asked for their recordings or Train Measurements to be
-deleted, or deleted their account): `just deletions` lists each pending request with what it
-covers and what to run. Nothing is deleted automatically: for Train Measurements run
-`just delete-measurements <request id>` (it deletes exactly the ones that request lists);
-for uploads, the `gcloud storage rm -r gs://train-fusion-recordings/raw/<upload id>/`
-commands, and also labels made from those uploads (in the bucket's `labels/` and
-`RIDES.md`) and any laptop copies (`data/recordings/`). Then
-`just deletions --done <request id>` (it refuses while that request's measurements are
-still there). Requests promise deletion within 30
-days. Deleted objects stay recoverable for the bucket's 7-day soft-delete window. Upload
-URLs handed out shortly before a request still work for up to 12 hours; the listing says
-when a request is that recent.
+deleted, or deleted their account): run `just deletions`. Nothing is deleted automatically,
+and nothing is deleted until you've seen it: it lists every pending request, grouped by the
+account (with its email, if the account still exists) or the device that asked, with each
+Train Measurement's duration and number of stops and each Full Recording's duration, size
+and labels. Type `delete` and it deletes all of it: the measurements (skipping any shared
+again since); each recording's `raw/` and `labels/` in the bucket, its lines in the
+bucket's `RIDES.md` and its upload record in Firestore; and marks the requests done.
+Anything else deletes nothing. It doesn't touch laptops' copies (`data/`): those go when
+they're cleared and fetched afresh. It's safe to rerun: what failed is reported and the
+request stays pending.
+
+Requests promise deletion within 30 days; the listing says when one is overdue. A request
+made less than 12 hours ago that covers uploads waits (upload URLs handed out before it
+still work until then), so files still arriving are caught. Deleted objects stay
+recoverable for the bucket's 7-day soft-delete window.
 
 **Blocking an account** (someone abusing the shared upload limits): find its uid (the
 `uid` of its uploads in Firestore, or Identity Platform's user list) and

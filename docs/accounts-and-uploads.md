@@ -58,7 +58,7 @@ the bucket without limit; anyone with a build could extract it.)
   to it, and the recordings uploaded while signed in (or linked to it). What happens:
   - the account is deleted at once;
   - its Train Measurements and uploaded recordings are marked for deletion, and the
-    developer deletes them by hand (`just deletions`). This is deliberate: deleting must
+    developer deletes them, after looking at them (`just deletions`). This is deliberate: deleting must
     reach every copy, so it's done carefully each time, not automatically. The app says
     they're deleted within 30 days;
   - for an account that signed in with Apple, the app gets a fresh Apple authorization and
