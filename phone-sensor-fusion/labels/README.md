@@ -16,7 +16,7 @@ of the recording.
 | `phone.csv` | intervals of `resting` (lying on a surface), `held` (in a hand, fairly still), `handled` (being moved about) | read off the gyro energy and the low-passed accelerometer in the overview plots | ±2 s; `held` / `handled` is a judgement |
 | `tone_trace.csv` | the motor tone's frequency through every leg, 4 per second | `trace_tone.py`, overlays checked by eye | see below |
 | `speed.csv` | speed, 1 per second, with its source and whether it is trustworthy | `build_speed.py` from the files above and the map | see below |
-| `modes.csv` (optional) | the train's mode (`labels/frames.py`: `MODE_KEYS`, or `unknown`) over intervals that `stops.csv` can't describe, e.g. doors reopening during a long hold; overrides what `stops.csv` implies | by hand, from the chimes on a zoom | as the chimes |
+| `modes.csv` (optional) | the train's mode (`labels/frames.py`: `MODE_KEYS`, or `unknown`) over intervals that `stops.csv` can't describe, e.g. doors reopening during a long hold, doors standing open from before the recording starts; overrides what `stops.csv` implies | by hand, from the chimes on a zoom | as the chimes |
 
 `load.py` reads the files; `frames.py` turns them into per-second arrays (speed, mode,
 on the train or not, phone state), which is what `features/` and `model/` train and score against.
@@ -40,17 +40,16 @@ on the train or not, phone state), which is what `features/` and `model/` train 
   whose ridge is visible less than 20 % of the time.
 - **On / off the train** (`presence.csv`) is labelled for the rider, separately from the
   train's own mode: a door chime heard from the platform is still a door chime. Every
-  recording starts before boarding and ends after stepping off; rides C and D include
-  time before reaching the platform and on it (`elsewhere`, `platform`).
-  Stepping through the door isn't directly visible; what brackets it is the door chime
-  before, continuous steps, and the ambience changing (platform tones fading or appearing,
-  the level dropping), so each
-  boarding and alighting is an `unknown` interval rather than an instant. Nothing in the
-  model uses this label yet (it has no off-train state); `labels/frames.py` exposes it as
-  `on_train` per second, and drops speed and mode labels (other than door chimes) for
-  off-train seconds. Platform sounds fool the chime *proposer* (sweeping harmonics of a
-  train pulling in, steady tones near 3.5 and 5.3 kHz): check every proposed chime that
-  falls outside the ride.
+  recording starts before boarding and ends after stepping off; most include time before
+  reaching the platform and on it (`elsewhere`, `platform`). Stepping through the door isn't
+  directly visible; what brackets it is the door chime before, continuous steps, and the
+  ambience changing (platform tones fading or appearing, the level dropping, the car's hum
+  appearing), so each boarding and alighting is an `unknown` interval rather than an instant.
+  Platform sounds fool the chime *proposer* (sweeping harmonics of a train pulling in, bells,
+  steady tones near 3.5 and 5.3 kHz): check every proposed chime that falls outside the ride.
+`labels/frames.py` exposes this as `on_train` per second, and drops speed and mode labels
+(other than door chimes) for off-train seconds. The model scores it away from boarding and
+alighting only (`model/evaluate.py`): when exactly the rider stepped through doesn't matter.
 
 ## Speed labels
 

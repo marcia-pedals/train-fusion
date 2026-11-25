@@ -10,8 +10,9 @@ from __future__ import annotations
 import numpy as np
 
 from labels import load
-from labels.frames import MOVING, OPEN_CHIME, UNKNOWN, FrameLabels
+from labels.frames import MOVING, OPEN, OPEN_CHIME, UNKNOWN, FrameLabels
 from model.infer import Result
+from model.states import OFF_MODE
 
 MATCH_S = 5.0  # a detected door-open chime is a labelled one if it starts within this
 
@@ -22,13 +23,20 @@ def _onsets(mask: np.ndarray) -> np.ndarray:
 
 def evaluate(rid: str, res: Result, lab: FrameLabels) -> dict:
     stops, s_of = load.stops(rid), load.station_s()
-    found = _onsets(res.path_mode == OPEN_CHIME).astype(float)
+    # a stop = the path entering the door cycle (the door-open chime, or "doors open"), or
+    # getting on; it matches a labelled stop if it starts within MATCH_S of its chime or,
+    # getting on, before the next stop (the train stands until it leaves: no distance lost)
+    door = np.isin(res.path_mode, [OPEN_CHIME, OPEN])
+    aboard = np.flatnonzero(res.path_mode != OFF_MODE)
+    found = np.union1d(_onsets(door), aboard[:1] if len(aboard) and aboard[0] > 0 else []).astype(float)
     truth = np.array([st.t_open for st in stops])
     match = {}  # labelled stop index -> detected onset
     for i, t in enumerate(truth):
-        d = np.abs(found - t)
-        if len(d) and d.min() <= MATCH_S:
-            match[i] = float(found[np.argmin(d)])
+        # boarding happens only at a standing train: before the next stop's chime, it's this stop
+        end = stops[1].t_open if i == 0 and len(stops) > 1 and np.isfinite(stops[1].t_open) else t + MATCH_S
+        ok = (found >= t - MATCH_S) & (found <= end) if np.isfinite(t) else np.zeros(len(found), bool)
+        if ok.any():
+            match[i] = float(found[ok][np.argmin(np.abs(found[ok] - t))])
     legs = []
     for i in range(len(stops) - 1):
         if i in match and i + 1 in match:
@@ -66,6 +74,32 @@ def evaluate(rid: str, res: Result, lab: FrameLabels) -> dict:
         "mode_accuracy": float(np.mean(res.path_mode[known] == lab.mode[known])),
         "arrive_err_s": arr_err, "depart_err_s": dep_err,
     }
+
+
+ZONE_S = 60  # boarding and alighting times don't matter: seconds this close to one aren't scored
+
+
+def presence(res: Result, lab: FrameLabels, rid: str) -> dict:
+    """On or off the train, away from boarding and alighting: seconds where P(on) >= 0.5 says
+    the wrong thing (for the live filter, any fixed lags, the smoother), and door openings the
+    Viterbi path finds while the rider is off the train (spurious stops before / after the ride)."""
+    T = len(lab.on_train)
+    c = np.arange(T) + 0.5
+    zone = np.zeros(T, bool)
+    for a, b, where in load.presence(rid):
+        if where == "unknown":
+            zone |= (c >= a - ZONE_S) & (c < b + ZONE_S)
+    first = load.stops(rid)[0]  # the boarding train's doors, open before boarding
+    if np.isfinite(first.t_close_end):
+        zone |= (c >= (first.t_open if np.isfinite(first.t_open) else 0)) & (c < first.t_close_end)
+    scored = (lab.on_train != UNKNOWN) & ~zone
+    on, off = scored & (lab.on_train == 1), scored & (lab.on_train == 0)
+    out = {"n_on": int(on.sum()), "n_off": int(off.sum()),
+           "stops_off_train": int(np.sum(off & (res.path_mode == OPEN_CHIME) & ~np.r_[False, res.path_mode[:-1] == OPEN_CHIME]))}
+    for name, p_on in (("filter", res.p_on_filt), *((f"lag{L}", q) for L, q in res.p_on_lag.items()), ("smooth", res.p_on)):
+        if p_on is not None:
+            out[name] = {"off_called_on": int(np.sum(off & (p_on >= 0.5))), "on_called_off": int(np.sum(on & (p_on < 0.5)))}
+    return out
 
 
 def summary_line(name: str, e: dict) -> str:

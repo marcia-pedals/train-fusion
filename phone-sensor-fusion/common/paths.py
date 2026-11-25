@@ -23,6 +23,11 @@ def recording_ids() -> list[str]:
     return sorted(p.name for p in RECORDINGS.iterdir() if (p / "meta.json").exists())
 
 
+def labelled_ids() -> list[str]:
+    """Recordings that have labels: the only ones fitting and evaluation use."""
+    return [i for i in recording_ids() if (LABELS / i / "stops.csv").exists()]
+
+
 def derived(*parts: str) -> Path:
     p = DERIVED.joinpath(*parts)
     p.parent.mkdir(parents=True, exist_ok=True)

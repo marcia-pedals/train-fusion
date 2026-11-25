@@ -63,6 +63,37 @@ Heading's contribution is the direction of travel; the barometer's is small on i
 (the car's own pressure wanders by metres), and it slightly lowers confidence at stop 2 on
 ride D (0.99 against 1.00).
 
+### On or off the train
+
+Every recording starts before boarding and ends after stepping off, so the model has two more
+states, **before** and **after** the ride, and three rules ([model/README.md](model/README.md)):
+one ride per recording (before → on → after); on at a standing train, off through open doors;
+and only while **walking** (the accelerometer at walking pace: always there at boarding and alighting,
+never mid-ride). What tells a platform from a carriage is **the car's hum**: lines at multiples
+of 120 Hz around 4 kHz, present inside a car whatever it is doing and off it only right next to
+one ([features/README.md](features/README.md)). The motor tone and the door chimes are made
+neutral on the question (off the train you hear trains too).
+
+Over the ten labelled rides A–J, each scored by a model fitted on the other nine, away from
+boarding and alighting (60 s either side; when exactly the rider stepped through isn't the
+point), 16,883 s on the train and 2,986 s off it:
+
+| | off-train seconds shown as on | on-train seconds shown as off | stops found off the train |
+|---|---|---|---|
+| live filter | 0 | 0 | – |
+| 30 s late (fixed-lag smoother) | 0 | 0 | – |
+| smoothed | 0 | 0 | 0 |
+
+- Starting a recording mid-ride: on a moving train P(on) passes 0.9 within 10 s 98 % of the
+  time and within 30 s always; at a stop, 81 % within 30 s and 92 % within 60 s. The slowest is a
+  start inside a long powered-down hold, which may not be found until the train moves.
+- The same with the hum's weight anywhere in 0.1–0.4, the walking threshold anywhere in
+  −18…−12 dB and its window anywhere in 5–30 s: smoothed always 0 / 0 / 0, live at most a few
+  dozen seconds. Without the hum it doesn't work at all.
+- On the train it is the on-train model: every stop found, and over all legs a mean distance
+  error of 6.4 % (7.9 % for the on-train model alone before this, which had a re-anchor into a
+  door-open chime from anywhere, now dropped).
+
 `python -m model.plot` draws each ride's result (speed, mode and phone state against the
 labels) into `data/phone-sensor-fusion/model/`.
 
@@ -79,14 +110,9 @@ What each measurement contributes (mean leg distance error with it removed; `jus
 
 What doesn't work yet, plainly:
 
-- **The model doesn't know about not being on the train.** Every recording starts before
-  boarding and ends after getting off. Steady platform tones sit exactly where the motor tone is at
-  36 m/s, so until the first door chime the model believes it is on a fast train, and it
-  found one false stop on a platform. The first door-open chime re-anchors it
-  (`P_REANCHOR`). When the rider is on the train is *labelled*
-  (`presence.csv` in the labels, now about 25 minutes of off-train time), so an off-train
-  state can be learned; a hand-built one was tried and removed (it could only be made to
-  work by reporting every mid-ride start as "off the train").
+- **A long hold with the power off reads as fast running** (ride J: ten minutes standing,
+  doors reopened twice): the on-train model has no way to stand that long. The rider is
+  correctly on the train throughout; the leg's distance is not.
 - **Online (filter-only) estimates with the phone in a hand** lose the train for tens of
   seconds at a time when speech covers the tone at low speed (8 % mean leg error, single legs
   off by a third). Smoothing repairs it; a fixed-lag smoother would be the online answer.
@@ -114,8 +140,9 @@ What doesn't work yet, plainly:
 - **Wheel-rotation lines with the phone in a hand**: currently applied with tables borrowed
   from resting phones, which hurt the one hand-held ride in cross-validation. Needs a
   second hand-held ride to fit and test properly.
-- **An off-train state**, learnable now that `presence.csv` holds about 25 minutes of
-  off-train time.
+- **The off-train states in the phone app.** `app/export.py` still exports the on-train
+  model; porting means the hum and walking features, the two states with the walking gate,
+  and the motor-tone background (a second forward pass over the on-train states).
 
 ## Layout
 
