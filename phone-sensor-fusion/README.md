@@ -60,8 +60,8 @@ The pipeline is five folders, each with its own README, used in this order:
 | [`model/`](model/README.md) | the HMM over (mode, speed), the station layer on top, fitting, evaluation | `params/all.json` (fitted on every ride) checked in; the cross-validation fits go to `data/` |
 
 `app/` exports the fitted model for the phone app's online inference and checks the app's
-port against this pipeline ([docs/recorder.md](../docs/recorder.md)). [`viewer/`](viewer/README.md) is a web page for exploring all of it on one time axis while
-the audio plays. `common/` has the recording loader (the only code that reads the raw files) and paths;
+port against this pipeline ([docs/recorder.md](../docs/recorder.md)). [`viewer/`](viewer/README.md) is a web app with the evaluation's per-ride and per-leg
+tables, and each ride in detail: spectrograms, the model's beliefs and the audio on one time axis. `common/` has the recording loader (the only code that reads the raw files) and paths;
 `pipeline.py` runs features → fit → infer → evaluate; `tests/` checks the inference code
 against brute force.
 
@@ -86,7 +86,7 @@ python -m pipeline              # features if missing, then leave-one-recording-
 python -m pipeline --ablate     # ... also with each measurement removed / alone
 python -m pipeline --final      # fit on every labelled recording -> params/all.json
 python -m model.plot            # result plots -> data/phone-sensor-fusion/model/<id>.cv.png
-python -m viewer.export && python -m viewer.serve   # the viewer, http://127.0.0.1:3040
+python -m model.schemas && (cd viewer && npm install && npm run dev)   # the results viewer, http://127.0.0.1:3040
 python -m pytest -q tests
 ```
 

@@ -23,6 +23,11 @@ opened and how far the train ran in between. This layer explains those with the 
 Start: any station, either direction, equally likely. The forward pass gives, after every
 door opening, the probability of each station using only the past, which is what a phone
 could show live; between stops, position = that station + direction x distance since.
+With `causal=True` its inputs are causal too: the door openings are read off the first
+layer's filtered modes, and at each opening the whole layer is run again on the first
+layer's speeds smoothed over everything up to that opening (Result.v_upto), so every leg so
+far is measured with all that is known by then. `filt`, `now_filt` and `p_real_filt` are
+then what a phone running both layers live would show at each opening.
 
 Not every door opening the first layer finds is a stop at a station (a chime misheard, doors
 reopened during a hold): each may be false, with prior P_FALSE, and then the leg runs on to
@@ -48,6 +53,7 @@ from features import motion, phone_state
 from labels.frames import OPEN_CHIME
 from maps import track as trackmod
 from model.infer import Result
+from model.states import DT
 
 ALL = ("yaw", "heading", "baro")  # the optional measurements; distance is always used
 P_SKIP = 0.3  # each station passed without stopping
@@ -94,6 +100,10 @@ class Localisation:
     # filt and smooth are given that the opening was a stop at a station; how likely that was:
     p_real_filt: np.ndarray  # [J] given the stops so far
     p_real: np.ndarray  # [J] given all
+    # where the train last stopped, as known right after each opening: P(the last real stop
+    # among openings 0..j was at station, direction | openings 0..j), not conditioned on j
+    # being real; the rest of the mass is "no real stop yet"
+    now_filt: np.ndarray  # [J, n_stations, 2]
 
 
 def _robust(r, outlier, weight):
@@ -101,13 +111,14 @@ def _robust(r, outlier, weight):
     return float(weight * np.sum(np.log((1 - outlier) * np.exp(-0.5 * r * r) + outlier * 0.05)))
 
 
-def _leg_loglik(tr, res, meas, use, t0, t1, s_a, s_b, d_meas):
-    """log p(what was measured along the leg | it ran from s_a to s_b), beyond its length."""
+def _leg_loglik(tr, dist, v, meas, use, t0, t1, s_a, s_b, d_meas):
+    """log p(what was measured along the leg | it ran from s_a to s_b), beyond its length.
+    dist, v: the first layer's odometry and speed."""
     tt = np.arange(t0, t1)
     direction = np.sign(s_b - s_a)
     # stretch the first layer's odometry so the leg ends exactly at b
-    pos = s_a + direction * (res.distance[tt] - res.distance[t0]) * abs(s_b - s_a) / d_meas
-    v = res.v[tt]
+    pos = s_a + direction * (dist[tt] - dist[t0]) * abs(s_b - s_a) / d_meas
+    v = v[tt]
     ll = 0.0
     if "yaw" in use:
         ok = np.isfinite(meas["yaw"][tt]) & (v > MIN_YAW_SPEED)
@@ -146,7 +157,7 @@ def _stop_loglik(tr, meas, use, t):
     return out
 
 
-def _span_logw(tr, res, meas, use, t0, t1, d, n_false, p_false):
+def _span_logw(tr, dist, v, meas, use, t0, t1, d, n_false, p_false):
     """[n, n] log p(a span of the first layer's output | it ran from station a to station b),
     including that n_false door openings inside it were false and the one at its end real.
 
@@ -169,7 +180,7 @@ def _span_logw(tr, res, meas, use, t0, t1, d, n_false, p_false):
                 continue
             ld[a, b] = -0.5 * ((d - true_d) / sd) ** 2 - np.log(sd) + (abs(b - a) - 1) * np.log(P_SKIP)
             if use:
-                ls[a, b] = _leg_loglik(tr, res, meas, use, t0, t1, tr.station_s[a], tr.station_s[b], d)
+                ls[a, b] = _leg_loglik(tr, dist, v, meas, use, t0, t1, tr.station_s[a], tr.station_s[b], d)
     if n_false:
         # where the false openings fell: anywhere along the leg (ordered uniforms)
         D = np.abs(tr.station_s[None, :] - tr.station_s[:, None])
@@ -216,27 +227,54 @@ def _backward(lb, lw):
                      _lse(np.where(south.T, lw, -np.inf) + lb[None, :, 1], axis=1)], axis=1)
 
 
-def localise(res: Result, f: dict, use=ALL, online_distance=False, p_false=P_FALSE) -> Localisation:
+def openings(res: Result, causal: bool) -> np.ndarray:
+    """Frames where the first layer's doors start opening: onsets of the door-open chime in
+    the Viterbi path, or (causal) in the filtered most probable mode."""
+    mode = np.argmax(res.mode_p_filt, axis=1) if causal else res.path_mode
+    return np.flatnonzero((mode == OPEN_CHIME) & (np.r_[-1, mode[:-1]] != OPEN_CHIME))
+
+
+def localise(res: Result, f: dict, use=ALL, causal=False, p_false=P_FALSE) -> Localisation:
     """`use`: which optional measurements to include; each also needs the recording to
-    have the sensor (and, for yaw and heading, the phone to be resting). `p_false`: prior
-    that a door opening the first layer found was not a stop at a station (0: trust them all)."""
+    have the sensor (and, for yaw and heading, the phone to be resting). `causal`: what a
+    phone could show live at each opening (see above). `p_false`: prior that a door opening
+    the first layer found was not a stop at a station (0: trust them all).
+
+    Causal: `smooth` and `p_real` are from the last opening's run (given everything up to it)."""
     tr = trackmod.load()
-    n = len(tr.stations)
-    mode = res.path_mode
-    t_stop = np.flatnonzero((mode == OPEN_CHIME) & (np.r_[-1, mode[:-1]] != OPEN_CHIME))
-    dist = res.distance_filt if online_distance else res.distance
-    leg_m = np.diff(dist[t_stop])
     meas = {"yaw": motion.extract(f, res.phone[:, phone_state.RESTING])["yaw_rate"] if "yaw" in use else None,
             "heading": res.travel_heading if res.travel_heading is not None and np.isfinite(res.travel_heading).any() else None,
             "baro": f["baro_alt"].astype(float) if "baro_alt" in f else None}
+    t_stop = openings(res, causal)
+    if not causal:
+        return _localise(tr, meas, use, t_stop, res.distance, res.v, p_false)
+    runs = []
+    for j, tj in enumerate(t_stop):
+        v = res.v_filt.copy()  # (frames after tj aren't looked at)
+        v[:tj + 1] = res.v_upto(int(tj))
+        runs.append(_localise(tr, meas, use, t_stop[:j + 1], np.r_[0, np.cumsum(v * DT)], v, p_false))
+    if not runs:
+        return _localise(tr, meas, use, t_stop, res.distance_filt, res.v_filt, p_false)
+    last = runs[-1]
+    return Localisation(t_stop=t_stop, leg_m=np.array([r.leg_m[-1] for r in runs[1:]]),
+                        filt=np.array([r.filt[-1] for r in runs]), smooth=last.smooth,
+                        p_real_filt=np.array([r.p_real_filt[-1] for r in runs]), p_real=last.p_real,
+                        now_filt=np.array([r.now_filt[-1] for r in runs]))
+
+
+def _localise(tr, meas, use, t_stop, dist, v, p_false) -> Localisation:
+    """The layer over the openings t_stop, given the first layer's odometry and speed."""
+    n = len(tr.stations)
+    leg_m = np.diff(dist[t_stop])
     J = len(t_stop)
     if J == 0:
         z = np.zeros((0, n, 2))
-        return Localisation(t_stop=t_stop, leg_m=leg_m, filt=z, smooth=z, p_real_filt=np.zeros(0), p_real=np.zeros(0))
+        return Localisation(t_stop=t_stop, leg_m=leg_m, filt=z, smooth=z, p_real_filt=np.zeros(0), p_real=np.zeros(0),
+                            now_filt=z)
     # spans between two real stops k < j, with the j - k - 1 openings between them false
     # (any number of them: each costs a factor p_false; none at all when that is 0)
     spans = [(k, j) for j in range(J) for k in range(j) if p_false > 0 or k == j - 1]
-    logw = {(k, j): _span_logw(tr, res, meas, use, t_stop[k], t_stop[j], dist[t_stop[j]] - dist[t_stop[k]], j - k - 1, p_false)
+    logw = {(k, j): _span_logw(tr, dist, v, meas, use, t_stop[k], t_stop[j], dist[t_stop[j]] - dist[t_stop[k]], j - k - 1, p_false)
             for k, j in spans}
     # heading at the stop says which station, not whether it was one: mean 1 over the states
     loge = []
@@ -267,6 +305,13 @@ def localise(res: Result, f: dict, use=ALL, online_distance=False, p_false=P_FAL
     for j in range(J):
         lfalse = _lse(np.r_[l_open(j + 1), lreal[:j] + l_open(j - np.arange(j))], axis=0)
         p_real_filt[j] = 1 / (1 + np.exp(lfalse - lreal[j])) if np.isfinite(lreal[j]) else 0.0
+    # the last real stop among 0..j is k: k real, the j - k openings after it false
+    now_filt = np.zeros((J, n, 2))
+    for j in range(J):
+        terms = np.stack([la[k] + l_open(j - k) for k in range(j + 1)])
+        lnone = l_open(j + 1)
+        lall = np.logaddexp(_lse(terms, axis=None), lnone)
+        now_filt[j] = np.exp(_lse(terms, axis=0) - lall)
     post = la + lb
     p_real = np.array([np.exp(_lse(post[j], axis=None) - lz) for j in range(J)])
 
@@ -277,26 +322,7 @@ def localise(res: Result, f: dict, use=ALL, online_distance=False, p_false=P_FAL
     filt = np.array([norm(la[j]) for j in range(J)]).reshape(J, n, 2)
     smooth = np.array([norm(post[j]) for j in range(J)]).reshape(J, n, 2)
     return Localisation(t_stop=t_stop, leg_m=leg_m, filt=filt, smooth=smooth,
-                        p_real_filt=p_real_filt, p_real=np.minimum(p_real, 1.0))
-
-
-def score(loc: Localisation, truth_by_stop: dict[int, str]) -> dict:
-    """How the forward pass (the belief at each stop given the past) did, on the detected
-    stops that are labelled ones. truth_by_stop: index into loc.t_stop -> station."""
-    tr = trackmod.load()
-    js = sorted(truth_by_stop)
-    right = []
-    for j in js:
-        a, _ = np.unravel_index(np.argmax(loc.filt[j]), loc.filt[j].shape)
-        right.append(tr.stations[a] == truth_by_stop[j])
-    locked = next((k for k in range(len(js)) if all(right[k:])), None)
-    p_truth = [float(loc.filt[j][tr.stations.index(truth_by_stop[j])].sum()) for j in js]
-    false = [j for j in range(len(loc.t_stop)) if j not in truth_by_stop]
-    return {"stops": len(js), "right": int(sum(right)), "right_from_stop": None if locked is None else locked + 1,
-            "p_truth": p_truth,
-            # openings that weren't labelled stops, and how many of those / of the stops it believes false
-            "false": len(false), "false_found": int(sum(loc.p_real[j] < 0.5 for j in false)),
-            "stops_doubted": int(sum(loc.p_real[j] < 0.5 for j in js))}
+                        p_real_filt=p_real_filt, p_real=np.minimum(p_real, 1.0), now_filt=now_filt)
 
 
 def describe(loc: Localisation, truth: list[str] | None = None) -> list[str]:

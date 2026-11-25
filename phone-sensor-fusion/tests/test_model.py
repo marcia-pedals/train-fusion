@@ -40,6 +40,59 @@ def test_forward_backward_and_viterbi_match_brute_force():
     assert np.allclose(alpha[-1], post[-1])  # filtered = smoothed at the last frame
     assert (hmm.viterbi(log_b, lambda t: A, prior) == best).all()
 
+def test_p_visit_matches_brute_force():
+    rng = np.random.default_rng(1)
+    T, N = 6, 3
+    A = rng.random((N, N)); A /= A.sum(axis=1, keepdims=True)
+    prior = rng.random(N); prior /= prior.sum()
+    log_b = rng.normal(size=(T, N))
+    m = hmm.messages(log_b, lambda t: A, prior)
+    target = np.array([False, True, False])
+    for t0, t1 in [(0, 6), (1, 4), (2, 3), (3, 6)]:
+        for smoothed in (True, False):
+            Tn = T if smoothed else t1  # filtered: the measurements up to t1 - 1
+            total = hit = 0.0
+            for path in itertools.product(range(N), repeat=Tn):
+                p = prior[path[0]] * np.exp(log_b[0, path[0]])
+                for t in range(1, Tn):
+                    p *= A[path[t - 1], path[t]] * np.exp(log_b[t, path[t]])
+                total += p
+                hit += p * any(target[path[t]] for t in range(t0, t1))
+            visit, avoid = hmm.p_visit(m, log_b, lambda t: A, target, t0, t1, smoothed)
+            assert np.isclose(visit, hit / total) and np.isclose(avoid, 1 - hit / total)
+    # only some frames of the window count
+    total = hit = 0.0
+    for path in itertools.product(range(N), repeat=T):
+        p = prior[path[0]] * np.exp(log_b[0, path[0]])
+        for t in range(1, T):
+            p *= A[path[t - 1], path[t]] * np.exp(log_b[t, path[t]])
+        total += p
+        hit += p * (target[path[1]] or target[path[4]])
+    frames = np.array([True, False, False, True, False])
+    assert np.allclose(hmm.p_visit(m, log_b, lambda t: A, target, 1, 6, True, frames), (hit / total, 1 - hit / total))
+
+
+def test_p_visit_keeps_tiny_probabilities():
+    # a state that is almost never entered: P(visit) ~ 1e-30 must not come out as 0
+    eps = 1e-15
+    A = np.array([[1 - eps, eps], [0.5, 0.5]])
+    log_b = np.zeros((3, 2))
+    m = hmm.messages(log_b, lambda t: A, np.array([1.0, 0.0]))
+    visit, avoid = hmm.p_visit(m, log_b, lambda t: A, np.array([False, True]), 0, 3, True)
+    assert np.isclose(visit, 2 * eps, rtol=1e-6) and visit > 0 and np.isclose(avoid, 1)
+
+
+
+def test_smooth_upto_is_smoothing_the_prefix():
+    rng = np.random.default_rng(2)
+    T, N = 8, 4
+    A = rng.random((N, N)); A /= A.sum(axis=1, keepdims=True)
+    prior = rng.random(N); prior /= prior.sum()
+    log_b = rng.normal(size=(T, N))
+    m = hmm.messages(log_b, lambda t: A, prior)
+    for t1 in (0, 3, T - 1):
+        assert np.allclose(hmm.smooth_upto(m, log_b, lambda t: A, t1), hmm.messages(log_b[:t1 + 1], lambda t: A, prior).gamma)
+
 
 def test_transition_matrix_is_a_stop_cycle():
     p = {"dynamics": {"v_edges": [3.0, 8.0], "max_step": 2,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import re
 import tomllib
 from dataclasses import dataclass
 
@@ -76,3 +77,13 @@ def station_s() -> dict[str, float]:
     """Station -> distance along the line (m), from the map."""
     rows = csv.DictReader((paths.HERE / "maps" / "data" / "stations.csv").open())
     return {r["station"]: float(r["s_m"]) for r in rows}
+
+
+def ride_names() -> dict[str, str]:
+    """Recording id -> the letter the docs call that ride (RIDES.md in the labels; rides
+    not in it yet are left out)."""
+    path = paths.LABELS / "RIDES.md"
+    if not path.exists():
+        return {}
+    rows = re.findall(r"^\|\s*([A-Z]+)\s*\|\s*(\d{8}T\d{6}Z)\s*\|", path.read_text(), re.M)
+    return {rid: name for name, rid in rows}
