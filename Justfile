@@ -109,9 +109,10 @@ sync-recordings *args:
 psf *args:
     cd phone-sensor-fusion && python -m pipeline {{args}}
 
-# phone-sensor-fusion viewer at http://127.0.0.1:3040: features, filtered and smoothed inference, audio
+# phone-sensor-fusion results viewer at http://127.0.0.1:3040: per-ride and per-leg metrics of the last `just psf`
 psf-view:
-    cd phone-sensor-fusion && python -m viewer.export && python -m viewer.serve
+    cd phone-sensor-fusion && python -m model.schemas
+    cd phone-sensor-fusion/viewer && npm install --no-audit --no-fund && npm run dev
 
 test:
     python -m pytest -q tests

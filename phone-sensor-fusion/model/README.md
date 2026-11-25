@@ -124,16 +124,52 @@ Two things in the fitting are less clean than they look:
 - The acceleration noise sd can only be fitted against speed labels that didn't come from
   the accelerometer: 400 s of data.
 
-## Evaluation (`evaluate.py`, `../pipeline.py`)
+## Evaluation (`evaluate.py`, `schemas.py`, `../pipeline.py`)
 
-Leave one recording out, fit on the rest, infer on it. Reported per test recording:
+Leave one ride out, fit on the rest, infer on it, and score it against its labels. The
+labels only cut the ride up: each labelled stop gets a window (its labelled times ± 5 s),
+and a leg runs from one labelled stop to the next, its moving window between the two
+stops' windows (less any door opening labelled there, such as doors reopened in a hold).
 
-- **leg distance error**: for each pair of consecutive door openings the model found, its
-  distance ÷ the map distance between the stations those were (matched to the labelled
-  chimes within 5 s), smoothed and filter-only;
-- stops found / false;
-- speed RMSE on confidently labelled seconds; mode accuracy on labelled seconds;
-- with `--ablate`, all of it again without each measurement, and with each alone;
-- the station layer's belief after every stop, with and without yaw.
+Per leg, once with the filter (measurements up to the end of the window in question) and
+once smoothed (the whole ride):
 
-`model/plot.py` draws speed, mode and phone state against the labels.
+- **distance error**: speed summed from one labelled door opening to the next, against the
+  map distance between the two stations;
+- **p(missed stop)**: the probability that the doors did not start opening anywhere in the
+  end stop's window;
+- **p(false stop)**: the probability that they started opening at least once within the
+  moving window.
+
+Both are the probability of being wrong, and both are over paths, not frames
+(`hmm.p_visit`: the forward pass over the window on two copies of the chain, paths that
+have entered the door-open chime and paths that haven't). Each is computed directly rather
+than as one minus the other, so tiny values keep their precision; the viewer shows them as
+log10.
+
+Per ride:
+
+- the station layer run **causally** (`stations.localise(causal=True)`): door openings read
+  off the filtered modes, and at each one the layer is run again on speeds smoothed over
+  everything heard up to then (`Result.v_upto`), so each leg is measured knowing how it
+  ended. Per leg, `live_dist_err` is that distance against the map. After each opening it says where
+  the train last stopped (`now_filt`); against the last labelled stop and the ride's
+  direction (within 5 s either side of a labelled door opening, the stop before it and the
+  one it opens both count), **time to fix** is from leaving the first labelled stop until that belief
+  first reaches 0.9, and **lost** is the time after that it spends below 0.5. The belief
+  only changes at door openings so far.
+- the station layer **smoothed** (the Viterbi openings and `p_real`): labelled stops with no
+  opening it believes was a stop (**missing**), and openings it believes were stops beyond
+  one per labelled stop (**spurious**).
+
+`pipeline.py` writes them to `data/phone-sensor-fusion/eval/` as `legs.parquet` and
+`rides.parquet` (columns in `schemas.py`, declared with the repo's schema language) and the
+thresholds to `meta.json`; with `--ablate` every row again for each variant. The viewer
+(`../viewer/`) shows them.
+
+The layer-1 acceleration's per-stretch sign and offset come from the whole ride even for
+the filter (see Layer 1 above), so "filtered" is causal given those.
+
+`ride_view.py` writes, from the same inference, what the viewer's ride page shows
+(`data/phone-sensor-fusion/rides/<id>/`). `model/plot.py` draws speed, mode and phone state
+against the labels.

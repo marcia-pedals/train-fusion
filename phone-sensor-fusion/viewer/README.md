@@ -1,57 +1,51 @@
 # Viewer
 
-A web page that puts a recording's audio, features, labels and inference on one time axis,
-and plays the audio while the model's beliefs move.
+A local web app over what the pipeline writes. Two pages:
+
+- **Results** (`#/results`): the evaluation's tables (`../model/evaluate.py`,
+  `../model/schemas.py`), one ride or one leg per row, to search and sort. The last column
+  links to the ride page, for the whole ride or zoomed to the leg.
+- **Ride** (`#/ride/<id>?t0=&t1=&t=`): one ride in detail (`../model/ride_view.py` writes
+  it), on one time axis: the audio and accelerometer spectrograms with the labelled door
+  chimes as lines (green opening, red closing; solid where the chime starts, dashed where
+  it ends); the filtered and smoothed beliefs over speed (m/s); mode (labelled, filtered, smoothed); and the live
+  localiser's probability for the truth and for its own best guess, with the confidently
+  wrong stretches in red. The left column gives each track's value at the mouse, or at
+  the cursor. Zoom: pinch, ⌘/ctrl + scroll, + and −; pan: drag, scroll sideways, or the
+  whole-ride strip at the top; click to put the cursor, space to play the audio from it
+  (1–8×, from the left edge if there is no cursor), ← → to move it, "Clear cursor" to
+  remove it, 0 for the whole ride. The speed beliefs' values are the mean and the central 95% interval.
+  "Hide identifying info" (remembered) leaves nothing on the page about the ride beyond the
+  section in view: no date or first and last stations, no whole-ride strip, and times
+  counted from the view's left edge (so the view reads 0:00–its length). The address still has the recording id. The address keeps the view and cursor.
+
+React + TypeScript, built and served by Vite. Local only: what it shows names recordings,
+so it is never built for or deployed anywhere.
 
 ```sh
-python -m viewer.export     # once, and again after anything upstream changes (features, labels, params)
-python -m viewer.serve      # http://127.0.0.1:3040
+python -m pipeline                  # from phone-sensor-fusion/: writes data/phone-sensor-fusion/eval/
+python -m model.schemas             # src/generated/tables.ts: the tables' types and column descriptions
+cd viewer && npm install && npm run dev     # http://127.0.0.1:3040
+npm run check                       # type-check
 ```
 
-(`just psf-view` from the repo root does both.)
+(`just psf-view` from the repo root does the last two.) The page reads the files when it
+loads, so after a new pipeline run a reload is enough.
 
-By default each recording is shown with the model fitted *without* it
-(`data/phone-sensor-fusion/params/without-<id>.json`), i.e. what the pipeline evaluates; `python -m viewer.export
---params all` shows the model fitted on everything instead.
+## How it is put together
 
-## What is on the page
-
-Left, top to bottom, all sharing the time axis:
-
-| track | |
-|---|---|
-| ride | the whole recording (smoothed speed; green = not moving) with the visible window; click or drag to move it |
-| Audio | spectrogram 0–5 kHz at 10 frames/s. Optional lines: where the motor tone and its partial would be at the smoothed and at the filtered speed, so you can see whether the model is on the ridge |
-| Accelerometer | line spectrum of the acceleration magnitude, 0–50 Hz, 1 frame/s, with the wheel-rotation partials at the model's speed. The track's caption says whether the model shown actually uses them |
-| Speed | label (thick where trustworthy, thin where a guess), smoothed and filtered posterior means, labelled door openings. Behind them, selectable: the smoothed posterior over speed, the filtered posterior, the motor tone's likelihood alone, or the wheel-rotation lines' likelihood alone (what one measurement says before the HMM) |
-| Mode | stacked probabilities per second: smoothed, filtered, and the label; under them, whether the rider was on the train (a label only: the model has no such state) |
-| Phone | resting / held / handled: the filter's belief and the label |
-| Door chimes, along-track acceleration, rumble, vibration, yaw rate, gyroscope energy | the per-second measurements. The acceleration is drawn with the sign and offset the model estimated, over the change of the smoothed speed it should match |
-
-Right, for the second under the cursor (or under the playhead when the cursor is elsewhere):
-speed tiles; the full belief over speed, filtered against smoothed; mode and phone
-probabilities (the labelled one in bold); and the line, with the station layer's belief
-after the latest door opening (given all stops / given the stops so far) and the best
-position estimate as a dot.
-
-**Filtered** = using only the past, what a phone could show live. **Smoothed** = using the
-whole recording. Blue is smoothed and orange is filtered everywhere.
-
-Controls: click to move the playhead; drag to pan; pinch or ⌘/ctrl + scroll to zoom;
-two-finger sideways scroll to pan; space to play or pause; ← → for 10 s (shift: 1 s);
-playback up to 16×. The address bar keeps `#<recording>&t=<s>&span=<s>`, so a moment can be
-bookmarked or pasted into a note.
-
-## How it is made
-
-`export.py` runs the inference and writes, per recording, `meta.json` (every per-second
-series) and four `uint8` rasters (spectrogram; the two posteriors and the tone likelihood
-over speed, each second scaled to its own peak) to `data/phone-sensor-fusion/viewer/`.
-`serve.py` serves those, the static page, and the recording's own `.m4a` with HTTP range
-requests (which seeking needs and python's stock server lacks). `static/` is plain
-HTML/CSS/JS drawing on canvases: no build step, no dependencies. Follows the system's
-light/dark setting.
-
-Audio time is mapped to recording time by the offset of the first audio frame
-(`audio_t0`, ~0.19 s); the browser's AAC decoder may add up to ~45 ms of its own, well
-under the one-second frames.
+- `vite.config.ts`: the dev server, which also serves `data/phone-sensor-fusion/` under
+  `/data/` and a recording's audio file under `/audio/` (nothing else of the raw
+  recording), both with HTTP range requests, which seeking needs.
+- `src/App.tsx`: the pages, chosen by the address (`src/lib/hash.ts`).
+- `src/ride/`: the ride page: `RidePage.tsx` (state, interaction, the list of tracks),
+  `draw.ts` (canvas drawing: spectrogram tiles, lines, bands, stacked probabilities),
+  `timeline.ts` (time axis and colours), `Canvas.tsx`.
+- `src/lib/`: loading (`data.ts`: Parquet via hyparquet, JSON), number formats, station
+  codes (`stations.ts`) and how a ride is named on screen (`rides.ts`: its date and first and
+  last stations, from the recording id and the labelled legs).
+- `src/components/Tooltip.tsx`: the app's tooltip; give any element a `data-tip` (not a
+  `title`).
+- `src/results/`: the page, its table (TanStack Table: sorting) and the column list
+  (`columns.ts`: header, format, and when a value shows amber or red).
+- `src/generated/`: written by `python -m model.schemas`, not checked in.

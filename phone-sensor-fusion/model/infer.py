@@ -45,6 +45,24 @@ class Result:
     stretches: list = field(default_factory=list)  # per resting stretch: sign, offset, slope
     travel_heading: np.ndarray = None  # [T] compass heading of travel, degrees true; nan where unknown
     # (needs iOS's attitude in the recording, a resting phone, and that stretch's sign)
+    msgs: hmm.Messages = None  # the last pass's messages, its emissions and transitions,
+    log_b: np.ndarray = None  # for questions about paths rather than single frames
+    trans: object = None  # (hmm.p_visit)
+
+    @property
+    def mode_p_filt(self) -> np.ndarray:
+        """[T, 6] filtered mode probabilities."""
+        return states.mode_probs(self.alpha)
+
+    def v_upto(self, t1: int) -> np.ndarray:
+        """[t1 + 1] posterior mean speed of each frame up to t1, given the measurements up to
+        t1: what a phone could know at frame t1 about the ride so far."""
+        return hmm.smooth_upto(self.msgs, self.log_b, self.trans, t1) @ states.V
+
+    def p_mode_visit(self, mode: int, t0: int, t1: int, smoothed: bool, frames=None) -> tuple[float, float]:
+        """(P(the train is in `mode` at some frame in [t0, t1) (of those `frames` says)), P(it
+        never is)), smoothed or filtered (given the measurements up to t1 - 1)."""
+        return hmm.p_visit(self.msgs, self.log_b, self.trans, states.MODE == mode, t0, t1, smoothed, frames)
 
     @property
     def distance(self) -> np.ndarray:
@@ -111,8 +129,10 @@ def infer(p: dict, f: dict, use=emissions.ALL) -> Result:
                 info.append({"t0": int(np.flatnonzero(m)[0]), "t1": int(np.flatnonzero(m)[-1]) + 1,
                              "sign": float(sign[s]), "offset": float(off), "slope": float(slope)})
             gamma, alpha, loglik = hmm.forward_backward(log_b, trans, prior)
-        if "axis_heading" in mo and _signs_from_heading(mo, sign, info):
-            gamma, alpha, loglik = hmm.forward_backward(log_b, trans, prior)
+        if "axis_heading" in mo:
+            _signs_from_heading(mo, sign, info)
+    msgs = hmm.messages(log_b, trans, prior)
+    gamma, alpha, loglik = msgs.gamma, msgs.alpha, msgs.loglik
     travel = np.full(T, np.nan)
     if "axis_heading" in mo:
         for s in range(n_stretch):
@@ -123,4 +143,5 @@ def infer(p: dict, f: dict, use=emissions.ALL) -> Result:
     v = gamma @ states.V
     return Result(v=v, v_sd=np.sqrt(np.maximum(gamma @ states.V**2 - v**2, 0)), v_filt=alpha @ states.V,
                   mode_p=states.mode_probs(gamma), path_mode=states.MODE[path], path_v=states.V[path],
-                  phone=phone, loglik=loglik, gamma=gamma, alpha=alpha, stretches=info, travel_heading=travel)
+                  phone=phone, loglik=loglik, gamma=gamma, alpha=alpha, stretches=info, travel_heading=travel,
+                  msgs=msgs, log_b=log_b, trans=trans)

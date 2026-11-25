@@ -1,6 +1,6 @@
 """The whole pipeline, end to end:
 
-    features  ->  fit on the training recordings  ->  infer on the test recordings  ->  evaluate
+    features  ->  fit on the training recordings  ->  infer on the test recording  ->  evaluate
 
     python -m pipeline                 # cross-validation: leave one recording out, each in turn
     python -m pipeline --ablate        # ... and with single measurements removed / alone
@@ -8,33 +8,27 @@
 
 Uses the recordings that have labels (labels/README.md) and leaves the rest out; assumes
 the track model is built (maps/). Features are (re)computed when missing or with --features.
+
+The evaluation (model/evaluate.py) goes to data/phone-sensor-fusion/eval/: legs.parquet and
+rides.parquet (model/schemas.py), and meta.json (its thresholds); what the viewer's ride page
+shows to data/phone-sensor-fusion/rides/<id>/ (model/ride_view.py).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime
 
 import numpy as np
+import polars as pl
 
 from common import paths
 from common.recording import Recording
 from features import frames
-from labels.frames import frame_labels
 from labels import load as label_load
-from model import emissions, evaluate, fit, infer, stations
-
-
-STATION_VARIANTS = {
-    "distance only": (),
-    "+ heading": ("heading",),
-    "+ baro": ("baro",),
-    "+ heading + baro": ("heading", "baro"),
-    "+ yaw": ("yaw",),
-    "+ yaw + heading": ("yaw", "heading"),
-    "+ yaw + baro": ("yaw", "baro"),
-    "+ yaw + heading + baro": stations.ALL,
-}
+from labels.frames import frame_labels
+from model import emissions, evaluate, fit, infer, ride_view, schemas
 
 
 class _Enc(json.JSONEncoder):
@@ -66,6 +60,18 @@ def save_result(rid, name, res):
                         mode_p=res.mode_p, path_mode=res.path_mode, path_v=res.path_v, phone=res.phone)
 
 
+def variants(ablate: bool) -> dict[str, tuple]:
+    out = {"all measurements": emissions.ALL}
+    if ablate:
+        for m in emissions.ALL:
+            if m != "chime":
+                out[f"without {m}"] = tuple(x for x in emissions.ALL if x != m)
+        for m in ("tone", "accel", "wheel", "rumble", "vib"):
+            out[f"chime + {m} only"] = ("chime", m)
+        out["chime only"] = ("chime",)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--features", action="store_true", help="recompute the features")
@@ -84,44 +90,33 @@ def main():
         print("wrote", paths.PARAMS / "all.json")
         return
 
-    variants = {"all measurements": emissions.ALL}
-    if args.ablate:
-        for m in emissions.ALL:
-            if m != "chime":
-                variants[f"without {m}"] = tuple(x for x in emissions.ALL if x != m)
-        for m in ("tone", "accel", "wheel", "rumble", "vib"):
-            variants[f"chime + {m} only"] = ("chime", m)
-        variants["chime only"] = ("chime",)
-    report = {}
+    names = label_load.ride_names()
+    leg_rows, ride_rows = [], []
     for test in ids:
         train = [i for i in ids if i != test]
         p = fit.fit([F[i] for i in train], [L[i] for i in train])
         save_json(paths.CV_PARAMS / f"without-{test}.json", p)
-        print(f"\n## test {test}   (trained on {', '.join(train)})")
-        for name, use in variants.items():
+        stops = label_load.stops(test)
+        print(f"\n## test {names.get(test, test)}   (trained on {len(train)} others)")
+        for name, use in variants(args.ablate).items():
             res = infer.infer(p, F[test], use)
-            e = evaluate.evaluate(test, res, L[test])
-            report.setdefault(test, {})[name] = e
-            print(evaluate.summary_line(name, e))
             if name == "all measurements":
                 save_result(test, "cv", res)
-                for l in e["legs"]:
-                    print(f"    {l['leg']:36s} map {l['map_m']:5.0f} m  model {l['model_m']:5.0f} m"
-                          f" ({l['model_m'] / l['map_m'] - 1:+6.1%})  online {l['filter_m']:5.0f} m"
-                          f" ({l['filter_m'] / l['map_m'] - 1:+6.1%})")
-                # second layer: which station, starting from "anywhere on the line, either way"
-                stops = label_load.stops(test)
-                print("  which station (belief at each stop from the stops so far), by what the station layer may use:")
-                for name2, use2 in STATION_VARIANTS.items():
-                    loc = stations.localise(res, F[test], use=use2)
-                    truth = {j: st.station for j, t in enumerate(loc.t_stop) for st in stops if abs(st.t_open - t) <= evaluate.MATCH_S}
-                    sc = stations.score(loc, truth)
-                    report[test].setdefault("stations", {})[name2] = sc
-                    lock = "never" if sc["right_from_stop"] is None else f"from stop {sc['right_from_stop']} on"
-                    print(f"    {name2:28s} right at {sc['right']:2d} of {sc['stops']:2d} stops; always right {lock:16s}"
-                          f" p(truth) at stops 1-4: {' '.join(f'{x:.2f}' for x in sc['p_truth'][:4])}"
-                          f"  false openings found {sc['false_found']}/{sc['false']}, stops doubted {sc['stops_doubted']}")
-    save_json(paths.derived("model", "report.json"), report)
+            key = {"ride": test, "ride_name": names.get(test, ""), "variant": name}
+            legs = evaluate.legs(res, L[test], stops, key)
+            trace = {}
+            r = evaluate.ride(res, F[test], L[test], stops, legs, key, trace)
+            if name == "all measurements":
+                ride_view.export(test, res, F[test], L[test], stops, trace)
+            leg_rows += legs
+            ride_rows.append(r)
+            print(evaluate.summary_line(r))
+    for table, rows in ((schemas.legs, leg_rows), (schemas.rides, ride_rows)):
+        df = pl.DataFrame(rows, schema=table.polars_schema(), strict=False)
+        table.write(df, schemas.path(table))
+        print("wrote", schemas.path(table))
+    save_json(paths.derived("eval", "meta.json"),
+              {**evaluate.CONSTANTS, "ablate": args.ablate, "written": datetime.now().astimezone().isoformat(timespec="seconds")})
 
 
 if __name__ == "__main__":
