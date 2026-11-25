@@ -114,7 +114,8 @@ def main():
         },
         "stations": {k: getattr(stations, k) for k in (
             "P_SKIP", "DIST_REL", "DIST_ABS", "P_UNEXPLAINED", "YAW_SD", "YAW_OUTLIER", "YAW_WEIGHT", "MIN_YAW_SPEED",
-            "HEADING_SD", "HEADING_OUTLIER", "HEADING_WEIGHT", "BARO_SD", "BARO_OUTLIER", "BARO_WEIGHT", "MIN_BARO_SPEED")},
+            "HEADING_SD", "HEADING_OUTLIER", "HEADING_WEIGHT", "HEADING_P_OFF", "BARO_SD", "BARO_OUTLIER", "BARO_WEIGHT",
+            "MIN_BARO_SPEED", "P_FALSE", "MAX_FALSE_RUN")},
     }
     OUT.write_text(json.dumps(model, separators=(",", ":")))
     print("wrote", OUT, f"{OUT.stat().st_size / 1e6:.2f} MB")

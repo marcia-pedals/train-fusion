@@ -143,6 +143,7 @@ def export(rid: str, params_name: str):
             "t_stop": [int(t) for t in loc.t_stop], "leg_m": r(loc.leg_m, 0),
             "filt": r(loc.filt.reshape(len(loc.t_stop), -1), 4),  # [stop][station * 2 + (0 south, 1 north)]
             "smooth": r(loc.smooth.reshape(len(loc.t_stop), -1), 4),
+            "p_real_filt": r(loc.p_real_filt, 3), "p_real": r(loc.p_real, 3),  # was the opening a stop at a station
         },
     }
     for k in meta["stops"]:
@@ -157,7 +158,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--params", default=None, help="all, for params/all.json (default: the fit without this recording, i.e. cross-validated)")
     args = ap.parse_args()
-    ids = paths.recording_ids()
+    ids = paths.labelled_ids()
     for rid in ids:
         export(rid, args.params or f"without-{rid}")
     paths.derived("viewer", "index.json").write_text(json.dumps(ids))

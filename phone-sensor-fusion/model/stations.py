@@ -24,13 +24,22 @@ Start: any station, either direction, equally likely. The forward pass gives, af
 door opening, the probability of each station using only the past, which is what a phone
 could show live; between stops, position = that station + direction x distance since.
 
+Not every door opening the first layer finds is a stop at a station (a chime misheard, doors
+reopened during a hold): each may be false, with prior P_FALSE, and then the leg runs on to
+the next opening. Whether openings were stops is decided by the distances, which a false
+one splits into two legs that fit no pair of stations; the other measurements only say
+which stations. filt and smooth are given that the opening was a stop; p_real_filt and
+p_real say how likely that was.
+
 This two-layer split is exact inference for the joint model only in so far as the map says
 nothing about speed (we ignore speed limits) and the first layer's stop detections are
-right; in exchange each layer is small enough to read.
+right or false (not missed: a stop it missed reads as a station passed); in exchange each
+layer is small enough to read.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -43,7 +52,9 @@ from model.infer import Result
 ALL = ("yaw", "heading", "baro")  # the optional measurements; distance is always used
 P_SKIP = 0.3  # each station passed without stopping
 DIST_REL, DIST_ABS = 0.04, 60.0  # sd of a leg's distance: 4 % and 60 m (where trains stop along a platform)
-P_UNEXPLAINED = 1e-6  # a leg that fits nothing (a false stop, a bad distance): any hop ahead is then equally likely
+P_UNEXPLAINED = 1e-6  # a leg that fits nothing (a bad distance): any hop ahead is then equally likely
+P_FALSE = 0.05  # a door opening the first layer found that wasn't a stop at a station
+MAX_FALSE_RUN = 3  # at most this many false ones in a row
 YAW_SD = 0.004  # rad/s: gyro noise and the bias left after removing the stretch median
 YAW_OUTLIER = 0.05  # share of yaw readings that aren't the track (a nudge of the phone)
 YAW_WEIGHT = 0.2  # consecutive seconds of yaw residual are correlated: count 1 in 5
@@ -52,10 +63,21 @@ MIN_YAW_SPEED = 5.0  # m/s; below this v x curvature is too small to matter
 # degrees of the track always, but off by a steady 13 degrees for one whole stretch. A
 # steady offset is poison for telling one place from another by its track direction (with
 # sd 12 it made ride C worse), so the sd is set wide: heading then decides
-# north- or southbound, which it never got wrong, and barely votes on position.
+# north- or southbound and barely votes on position.
 HEADING_SD = 30.0  # degrees
 HEADING_OUTLIER = 0.02
 HEADING_WEIGHT = 0.05  # its error is a slow offset, not noise: count 1 second in 20
+# ... and sometimes not a steady one: on one ride the compass drifted 150 degrees over the
+# ride (iOS still rating its magnetometer calibration high), which made heading decide the
+# wrong direction. So each leg's heading (and each stop's) may be off altogether, and then
+# says nothing; with this anywhere from 0.05 to 0.5 that ride came out right.
+HEADING_P_OFF = 0.2
+HEADING_VS_ANY = np.log(360 / (np.sqrt(2 * np.pi) * HEADING_SD))  # Gaussian peak against any heading
+
+
+def _heading_off(ratio):
+    """Heading log-likelihood against any heading -> the same, allowing that it's off."""
+    return np.logaddexp(np.log1p(-HEADING_P_OFF) + ratio, np.log(HEADING_P_OFF))
 # barometer (recordings with one; any phone state): pressure altitude against track
 # elevation, free offset per leg (weather, the car's own pressure); residual 2.4-3.7 m
 BARO_SD = 3.5  # m
@@ -70,6 +92,9 @@ class Localisation:
     leg_m: np.ndarray  # [J-1] first-layer distance of each leg
     filt: np.ndarray  # [J, n_stations, 2] P(station, direction | stops so far); direction 0 = south
     smooth: np.ndarray  # [J, n_stations, 2] given all stops
+    # filt and smooth are given that the opening was a stop at a station; how likely that was:
+    p_real_filt: np.ndarray  # [J] given the stops so far
+    p_real: np.ndarray  # [J] given all
 
 
 def _robust(r, outlier, weight):
@@ -94,7 +119,8 @@ def _leg_loglik(tr, res, meas, use, t0, t1, s_a, s_b, d_meas):
         ok = np.isfinite(meas["heading"][tt])
         if ok.sum() >= 5:
             diff = (meas["heading"][tt][ok] - tr.heading_at(pos[ok], direction) + 180) % 360 - 180
-            ll += _robust(diff / HEADING_SD, HEADING_OUTLIER, HEADING_WEIGHT)
+            ll += _heading_off(_robust(diff / HEADING_SD, HEADING_OUTLIER, HEADING_WEIGHT)
+                               + HEADING_WEIGHT * ok.sum() * HEADING_VS_ANY)
     if "baro" in use and meas["baro"] is not None:
         ok = v > MIN_BARO_SPEED
         if ok.sum() >= 20:
@@ -116,66 +142,145 @@ def _stop_loglik(tr, meas, use, t):
             for d, direction in enumerate((1, -1)):
                 diff = (here - tr.heading_at(tr.station_s, direction) + 180) % 360 - 180
                 z = diff / HEADING_SD
-                out[:, d] = np.log((1 - HEADING_OUTLIER) * np.exp(-0.5 * z * z) + HEADING_OUTLIER * 0.05)
+                out[:, d] = _heading_off(np.log((1 - HEADING_OUTLIER) * np.exp(-0.5 * z * z) + HEADING_OUTLIER * 0.05)
+                                         + HEADING_VS_ANY)
     return out
 
 
-def localise(res: Result, f: dict, use=ALL, online_distance=False) -> Localisation:
+def _span_logw(tr, res, meas, use, t0, t1, d, n_false, p_false):
+    """[n, n] log p(a span of the first layer's output | it ran from station a to station b),
+    including that n_false door openings inside it were false and the one at its end real.
+
+    Whether openings were stops is decided by the distance alone: the span's total is what
+    the distance (and the skip and false priors) give it, and the other measurements only
+    move weight between the station pairs within it, like the heading at a stop. (Let them
+    vote on it too and a ride whose yaw or heading fits the track badly everywhere is
+    explained best by calling most of its stops false.)"""
+    n = len(tr.stations)
+    d = max(d, 1.0)
+    sd = np.hypot(DIST_REL * d, DIST_ABS)
+    ld = np.full((n, n), -np.inf)  # distance and priors
+    ls = np.zeros((n, n))  # the other measurements
+    for a in range(n):
+        for b in range(n):
+            if a == b:
+                continue
+            true_d = abs(tr.station_s[b] - tr.station_s[a])
+            if abs(true_d - d) > 6 * sd:
+                continue
+            ld[a, b] = -0.5 * ((d - true_d) / sd) ** 2 - np.log(sd) + (abs(b - a) - 1) * np.log(P_SKIP)
+            if use:
+                ls[a, b] = _leg_loglik(tr, res, meas, use, t0, t1, tr.station_s[a], tr.station_s[b], d)
+    if n_false:
+        # where the false openings fell: anywhere along the leg (ordered uniforms)
+        D = np.abs(tr.station_s[None, :] - tr.station_s[:, None])
+        np.fill_diagonal(D, 1.0)
+        ld += math.lgamma(n_false + 1) - n_false * np.log(D)
+    total = _lse(ld, axis=None)
+    if np.isfinite(total):
+        lw = ld + ls
+        lw += total - _lse(lw, axis=None)
+    else:  # nothing explains it: its distance anywhere on the line
+        lw, total = ld, -np.log(tr.station_s.max() - tr.station_s.min())
+    # an unexplained span: any hop ahead, P_UNEXPLAINED as likely as all the explanations
+    lw = np.logaddexp(lw, total + np.log(P_UNEXPLAINED / (n * (n - 1))))
+    np.fill_diagonal(lw, -np.inf)
+    return lw + _times_log(n_false, p_false) + np.log1p(-p_false)
+
+
+def _times_log(m, p):
+    """m x log p, with 0 x log 0 = 0."""
+    m = np.asarray(m, float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(m == 0, 0.0, m * np.log(p))
+
+
+def _lse(x, axis):
+    m = np.max(x, axis=axis, keepdims=True)
+    m = np.where(np.isfinite(m), m, 0.0)
+    with np.errstate(divide="ignore"):
+        out = np.log(np.sum(np.exp(x - m), axis=axis, keepdims=True)) + m
+    return out.reshape(()) if axis is None else np.squeeze(out, axis=axis)
+
+
+def _forward(la, lw):
+    """la [n, 2] log belief at the earlier stop, lw [n, n] span -> [n, 2] at the later one.
+    Direction 0 = south (station index increases), 1 = north."""
+    south = np.triu(np.ones(lw.shape, bool), 1)
+    return np.stack([_lse(la[:, 0, None] + np.where(south, lw, -np.inf), axis=0),
+                     _lse(la[:, 1, None] + np.where(south.T, lw, -np.inf), axis=0)], axis=1)
+
+
+def _backward(lb, lw):
+    south = np.triu(np.ones(lw.shape, bool), 1)
+    return np.stack([_lse(np.where(south, lw, -np.inf) + lb[None, :, 0], axis=1),
+                     _lse(np.where(south.T, lw, -np.inf) + lb[None, :, 1], axis=1)], axis=1)
+
+
+def localise(res: Result, f: dict, use=ALL, online_distance=False, p_false=P_FALSE) -> Localisation:
     """`use`: which optional measurements to include; each also needs the recording to
-    have the sensor (and, for yaw and heading, the phone to be resting)."""
+    have the sensor (and, for yaw and heading, the phone to be resting). `p_false`: prior
+    that a door opening the first layer found was not a stop at a station (0: trust them all)."""
     tr = trackmod.load()
     n = len(tr.stations)
     mode = res.path_mode
     t_stop = np.flatnonzero((mode == OPEN_CHIME) & (np.r_[-1, mode[:-1]] != OPEN_CHIME))
     dist = res.distance_filt if online_distance else res.distance
     leg_m = np.diff(dist[t_stop])
-    meas = {"yaw": motion.extract(f, res.phone[:, phone_state.RESTING])["yaw_rate"],
+    meas = {"yaw": motion.extract(f, res.phone[:, phone_state.RESTING])["yaw_rate"] if "yaw" in use else None,
             "heading": res.travel_heading if res.travel_heading is not None and np.isfinite(res.travel_heading).any() else None,
             "baro": f["baro_alt"].astype(float) if "baro_alt" in f else None}
     J = len(t_stop)
-    # log transition weights per leg: [J-1, a, b] (direction is implied by the order of a, b)
-    logw = np.full((max(J - 1, 0), n, n), -np.inf)
-    for j in range(J - 1):
-        d = max(leg_m[j], 1.0)
-        sd = np.hypot(DIST_REL * d, DIST_ABS)
-        for a in range(n):
-            for b in range(n):
-                if a == b:
-                    continue
-                true_d = abs(tr.station_s[b] - tr.station_s[a])
-                if abs(true_d - d) > 6 * sd:
-                    continue
-                lw = -0.5 * ((d - true_d) / sd) ** 2 - np.log(sd) + (abs(b - a) - 1) * np.log(P_SKIP)
-                lw += _leg_loglik(tr, res, meas, use, t_stop[j], t_stop[j + 1], tr.station_s[a], tr.station_s[b], d)
-                logw[j, a, b] = lw
-    # state (station, dir): dir 0 = south (index increases), 1 = north
-    south = np.triu(np.ones((n, n), bool), 1)
-    filt = np.zeros((J, n, 2))
-    alpha = np.full((n, 2), 1.0 / (2 * n))
-    Ws, Es = [], []
+    if J == 0:
+        z = np.zeros((0, n, 2))
+        return Localisation(t_stop=t_stop, leg_m=leg_m, filt=z, smooth=z, p_real_filt=np.zeros(0), p_real=np.zeros(0))
+    max_run = MAX_FALSE_RUN if p_false > 0 else 0
+    # spans between two real stops k < j, with the j - k - 1 openings between them false
+    logw = {(k, j): _span_logw(tr, res, meas, use, t_stop[k], t_stop[j], dist[t_stop[j]] - dist[t_stop[k]], j - k - 1, p_false)
+            for j in range(J) for k in range(max(j - 1 - max_run, 0), j)}
+    # heading at the stop says which station, not whether it was one: mean 1 over the states
+    loge = []
     for j in range(J):
-        if j:
-            lw = logw[j - 1]
-            w = np.exp(lw - lw.max()) if np.isfinite(lw).any() else np.zeros((n, n))
-            w = (1 - P_UNEXPLAINED) * w / max(w.sum(), 1e-300) + P_UNEXPLAINED / (n * (n - 1))
-            Ws.append(w)
-            alpha = np.stack([alpha[:, 0] @ (w * south), alpha[:, 1] @ (w * south.T)], axis=1)
         e = _stop_loglik(tr, meas, use, int(t_stop[j]))
-        Es.append(np.exp(e - e.max()))
-        alpha = alpha * Es[-1]
-        alpha /= alpha.sum()
-        filt[j] = alpha
-    smooth = np.zeros_like(filt)
-    beta = np.ones((n, 2))
-    for j in range(J - 1, -1, -1):
-        g = filt[j] * beta
-        smooth[j] = g / g.sum()
-        if j:
-            w = Ws[j - 1]
-            be = beta * Es[j]
-            beta = np.stack([(w * south) @ be[:, 0], (w * south.T) @ be[:, 1]], axis=1)
-            beta /= beta.sum()
-    return Localisation(t_stop=t_stop, leg_m=leg_m, filt=filt, smooth=smooth)
+        loge.append(e - _lse(e, axis=None) + np.log(e.size))
+    line_m = tr.station_s.max() - tr.station_s.min()
+    # a false opening with no real stop after it (before the first, after the last):
+    # anywhere on an average leg; times how many
+    l_open = lambda m: _times_log(m, p_false * (n - 1) / line_m)
+    l_real = np.log1p(-p_false)
+    # forward: la[j] = log p(openings up to j, j real, state at j)
+    la = np.zeros((J, n, 2))
+    for j in range(J):
+        terms = [np.full((n, 2), l_open(j) + l_real - np.log(2 * n))] if j <= max_run else []  # the first real stop
+        terms += [_forward(la[k], logw[k, j]) for k in range(max(j - 1 - max_run, 0), j)]
+        la[j] = _lse(np.stack(terms), axis=0) + loge[j]
+    # backward: lb[k] = log p(openings after k | k real, state at k)
+    lb = np.zeros((J, n, 2))
+    for k in range(J - 1, -1, -1):
+        terms = [np.full((n, 2), l_open(J - 1 - k))] if J - 1 - k <= max_run else []  # the last real stop
+        terms += [_backward(loge[j] + lb[j], logw[k, j]) for j in range(k + 1, min(k + 2 + max_run, J))]
+        lb[k] = _lse(np.stack(terms), axis=0)
+    lreal = np.array([_lse(la[j], axis=None) for j in range(J)])
+    last = J - 1 - np.arange(J)
+    lz = _lse(np.where(last <= max_run, lreal + l_open(last), -np.inf), axis=0)
+    # p(j real | openings up to j): against "j false", every real stop before it (or none)
+    p_real_filt = np.ones(J)
+    for j in range(J):
+        since = j - np.arange(j)
+        lfalse = _lse(np.r_[l_open(j + 1) if j + 1 <= max_run else -np.inf,
+                            np.where(since <= max_run, lreal[:j] + l_open(since), -np.inf)], axis=0)
+        p_real_filt[j] = 1 / (1 + np.exp(lfalse - lreal[j])) if np.isfinite(lreal[j]) else 0.0
+    post = la + lb
+    p_real = np.array([np.exp(_lse(post[j], axis=None) - lz) for j in range(J)])
+
+    def norm(x):
+        x = np.exp(x - _lse(x, axis=None))
+        return x / x.sum()
+
+    filt = np.array([norm(la[j]) for j in range(J)]).reshape(J, n, 2)
+    smooth = np.array([norm(post[j]) for j in range(J)]).reshape(J, n, 2)
+    return Localisation(t_stop=t_stop, leg_m=leg_m, filt=filt, smooth=smooth,
+                        p_real_filt=p_real_filt, p_real=np.minimum(p_real, 1.0))
 
 
 def score(loc: Localisation, truth_by_stop: dict[int, str]) -> dict:
@@ -189,8 +294,12 @@ def score(loc: Localisation, truth_by_stop: dict[int, str]) -> dict:
         right.append(tr.stations[a] == truth_by_stop[j])
     locked = next((k for k in range(len(js)) if all(right[k:])), None)
     p_truth = [float(loc.filt[j][tr.stations.index(truth_by_stop[j])].sum()) for j in js]
+    false = [j for j in range(len(loc.t_stop)) if j not in truth_by_stop]
     return {"stops": len(js), "right": int(sum(right)), "right_from_stop": None if locked is None else locked + 1,
-            "p_truth": p_truth}
+            "p_truth": p_truth,
+            # openings that weren't labelled stops, and how many of those / of the stops it believes false
+            "false": len(false), "false_found": int(sum(loc.p_real[j] < 0.5 for j in false)),
+            "stops_doubted": int(sum(loc.p_real[j] < 0.5 for j in js))}
 
 
 def describe(loc: Localisation, truth: list[str] | None = None) -> list[str]:
@@ -201,7 +310,7 @@ def describe(loc: Localisation, truth: list[str] | None = None) -> list[str]:
         p = loc.filt[j]
         a, d = np.unravel_index(np.argmax(p), p.shape)
         line = (f"stop {j + 1:2d} at {loc.t_stop[j]:5d} s: {tr.stations[a]:18s} {'south' if d == 0 else 'north'}bound"
-                f"  p={p[a, d]:.2f}")
+                f"  p={p[a, d]:.2f}  a stop: p={loc.p_real_filt[j]:.2f}")
         if truth and j < len(truth):
             pt = p[tr.stations.index(truth[j])].sum()
             line += f"   truth {truth[j]:18s} p={pt:.2f} {'ok' if tr.stations[a] == truth[j] else 'WRONG'}"
