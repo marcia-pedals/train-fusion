@@ -321,12 +321,16 @@ function useTracks(meta: RideMeta, tiles: Record<string, Tiles>, view: View): Tr
     // frequency gridlines over a spectrogram (0 Hz at the bottom, fmax at the top), light on its dark colours
     const freqAxis = (ctx: CanvasRenderingContext2D, w: number, h: number, fmax: number, fs: number[], label: (f: number) => string) =>
       drawGrid(ctx, w, fs, (f) => h - (f / fmax) * h, label, "rgba(255,255,255,0.18)", "rgba(255,255,255,0.75)");
+    // axis labels are plain numbers, with the unit on the top one only
+    const unitOnTop = (values: number[], unit: string, scale = 1) => (v: number) =>
+      v === Math.max(...values) ? `${v / scale} ${unit}` : `${v / scale}`;
     // speed grid rows: bin 0 standing at the bottom, bin k = k x dv m/s
     const beliefBins = Math.min(speedBins, meta.speed_post.bins);
     const beliefAxis = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
       const y = (x: number) => h - (x / meta.speed_post.dv + 0.5) * (h / beliefBins);
-      drawGrid(ctx, w, Array.from({length: Math.floor(vMax / 10) + 1}, (_, k) => k * 10), y, (x) => `${x}`,
-        colors.grid + "99", colors.text);
+      // 0 is the bottom row (standing); no line too close to the top edge to label
+      const vs = Array.from({length: Math.floor(vMax / 10) + 1}, (_, k) => k * 10).filter((v) => y(v) >= 8);
+      drawGrid(ctx, w, vs, y, unitOnTop(vs, "m/s"), colors.grid + "99", colors.text);
     };
     const tracksOut: Track[] = [
       {key: "audio", name: "Audio", height: 150, tip: "Spectrogram 0–5 kHz (dB over each frequency's median), with the labelled door chimes",
@@ -336,13 +340,13 @@ function useTracks(meta: RideMeta, tiles: Record<string, Tiles>, view: View): Tr
         </>,
         draw: (ctx, w, h) => {
           drawTiles(ctx, w, h, view, tiles.spec);
-          freqAxis(ctx, w, h, meta.spec.fmax, [1000, 2000, 3000, 4000], (f) => `${f / 1000} kHz`);
+          freqAxis(ctx, w, h, meta.spec.fmax, [0, 1000, 2000, 3000, 4000], unitOnTop([0, 1000, 2000, 3000, 4000], "kHz", 1000));
           drawEvents(ctx, w, h, view, meta.events);
         }},
       {key: "accel", name: "Accelerometer", height: 110, tip: "Line spectrum of the acceleration, 0–50 Hz, with the labelled door chimes",
         draw: (ctx, w, h) => {
           drawTiles(ctx, w, h, view, tiles.accel);
-          freqAxis(ctx, w, h, meta.accel.fmax, [10, 20, 30, 40], (f) => `${f} Hz`);
+          freqAxis(ctx, w, h, meta.accel.fmax, [0, 10, 20, 30, 40], unitOnTop([0, 10, 20, 30, 40], "Hz"));
           drawEvents(ctx, w, h, view, meta.events);
         }},
       {key: "speed-filt", name: "Speed belief, filtered", height: 120, newGroup: true,
