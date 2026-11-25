@@ -54,7 +54,6 @@ P_SKIP = 0.3  # each station passed without stopping
 DIST_REL, DIST_ABS = 0.04, 60.0  # sd of a leg's distance: 4 % and 60 m (where trains stop along a platform)
 P_UNEXPLAINED = 1e-6  # a leg that fits nothing (a bad distance): any hop ahead is then equally likely
 P_FALSE = 0.05  # a door opening the first layer found that wasn't a stop at a station
-MAX_FALSE_RUN = 3  # at most this many false ones in a row
 YAW_SD = 0.004  # rad/s: gyro noise and the bias left after removing the stretch median
 YAW_OUTLIER = 0.05  # share of yaw readings that aren't the track (a nudge of the phone)
 YAW_WEIGHT = 0.2  # consecutive seconds of yaw residual are correlated: count 1 in 5
@@ -234,10 +233,11 @@ def localise(res: Result, f: dict, use=ALL, online_distance=False, p_false=P_FAL
     if J == 0:
         z = np.zeros((0, n, 2))
         return Localisation(t_stop=t_stop, leg_m=leg_m, filt=z, smooth=z, p_real_filt=np.zeros(0), p_real=np.zeros(0))
-    max_run = MAX_FALSE_RUN if p_false > 0 else 0
     # spans between two real stops k < j, with the j - k - 1 openings between them false
+    # (any number of them: each costs a factor p_false; none at all when that is 0)
+    spans = [(k, j) for j in range(J) for k in range(j) if p_false > 0 or k == j - 1]
     logw = {(k, j): _span_logw(tr, res, meas, use, t_stop[k], t_stop[j], dist[t_stop[j]] - dist[t_stop[k]], j - k - 1, p_false)
-            for j in range(J) for k in range(max(j - 1 - max_run, 0), j)}
+            for k, j in spans}
     # heading at the stop says which station, not whether it was one: mean 1 over the states
     loge = []
     for j in range(J):
@@ -251,24 +251,21 @@ def localise(res: Result, f: dict, use=ALL, online_distance=False, p_false=P_FAL
     # forward: la[j] = log p(openings up to j, j real, state at j)
     la = np.zeros((J, n, 2))
     for j in range(J):
-        terms = [np.full((n, 2), l_open(j) + l_real - np.log(2 * n))] if j <= max_run else []  # the first real stop
-        terms += [_forward(la[k], logw[k, j]) for k in range(max(j - 1 - max_run, 0), j)]
+        terms = [np.full((n, 2), l_open(j) + l_real - np.log(2 * n))]  # the first real stop
+        terms += [_forward(la[k], logw[k, j]) for k in range(j) if (k, j) in logw]
         la[j] = _lse(np.stack(terms), axis=0) + loge[j]
     # backward: lb[k] = log p(openings after k | k real, state at k)
     lb = np.zeros((J, n, 2))
     for k in range(J - 1, -1, -1):
-        terms = [np.full((n, 2), l_open(J - 1 - k))] if J - 1 - k <= max_run else []  # the last real stop
-        terms += [_backward(loge[j] + lb[j], logw[k, j]) for j in range(k + 1, min(k + 2 + max_run, J))]
+        terms = [np.full((n, 2), l_open(J - 1 - k))]  # the last real stop
+        terms += [_backward(loge[j] + lb[j], logw[k, j]) for j in range(k + 1, J) if (k, j) in logw]
         lb[k] = _lse(np.stack(terms), axis=0)
     lreal = np.array([_lse(la[j], axis=None) for j in range(J)])
-    last = J - 1 - np.arange(J)
-    lz = _lse(np.where(last <= max_run, lreal + l_open(last), -np.inf), axis=0)
+    lz = _lse(lreal + l_open(J - 1 - np.arange(J)), axis=0)
     # p(j real | openings up to j): against "j false", every real stop before it (or none)
     p_real_filt = np.ones(J)
     for j in range(J):
-        since = j - np.arange(j)
-        lfalse = _lse(np.r_[l_open(j + 1) if j + 1 <= max_run else -np.inf,
-                            np.where(since <= max_run, lreal[:j] + l_open(since), -np.inf)], axis=0)
+        lfalse = _lse(np.r_[l_open(j + 1), lreal[:j] + l_open(j - np.arange(j))], axis=0)
         p_real_filt[j] = 1 / (1 + np.exp(lfalse - lreal[j])) if np.isfinite(lreal[j]) else 0.0
     post = la + lb
     p_real = np.array([np.exp(_lse(post[j], axis=None) - lz) for j in range(J)])

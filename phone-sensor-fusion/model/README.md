@@ -82,15 +82,17 @@ stretch) and the recording has an attitude, the sign is taken from that stretch'
 agreeing with the others: a train doesn't turn round mid-ride.
 
 Not every door opening layer 1 finds is a stop at a station: a misheard chime, or the
-doors reopened during a hold. Each opening may be false (prior 5 %, at most 3 in a row);
-the leg then runs on to the next one, and the false openings fall anywhere along it. A
+doors reopened during a hold. Each opening may be false (prior 5 % each, so a run of them
+costs that per opening); the leg then runs on to the next one, and the false openings fall
+anywhere along it. A
 false opening splits a leg into two that fit no pair of stations, while the leg run on
 through it fits one; that is how it shows. Only the distances decide this: the span's
 total is what its distance gives it, and yaw, heading and barometer just share it out
 among station pairs. (With them voting too, a ride whose heading fits the track badly
 everywhere was best explained by calling most of its stops false.) The belief at each stop
 is given that it was a stop; `p_real_filt` and `p_real` say how likely that was, from the
-stops so far and from all of them. With the prior at 0 this is the layer as it was before.
+stops so far and from all of them. With this prior and the compass one above both at 0,
+this is the layer as it was before.
 
 A leg that fits no pair of stations for another reason (a wrong distance) doesn't wipe the
 belief out either: with probability 10⁻⁶ a leg is "unexplained" and may be any hop ahead.
