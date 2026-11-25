@@ -49,7 +49,7 @@ def peak_scaled(p):
 
 def over_speed(state_p):
     """[T, N] state probabilities -> [T, 1 + N_V]: standing (all stopped modes), then speeds."""
-    return np.c_[state_p[:, :states.N_STOPPED].sum(axis=1), state_p[:, states.N_STOPPED:]]
+    return np.c_[state_p[:, :states.N_STOPPED].sum(axis=1), state_p[:, states.MOVING_SLICE]]
 
 
 def export(rid: str, params_name: str):
@@ -98,7 +98,8 @@ def export(rid: str, params_name: str):
         if s["sign"]:
             sl = slice(s["t0"], s["t1"])
             a_long[sl] = (mo["a_long"][sl] - s["offset"]) * s["sign"]
-    v_filt_sd = np.sqrt(np.maximum(res.alpha @ states.V**2 - res.v_filt**2, 0))
+    on = res.alpha[:, :states.N_ON]  # speed given that the rider is on the train, as res.v_filt
+    v_filt_sd = np.sqrt(np.maximum((on @ states.V[:states.N_ON]**2) / np.maximum(on.sum(axis=1), 1e-300) - res.v_filt**2, 0))
 
     tr = trackmod.load()
     loc = stations.localise(res, f)
@@ -157,7 +158,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--params", default=None, help="all, for params/all.json (default: the fit without this recording, i.e. cross-validated)")
     args = ap.parse_args()
-    ids = paths.recording_ids()
+    ids = paths.labelled_ids()
     for rid in ids:
         export(rid, args.params or f"without-{rid}")
     paths.derived("viewer", "index.json").write_text(json.dumps(ids))

@@ -1,6 +1,8 @@
 """Exact inference in a discrete HMM whose transition matrix may differ per step.
 
     forward_backward   smoothed and filtered state posteriors, log-likelihood
+    fixed_lag          P(state at t | everything up to t + lag): what a live display can
+                       show `lag` seconds late
     viterbi            the single most probable state sequence
 
 `trans(t)` returns the [N, N] matrix for the step from frame t to t+1 (rows: from).
@@ -31,6 +33,28 @@ def forward_backward(log_b: np.ndarray, trans, prior: np.ndarray):
         gamma[t] = g / g.sum()
     loglik = float(np.log(c).sum() + log_b.max(axis=1).sum())
     return gamma, alpha, loglik
+
+
+def fixed_lag(log_b: np.ndarray, trans, alpha: np.ndarray, lag: int) -> np.ndarray:
+    """[T, N] P(state_t | frames 0..t+lag), from the filtered posteriors `alpha` of
+    forward_backward: a backward pass over the next `lag` frames for every t (the last
+    frames see only what there is)."""
+    T, N = log_b.shape
+    b = np.exp(log_b - log_b.max(axis=1, keepdims=True))
+    out = np.zeros((T, N))
+    mats = {}
+    for t in range(T):
+        end = min(T - 1, t + lag)
+        beta = np.ones(N)
+        for u in range(end - 1, t - 1, -1):
+            if u not in mats:
+                mats[u] = trans(u)
+            beta = mats[u] @ (b[u + 1] * beta)
+            beta /= beta.sum()
+        mats.pop(t, None)
+        g = alpha[t] * beta
+        out[t] = g / g.sum()
+    return out
 
 
 def viterbi(log_b: np.ndarray, trans, prior: np.ndarray) -> np.ndarray:

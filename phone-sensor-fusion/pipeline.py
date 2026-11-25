@@ -62,8 +62,21 @@ def load_features(ids, recompute=False):
 
 
 def save_result(rid, name, res):
+    extra = {f"p_on_lag{L}": q for L, q in res.p_on_lag.items()}
     np.savez_compressed(paths.derived("model", f"{rid}.{name}.npz"), v=res.v, v_sd=res.v_sd, v_filt=res.v_filt,
-                        mode_p=res.mode_p, path_mode=res.path_mode, path_v=res.path_v, phone=res.phone)
+                        mode_p=res.mode_p, path_mode=res.path_mode, path_v=res.path_v, phone=res.phone,
+                        p_on=res.p_on, p_on_filt=res.p_on_filt, **extra)
+
+
+LAG_S = 30  # the fixed-lag smoother reported for on / off: what a display 30 s late would show
+
+
+def presence_line(pr: dict) -> str:
+    """Away from boarding and alighting (evaluate.ZONE_S)."""
+    return (f"  on / off the train: off-train seconds shown as on (filter, {LAG_S} s late, smoothed)"
+            f" {'/'.join(str(pr[k]['off_called_on']) for k in ('filter', f'lag{LAG_S}', 'smooth'))} of {pr['n_off']};"
+            f" on-train shown as off {'/'.join(str(pr[k]['on_called_off']) for k in ('filter', f'lag{LAG_S}', 'smooth'))} of {pr['n_on']};"
+            f" stops found off the train {pr['stops_off_train']}")
 
 
 def main():
@@ -72,7 +85,7 @@ def main():
     ap.add_argument("--ablate", action="store_true")
     ap.add_argument("--final", action="store_true")
     args = ap.parse_args()
-    ids = paths.recording_ids()
+    ids = paths.labelled_ids()
     F = load_features(ids, args.features)
     L = {rid: frame_labels(rid) for rid in ids}
 
@@ -97,11 +110,13 @@ def main():
         save_json(paths.CV_PARAMS / f"without-{test}.json", p)
         print(f"\n## test {test}   (trained on {', '.join(train)})")
         for name, use in variants.items():
-            res = infer.infer(p, F[test], use)
+            res = infer.infer(p, F[test], use, lags=(LAG_S,) if name == "all measurements" else ())
             e = evaluate.evaluate(test, res, L[test])
+            e["presence"] = evaluate.presence(res, L[test], test)
             report.setdefault(test, {})[name] = e
             print(evaluate.summary_line(name, e))
             if name == "all measurements":
+                print(presence_line(e["presence"]))
                 save_result(test, "cv", res)
                 for l in e["legs"]:
                     print(f"    {l['leg']:36s} map {l['map_m']:5.0f} m  model {l['model_m']:5.0f} m"
@@ -118,6 +133,16 @@ def main():
                     lock = "never" if sc["right_from_stop"] is None else f"from stop {sc['right_from_stop']} on"
                     print(f"    {name2:28s} right at {sc['right']:2d} of {sc['stops']:2d} stops; always right {lock:16s}"
                           f" p(truth) at stops 1-4: {' '.join(f'{x:.2f}' for x in sc['p_truth'][:4])}")
+    tot = {}
+    for test in ids:
+        for k, v in report[test]["all measurements"]["presence"].items():
+            if isinstance(v, dict):
+                t = tot.setdefault(k, {})
+                for kk, vv in v.items():
+                    t[kk] = t.get(kk, 0) + vv
+            else:
+                tot[k] = tot.get(k, 0) + v
+    print("\n## all recordings\n" + presence_line(tot))
     save_json(paths.derived("model", "report.json"), report)
 
 

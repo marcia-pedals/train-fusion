@@ -13,6 +13,8 @@ the training recordings. Output: one JSON-able dict (written to params/all.json,
   accel        sd of along-track acceleration around the labelled dv/dt
   dynamics     P(speed change per second | speed band)
   dwell        mean time spent in each stopped mode
+  cabin        P(the car's hum, in categories | on / off the train), with a weight < 1 for
+               the correlation of successive seconds
 
 Every block has a prior (a few pseudo-observations of a sensible default), so a training
 set lacking some situation, e.g. no resting phone, still yields a complete model.
@@ -37,7 +39,16 @@ DWELL_PRIOR_S = {PRE: 2.0, OPEN_CHIME: 6.0, OPEN: 20.0, CLOSE_CHIME: 8.0, POST: 
 DWELL_PRIOR_WEIGHT = 2.0
 ACCEL_PRIOR = (0.15, 50.0)  # sd m/s^2, weight in frames
 MIN_LEVEL_FRAMES = 15
-
+# the car's hum (features/frames.py cabin_db), dB -> categories. Inside a car it sits at 10-25 dB;
+# off one at 0-5 dB unless next to it
+CABIN_EDGES = [1.0, 2.0, 3.0, 4.0, 5.0, 6.5, 8.0, 10.0, 13.0, 16.0, 20.0]
+CABIN_PSEUDO = 3.0  # pseudo-frames per table, spread like all frames together
+# Weight of each second's hum, set by hand (leave-one-out over 0.04-0.4). The usual 1 / the
+# autocorrelation time of the residuals is ~0.04 here: the hum's level drifts over half a
+# minute, and at that weight a platform takes minutes to tell from a train. 0.2 is one
+# independent look every 5 s. Higher makes the hum-less stretches inside a train (a powered-
+# down hold, an open door) read as off sooner.
+CABIN_WEIGHT = 0.2
 
 def _autocorr_time(res_runs: list[np.ndarray], max_lag=30) -> float:
     """Integrated autocorrelation time (frames) of residuals given as contiguous runs."""
@@ -162,6 +173,29 @@ def fit_accel(frames, labels, p_rests) -> dict:
     return {"sd": round(float(np.sqrt(var)), 4), "n_frames": int(len(r))}
 
 
+def fit_cabin(xs: list[np.ndarray], labels: list[FrameLabels]) -> dict:
+    """P(cabin_db category | on / off the train), and the weight of a second (CABIN_WEIGHT;
+    the autocorrelation time of the residuals is kept as `tau_s`)."""
+    x = np.concatenate(xs)
+    on = np.concatenate([l.on_train for l in labels])
+    cat = np.digitize(x, CABIN_EDGES)
+    k = len(CABIN_EDGES) + 1
+    pooled = np.bincount(cat[on >= 0], minlength=k) + 1.0
+    pooled /= pooled.sum()
+    probs = {}
+    for name, v in (("on", 1), ("off", 0)):
+        n = np.bincount(cat[on == v], minlength=k) + CABIN_PSEUDO * pooled
+        probs[name] = [float(f"{q:.4g}") for q in n / n.sum()]
+    res_runs = []
+    for xx, l in zip(xs, labels):
+        for v in (0, 1):
+            for a, b in _runs(l.on_train == v):
+                res_runs.append(xx[a:b] - np.median(x[on == v]))
+    tau = _autocorr_time(res_runs)
+    return {"edges": CABIN_EDGES, "p": probs, "weight": CABIN_WEIGHT, "tau_s": round(tau, 1),
+            "n_frames": {"on": int((on == 1).sum()), "off": int((on == 0).sum())}}
+
+
 def fit(frames: list[dict], labels: list[FrameLabels]) -> dict:
     p = {"phone": phone_state.fit(frames, labels)}
     phones = [phone_state.apply(p["phone"], f) for f in frames]
@@ -188,4 +222,5 @@ def fit(frames: list[dict], labels: list[FrameLabels]) -> dict:
     p["accel"] = fit_accel(frames, labels, p_rests)
     p["dynamics"] = fit_dynamics(labels)
     p["dwell"] = fit_dwell(labels)
+    p["cabin"] = fit_cabin([f["cabin_db"] for f in frames], labels)
     return p

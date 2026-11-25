@@ -268,13 +268,13 @@ function buildTracks() {
       },
     },
     {
-      title: "Mode", desc: "probability of each mode, per second; last row: was the rider on the train (label only, not modelled)", h: 114,
+      title: "Mode", desc: "probability of each mode, per second, and of the rider being off the train; last row: was the rider on the train (label)", h: 114,
       legend: [...MODE_SHORT.map((name, k) => ({ name, color: MODE_VARS[k] })),
         { name: "on the train", color: "--aboard" }, { name: "off the train", color: "--off" }],
       draw(ctx, cv, h) {
         clipPlot(ctx, h, () => {
-          probStrip(ctx, S.mode_smooth, MODE_VARS, 2, 24);
-          probStrip(ctx, S.mode_filt, MODE_VARS, 30, 24);
+          probStrip(ctx, S.mode_smooth, [...MODE_VARS, "--off"], 2, 24); // 7th column: off the train
+          probStrip(ctx, S.mode_filt, [...MODE_VARS, "--off"], 30, 24);
           labelStrip(ctx, S.mode_label, MODE_VARS, 58, 24);
           labelStrip(ctx, S.on_train_label, ABOARD_VARS, 86, 24);
         });
