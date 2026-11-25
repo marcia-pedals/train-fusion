@@ -58,5 +58,5 @@ def plot(rid: str, name: str = "cv"):
 
 
 if __name__ == "__main__":
-    for rid in paths.recording_ids():
+    for rid in paths.labelled_ids():
         print(plot(rid, sys.argv[1] if len(sys.argv) > 1 else "cv"))

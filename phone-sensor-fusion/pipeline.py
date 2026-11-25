@@ -6,8 +6,8 @@
     python -m pipeline --ablate        # ... and with single measurements removed / alone
     python -m pipeline --final         # fit on everything, write params/all.json
 
-Assumes labels exist for every recording (labels/README.md) and the track model is built
-(maps/). Features are (re)computed when missing or with --features.
+Uses the recordings that have labels (labels/README.md) and leaves the rest out; assumes
+the track model is built (maps/). Features are (re)computed when missing or with --features.
 """
 
 from __future__ import annotations
@@ -72,7 +72,9 @@ def main():
     ap.add_argument("--ablate", action="store_true")
     ap.add_argument("--final", action="store_true")
     args = ap.parse_args()
-    ids = paths.recording_ids()
+    ids = paths.labelled_ids()
+    if waiting := sorted(set(paths.recording_ids()) - set(ids)):
+        print(f"leaving out {len(waiting)} recording(s) not labelled yet: {', '.join(waiting)}")
     F = load_features(ids, args.features)
     L = {rid: frame_labels(rid) for rid in ids}
 
@@ -117,7 +119,8 @@ def main():
                     report[test].setdefault("stations", {})[name2] = sc
                     lock = "never" if sc["right_from_stop"] is None else f"from stop {sc['right_from_stop']} on"
                     print(f"    {name2:28s} right at {sc['right']:2d} of {sc['stops']:2d} stops; always right {lock:16s}"
-                          f" p(truth) at stops 1-4: {' '.join(f'{x:.2f}' for x in sc['p_truth'][:4])}")
+                          f" p(truth) at stops 1-4: {' '.join(f'{x:.2f}' for x in sc['p_truth'][:4])}"
+                          f"  false openings found {sc['false_found']}/{sc['false']}, stops doubted {sc['stops_doubted']}")
     save_json(paths.derived("model", "report.json"), report)
 
 

@@ -63,8 +63,12 @@ What a transition a → b is weighed by:
 |---|---|---|
 | the leg's distance from layer 1 | map distance a..b (sd 4 % ⊕ 60 m) | nothing: always used |
 | yaw rate through the leg | speed × map curvature along a..b | phone resting |
-| compass heading of travel | the track's heading along a..b, for that direction (sd 30°: it settles north- or southbound and barely votes on position) | iOS's attitude in the recording, phone resting |
+| compass heading of travel | the track's heading along a..b, for that direction (sd 30°: it settles north- or southbound and barely votes on position); each leg's heading may be off altogether (20 %) | iOS's attitude in the recording, phone resting |
 | pressure altitude through the leg | the track's elevation along a..b, up to a free offset per leg (sd 3.5 m) | a barometer in the recording |
+
+The compass can drift: on one ride it turned 150° over the ride while iOS rated its
+calibration high throughout, and heading, trusted, put the train going the wrong way.
+Hence the chance that a leg's heading is off and says nothing.
 
 Heading is also compared with the track's heading at each candidate station at the stop
 itself. **A recording without a sensor simply contributes nothing for it**: the two
@@ -77,11 +81,25 @@ comes from layer 1's regression. Where the regression can't tell (a short or qui
 stretch) and the recording has an attitude, the sign is taken from that stretch's heading
 agreeing with the others: a train doesn't turn round mid-ride.
 
-A leg that fits no pair of stations (a false stop, a wrong distance) no longer wipes the
-belief out: with probability 10⁻⁶ a leg is "unexplained" and may be any hop ahead.
+Not every door opening layer 1 finds is a stop at a station: a misheard chime, or the
+doors reopened during a hold. Each opening may be false (prior 5 % each, so a run of them
+costs that per opening); the leg then runs on to the next one, and the false openings fall
+anywhere along it. A
+false opening splits a leg into two that fit no pair of stations, while the leg run on
+through it fits one; that is how it shows. Only the distances decide this: the span's
+total is what its distance gives it, and yaw, heading and barometer just share it out
+among station pairs. (With them voting too, a ride whose heading fits the track badly
+everywhere was best explained by calling most of its stops false.) The belief at each stop
+is given that it was a stop; `p_real_filt` and `p_real` say how likely that was, from the
+stops so far and from all of them. With this prior and the compass one above both at 0,
+this is the layer as it was before.
+
+A leg that fits no pair of stations for another reason (a wrong distance) doesn't wipe the
+belief out either: with probability 10⁻⁶ a leg is "unexplained" and may be any hop ahead.
 
 The split into two layers is exact as long as the map says nothing about speed (speed
-limits are ignored) and layer 1's stops are right. A joint (position, speed, mode) grid
+limits are ignored) and layer 1's stops are right or false (a stop it missed reads as a
+station passed). A joint (position, speed, mode) grid
 would lift both conditions at ~10⁵ states; nothing in the data so far asks for it.
 
 ## Fitting (`fit.py`)
