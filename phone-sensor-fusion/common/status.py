@@ -69,7 +69,7 @@ def row(rid: str, hidden: set[str] = frozenset()) -> str:
     dev = DEVICES.get(dev, dev)
     flag = "" if m.get("complete", True) else "  (incomplete)"
     if rid in hidden:
-        flag += "  (hidden: `just hide` it to delete the local copy)"
+        flag += "  (hidden)"
     return (f"  {rid:28s} {fmt_start(m['started_unix_s']):18s} {fmt_size(size(d))}  {fmt_dur(dur) if dur else '     ?':>6s}  "
             f"{dev:16s}{flag}")
 
@@ -95,8 +95,6 @@ def show(only=None) -> None:
             name, note = notes.get(rid, ("?", "not in RIDES.md"))
             short = note.split(";")[0]
             print(f"{row(rid, hidden)}  {name}: {short}")
-    if only is None and hidden:
-        print(f"\n{len(hidden)} hidden: in the bucket, not downloaded (labels/HIDDEN)")
 
 
 if __name__ == "__main__":

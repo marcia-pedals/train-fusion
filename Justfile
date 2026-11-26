@@ -104,8 +104,8 @@ block-account uid:
 sync-recordings *args:
     cd phone-sensor-fusion && python -m common.sync {{args}}
 
-# keep recordings in the bucket but stop downloading them (labels/HIDDEN; deletes the local
-# copy): `just hide <upload id>... [--reason "..."]`; `just unhide <upload id>...` undoes it
+# keep recordings in the bucket but stop downloading them (labels/HIDDEN; a local copy is
+# left alone): `just hide <upload id>... [--reason "..."]`; `just unhide <upload id>...` undoes it
 hide *args:
     cd phone-sensor-fusion && python -m common.hide {{args}}
 

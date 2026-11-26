@@ -4,14 +4,13 @@
     python -m common.hide <upload id>... [--reason "test recording"]
     python -m common.hide --unhide <upload id>...
 
-Hiding checks that each recording is in the bucket (raw/<id>/meta.json) before deleting the
-local copy, adds it to labels/HIDDEN and syncs. Unhiding takes it off the list and syncs,
-which downloads it again.
+Hiding checks that each recording is in the bucket (raw/<id>/meta.json), adds it to
+labels/HIDDEN and syncs. A local copy is left alone: delete it by hand if you want it gone.
+Unhiding takes it off the list and syncs, which downloads it again if it isn't here.
 """
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 
 from common import paths, sync
@@ -55,12 +54,6 @@ def main() -> None:
     changed = edit(a.ids, a.unhide, a.reason)
     for i in a.ids:
         print(f"{i}: {('unhidden' if a.unhide else 'hidden') if i in changed else 'already ' + ('not hidden' if a.unhide else 'hidden')}")
-    if not a.unhide:
-        for i in a.ids:
-            d = paths.RECORDINGS / i
-            if d.exists():
-                shutil.rmtree(d)
-                print(f"{i}: local copy deleted (still in the bucket)")
     print()
     sync.run(bucket)
 

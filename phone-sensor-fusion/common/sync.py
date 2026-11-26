@@ -31,7 +31,7 @@ delete a label file, delete it here and `gcloud storage rm` it from the bucket.
 Hidden recordings: labels/HIDDEN lists upload ids, one per line (`# ...` is a comment), of
 recordings to keep in the bucket but not download: junk, tests, false starts. It syncs like
 any label file, and labels/ is synced before raw/, so an id hidden on one laptop isn't
-downloaded on the next. `just hide <id>...` adds ids and deletes the local copies; `just
+downloaded on the next. `just hide <id>...` adds ids (local copies are left alone); `just
 unhide <id>...` takes them off again (the next sync downloads them). A hidden recording is
 still in raw/, so a deletion request deletes it as usual (backend/admin.py), and drops its
 line from HIDDEN.
@@ -240,8 +240,6 @@ def run(bucket, conflicts: str | None = None, dry_run: bool = False) -> None:
     got = sync_raw(bucket, dry_run=dry_run, skip=skip)
     for rid, n in got.items():
         print(f"raw/{rid}: {n} file(s) {would}downloaded")
-    for rid in sorted(skip & set(paths.recording_ids())):
-        print(f"raw/{rid}: hidden, but still here (`just hide {rid}` deletes the local copy)")
     for rel in labels["conflict"]:
         print(f"labels/{rel}: CONFLICT, changed here and in the bucket since the last sync; "
               "left alone (rerun with --conflicts local|remote)")
