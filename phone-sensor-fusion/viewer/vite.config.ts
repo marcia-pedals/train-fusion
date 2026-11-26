@@ -2,12 +2,13 @@
 // (AGENTS.md), so it is never built for or deployed anywhere.
 //
 //   /data/<path>         data/phone-sensor-fusion/<path>: what the pipeline wrote
+//   /runs.json           the finished evaluation runs (eval/runs/<run>/meta.json), newest first
 //   /audio/<id>/<file>   a recording's own audio (data/recordings/raw/<id>/<file>, .m4a only),
 //                        which model/ride_view.py names; nothing else of the raw recording
 //
-// Both with HTTP range requests, which seeking in audio needs. Open pages reload when the
-// evaluation's results change.
-import {createReadStream, statSync} from "node:fs";
+// Both with HTTP range requests, which seeking in audio needs. Open pages reload when a
+// run finishes.
+import {createReadStream, readdirSync, readFileSync, statSync} from "node:fs";
 import type {IncomingMessage, ServerResponse} from "node:http";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
@@ -21,6 +22,26 @@ const TYPES: Record<string, string> = {
   ".parquet": "application/vnd.apache.parquet", ".json": "application/json", ".bin": "application/octet-stream",
   ".m4a": "audio/mp4", ".png": "image/png",
 };
+const RUNS = path.join(DATA, "eval", "runs");
+
+/** Every finished run's meta.json (a run writes it last), newest first. */
+function listRuns(): {name: string; written: string}[] {
+  let names: string[];
+  try {
+    names = readdirSync(RUNS);
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const name of names) {
+    try {
+      out.push({...JSON.parse(readFileSync(path.join(RUNS, name, "meta.json"), "utf8")), name});
+    } catch {
+      // unfinished, or not a run
+    }
+  }
+  return out.sort((a, b) => Date.parse(b.written) - Date.parse(a.written));
+}
 
 /** Serve files under `root`, those `allow` accepts, with range requests. */
 function serveFiles(root: string, allow: (file: string) => boolean = () => true) {
@@ -64,14 +85,21 @@ function data(): Plugin {
   return {
     name: "psf-data",
     configureServer(server) {
-      // a new pipeline run: reload the page, so it never shows new code over old data
-      const results = path.join(DATA, "eval");
-      server.watcher.add(results);
+      // a run finished (its meta.json, written last) or was deleted: reload the page
+      server.watcher.add(RUNS);
       let pending: NodeJS.Timeout | undefined;
-      server.watcher.on("all", (_event, file) => {
-        if (!file.startsWith(results + path.sep)) return;
+      server.watcher.on("all", (event, file) => {
+        const rel = path.relative(RUNS, file).split(path.sep);
+        const done = rel.length === 2 && rel[1] === "meta.json";
+        const gone = rel.length === 1 && rel[0] !== ".." && event === "unlinkDir";
+        if (!done && !gone) return;
         clearTimeout(pending);
-        pending = setTimeout(() => server.ws.send({type: "full-reload"}), 500);  // the run writes several files
+        pending = setTimeout(() => server.ws.send({type: "full-reload"}), 500);
+      });
+      server.middlewares.use("/runs.json", (_req, res) => {
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Cache-Control", "no-cache");
+        res.end(JSON.stringify(listRuns()));
       });
       server.middlewares.use("/data", serveFiles(DATA));
       server.middlewares.use("/audio", serveFiles(RAW, (f) => path.extname(f) === ".m4a"));

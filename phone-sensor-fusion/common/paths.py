@@ -17,6 +17,7 @@ LABELS = RECORDINGS_DATA / "labels"  # manual labels: not rebuildable, not check
 DERIVED = REPO / "data" / "phone-sensor-fusion"  # caches and outputs, rebuildable
 PARAMS = HERE / "params"  # all.json: fitted on every labelled recording (checked in)
 CV_PARAMS = DERIVED / "params"  # leave-one-out fits, named after recordings (not checked in)
+RUNS = DERIVED / "eval" / "runs"  # one folder per evaluation run (pipeline.py), kept to compare
 
 
 def recording_ids() -> list[str]:

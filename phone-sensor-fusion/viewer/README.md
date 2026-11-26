@@ -2,11 +2,16 @@
 
 A local web app over what the pipeline writes. Two pages:
 
-- **Results** (`#/results`): the evaluation's tables (`../model/evaluate.py`,
+- **Results** (`#/results?run=&vs=`): the evaluation's tables (`../model/evaluate.py`,
   `../model/schemas.py`), one ride or one leg per row, to search and sort. The last column
-  links to the ride page, for the whole ride or zoomed to the leg.
-- **Ride** (`#/ride/<id>?t0=&t1=&t=`): one ride in detail (`../model/ride_view.py` writes
-  it), on one time axis: the audio and accelerometer spectrograms with the labelled door
+  links to the ride page, for the whole ride or zoomed to the leg. Every pipeline run is
+  kept (`../pipeline.py`); the page shows the newest unless "Run" picks another. Pick a baseline under "vs" and each
+  metric also shows its value there, green where this run is better, red where worse, grey
+  where the change is too small to count (`diff` in `src/results/columns.ts` says how much
+  is enough), "=" where it is the same; "Changed only" keeps the rows with a real change,
+  and "Sort by change" sorts the metric columns by how much they moved.
+- **Ride** (`#/ride/<id>?run=&t0=&t1=&t=`): one ride in detail, as one run's inference saw
+  it (`../model/ride_view.py` writes it; by default the newest run's), on one time axis: the audio and accelerometer spectrograms with the labelled door
   chimes as lines (green opening, red closing; solid where the chime starts, dashed where
   it ends); the filtered and smoothed beliefs over speed (m/s); mode (labelled, filtered, smoothed); and the live
   localiser's probability for the truth and for its own best guess, with the confidently
@@ -23,19 +28,19 @@ React + TypeScript, built and served by Vite. Local only: what it shows names re
 so it is never built for or deployed anywhere.
 
 ```sh
-python -m pipeline                  # from phone-sensor-fusion/: writes data/phone-sensor-fusion/eval/
+python -m pipeline                  # from phone-sensor-fusion/: a run, in data/phone-sensor-fusion/eval/runs/<run>/
 python -m model.schemas             # src/generated/tables.ts: the tables' types and column descriptions
 cd viewer && npm install && npm run dev     # http://127.0.0.1:3040
 npm run check                       # type-check
 ```
 
-(`just psf-view` from the repo root does the last two.) The page reads the files when it
-loads, so after a new pipeline run a reload is enough.
+(`just psf-view` from the repo root does the last two.) Open pages reload when a run
+finishes.
 
 ## How it is put together
 
 - `vite.config.ts`: the dev server, which also serves `data/phone-sensor-fusion/` under
-  `/data/` and a recording's audio file under `/audio/` (nothing else of the raw
+  `/data/`, the list of finished runs as `/runs.json`, and a recording's audio file under `/audio/` (nothing else of the raw
   recording), both with HTTP range requests, which seeking needs.
 - `src/App.tsx`: the pages, chosen by the address (`src/lib/hash.ts`).
 - `src/ride/`: the ride page: `RidePage.tsx` (state, interaction, the list of tracks),

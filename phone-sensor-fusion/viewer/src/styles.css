@@ -16,6 +16,7 @@
   --warn-bg: #fdf3dd;
   --filt: #e0782f;
   --good: #2e9e5b;
+  --good-bg: #e6f5ec;
   --radius: 8px;
   --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
@@ -39,6 +40,7 @@
     --warn-bg: #352a14;
     --filt: #f39a55;
     --good: #4fc27c;
+    --good-bg: #183324;
   }
 }
 
@@ -93,9 +95,13 @@ th .sort:empty { display: none; }
 tbody td { height: 24px; border-bottom: 1px solid var(--line); }
 tbody tr:hover td { background: var(--surface-2); }
 td.null { color: var(--faint); }
-td.bad span, td.warn span { display: inline-block; padding: 0 4px; margin: 0 -4px; border-radius: 4px; font-weight: 600; }
-td.bad span { color: var(--bad); background: var(--bad-bg); }
-td.warn span { color: var(--warn); background: var(--warn-bg); }
+td.bad span.now, td.warn span.now, td.better span.now, td.worse span.now {
+  display: inline-block; padding: 0 4px; margin: 0 -4px; border-radius: 4px; font-weight: 600;
+}
+table.results.vs td span.now { line-height: 18px; }
+td.bad span.now, td.worse span.now { color: var(--bad); background: var(--bad-bg); }
+td.warn span.now { color: var(--warn); background: var(--warn-bg); }
+td.better span.now { color: var(--good); background: var(--good-bg); }
 td.empty { text-align: center; color: var(--muted); height: 60px; }
 
 tfoot td { position: sticky; background: var(--surface-2); height: 24px; color: var(--muted); font-weight: 550; z-index: 1; }
@@ -172,3 +178,14 @@ tfoot td.label { text-transform: uppercase; font-size: 10px; letter-spacing: .06
 /* the tables' link to a ride */
 a.go { color: var(--accent); text-decoration: none; font-weight: 550; }
 a.go:hover { text-decoration: underline; }
+
+/* comparing runs (results page) */
+.toolbar .field { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.toolbar .check { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); cursor: pointer; }
+/* the baseline's value under each metric: cells hold two lines, top-aligned */
+table.results.vs tbody td, table.results.vs tfoot td { vertical-align: top; padding-top: 3px; padding-bottom: 3px; line-height: 18px; }
+table.results.vs tfoot td { height: 42px; box-sizing: border-box; }  /* two lines: 3 + 18 + 18 + 3 */
+table.results.vs tfoot tr:first-child td { bottom: 42px; }
+.results .prev { display: block; color: var(--faint); font-weight: 400; white-space: nowrap; }
+.results .prev.same { color: var(--line-strong); }
+.results .prev.new { color: var(--accent); }

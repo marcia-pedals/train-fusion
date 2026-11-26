@@ -1,15 +1,20 @@
 """What the viewer's ride page shows, per test ride, written by pipeline.py next to the
-evaluation (from the same cross-validated inference) to data/phone-sensor-fusion/rides/<id>/:
+evaluation (from the same cross-validated inference). What the model says goes into the
+run's folder, <run>/rides/<id>/; the spectrograms, the same whatever the model, are
+shared by every run, in data/phone-sensor-fusion/rides/<id>/:
 
+  <run>/rides/<id>/
   meta.json        per-second series (speed, modes, the causal localiser's
                    belief about the truth), the labelled door events and stops, where the
-                   audio is, and how to read the binary files below
-  spec.bin         audio spectrogram, SPEC_FPS frames/s, 0..SPEC_FMAX Hz, uint8 [frame][bin]
-                   (dB over each frequency's median)
-  accel.bin        accelerometer line spectrum, 1 frame/s, 0..50 Hz, uint8 [second][bin]
+                   audio is, and how to read the binary files (spec and accel: in the shared folder)
   speed_filt.bin, speed_smooth.bin
                    the belief over speed per second, filtered and smoothed, uint8
                    [second][0 = standing, 1.. = speed grid], each second scaled to its peak (sqrt)
+
+  rides/<id>/
+  spec.bin         audio spectrogram, SPEC_FPS frames/s, 0..SPEC_FMAX Hz, uint8 [frame][bin]
+                   (dB over each frequency's median)
+  accel.bin        accelerometer line spectrum, 1 frame/s, 0..50 Hz, uint8 [second][bin]
 
 Recording time t is seconds since the recording started; frame n covers [n, n + 1).
 The audio file itself is served from the recording (vite.config.ts); `audio_t0` is the
@@ -19,6 +24,7 @@ recording time of its first sample.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import numpy as np
 
@@ -78,9 +84,11 @@ def _events(rid: str, stops: list[load.Stop]) -> list[dict]:
     return sorted(out, key=lambda e: e["t"])
 
 
-def export(rid: str, res: Result, f: dict, lab: FrameLabels, stops: list[load.Stop], trace: dict) -> None:
-    """`trace`: what evaluate.ride() filled in about the causal localiser."""
-    out = paths.derived("rides", rid, "meta.json").parent
+def export(rid: str, res: Result, f: dict, lab: FrameLabels, stops: list[load.Stop], trace: dict, run: Path) -> None:
+    """`trace`: what evaluate.ride() filled in about the causal localiser; `run`: the run's folder."""
+    shared = paths.derived("rides", rid, "meta.json").parent
+    out = run / "rides" / rid
+    out.mkdir(parents=True, exist_ok=True)
     rec = Recording(rid)
     T = len(res.v)
 
@@ -89,9 +97,9 @@ def export(rid: str, res: Result, f: dict, lab: FrameLabels, stops: list[load.St
     keep = fq <= SPEC_FMAX
     db = db[keep] - np.median(db[keep], axis=1, keepdims=True)
     spec = np.round(255 * np.clip((db - SPEC_DB[0]) / (SPEC_DB[1] - SPEC_DB[0]), 0, 1)).astype(np.uint8).T
-    spec.tofile(out / "spec.bin")
+    spec.tofile(shared / "spec.bin")
     acc = np.round(255 * np.clip(f["accel_spec"].astype(float) / ACC_DB_MAX, 0, 1)).astype(np.uint8)
-    acc.tofile(out / "accel.bin")
+    acc.tofile(shared / "accel.bin")
     _peak_scaled(_over_speed(res.alpha)).tofile(out / "speed_filt.bin")
     _peak_scaled(_over_speed(res.gamma)).tofile(out / "speed_smooth.bin")
 

@@ -24,5 +24,9 @@ export function replaceHash(path: string[], params: Record<string, string>) {
   history.replaceState(null, "", `#/${path.map(encodeURIComponent).join("/")}${q ? `?${q}` : ""}`);
 }
 
-export const rideHref = (id: string, t0?: number, t1?: number) =>
-  `#/ride/${encodeURIComponent(id)}` + (t0 != null && t1 != null ? `?t0=${t0.toFixed(1)}&t1=${t1.toFixed(1)}` : "");
+/** The ride page for a run's inference (by default the newest run's), whole or zoomed to [t0, t1]. */
+export function rideHref(id: string, run?: string, t0?: number, t1?: number) {
+  const q = new URLSearchParams({...(run ? {run} : {}),
+    ...(t0 != null && t1 != null ? {t0: t0.toFixed(1), t1: t1.toFixed(1)} : {})}).toString();
+  return `#/ride/${encodeURIComponent(id)}${q ? `?${q}` : ""}`;
+}

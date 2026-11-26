@@ -82,7 +82,7 @@ this directory. Recordings are in `../data/recordings/raw/<id>/` and labels in `
 `just sync-recordings` fetches both from the bucket (and uploads new labels).
 
 ```sh
-python -m pipeline              # features if missing, then leave-one-recording-out: fit, infer, evaluate
+python -m pipeline              # features if missing, then leave-one-recording-out: fit, infer, evaluate; kept as a run (--name)
 python -m pipeline --ablate     # ... also with each measurement removed / alone
 python -m pipeline --final      # fit on every labelled recording -> params/all.json
 python -m model.plot            # result plots -> data/phone-sensor-fusion/model/<id>.cv.png

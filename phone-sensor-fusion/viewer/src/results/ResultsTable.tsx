@@ -1,5 +1,8 @@
 // A sortable table over rows already filtered by the page, with grouped headers, the
 // schema's description as each header's tooltip, and mean / median of the shown rows.
+// With a baseline run, each metric also shows what it was there, under it, and its colour
+// says how it changed (green: better, red: worse; none: no change worth counting) instead
+// of how worrying it is; and the columns can sort by the change instead.
 import {useMemo, useState} from "react";
 import {
   createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable,
@@ -7,12 +10,18 @@ import {
 } from "@tanstack/react-table";
 import type {Column} from "./columns";
 import {isNum, log10p, logText} from "../lib/format";
+import {compare} from "./diff";
 
 interface Props<R> {
   rows: R[];
   columns: Column<R>[];
   describe: Record<string, string>;
   rowKey: (r: R) => string;
+  /** the baseline run's rows, by rowKey; and its name */
+  base?: Map<string, R>;
+  baseName?: string;
+  /** sort metric columns by their change from the baseline instead of by value */
+  byChange?: boolean;
 }
 
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -22,7 +31,7 @@ function median(xs: number[]) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-export default function ResultsTable<R extends Record<string, any>>({rows, columns, describe, rowKey}: Props<R>) {
+export default function ResultsTable<R extends Record<string, any>>({rows, columns, describe, rowKey, base, baseName, byChange}: Props<R>) {
   const [sorting, setSorting] = useState<SortingState>([]);
 
   const defs = useMemo(() => {
@@ -36,7 +45,13 @@ export default function ResultsTable<R extends Record<string, any>>({rows, colum
     return groups.map((g) => helper.group({
       id: g.name,
       header: g.name,
-      columns: g.cols.map((c) => helper.accessor((r) => (c.sortBy ? c.sortBy(r) : r[c.key]) ?? undefined, {
+      columns: g.cols.map((c) => helper.accessor((r) => {
+        if (byChange && base && c.diff) {
+          const b = base.get(rowKey(r));
+          return b ? compare(c, r[c.key], b[c.key]).delta : undefined;
+        }
+        return (c.sortBy ? c.sortBy(r) : r[c.key]) ?? undefined;
+      }, {
         id: c.key,
         header: c.header,
         sortUndefined: "last",
@@ -44,7 +59,7 @@ export default function ResultsTable<R extends Record<string, any>>({rows, colum
         meta: c,
       }) as ColumnDef<R, unknown>),
     }));
-  }, [columns]);
+  }, [columns, base, byChange, rowKey]);
 
   const table = useReactTable({
     data: rows, columns: defs, state: {sorting}, onSortingChange: setSorting,
@@ -52,11 +67,16 @@ export default function ResultsTable<R extends Record<string, any>>({rows, colum
     getRowId: rowKey,
   });
 
-  const stats = useMemo(() => Object.fromEntries(columns.filter((c) => c.summary).map((c) => {
-    const xs = rows.map((r) => r[c.key]).filter(isNum)
+  const summarise = (rs: R[]) => Object.fromEntries(columns.filter((c) => c.summary).map((c) => {
+    const xs = rs.map((r) => r[c.key]).filter(isNum)
       .map((x) => (c.summary === "abs" ? Math.abs(x) : c.summary === "log" ? log10p(x) : x));
     return [c.key, xs.length ? {mean: mean(xs), median: median(xs)} : null];
-  })), [rows, columns]);
+  }));
+  const stats = useMemo(() => summarise(rows), [rows, columns]);
+  // the baseline's summary over the same rows (those it has)
+  const baseRows = useMemo(() => (base ? rows.map((r) => base.get(rowKey(r))).filter((r): r is R => !!r) : []), [rows, base, rowKey]);
+  const baseStats = useMemo(() => (base ? summarise(baseRows) : null), [baseRows, columns]);
+  const missing = base ? rows.length - baseRows.length : 0;
 
   // first column of each group after the first: drawn with a divider before it
   const groupStart = new Set(columns.filter((c, i) => i > 0 && columns[i - 1].group !== c.group).map((c) => c.key));
@@ -64,7 +84,7 @@ export default function ResultsTable<R extends Record<string, any>>({rows, colum
   const cls = (...xs: (string | false | undefined)[]) => xs.filter(Boolean).join(" ");
 
   return (
-    <table className="results">
+    <table className={base ? "results vs" : "results"}>
       <thead>
         {table.getHeaderGroups().map((hg, depth) => (
           <tr key={hg.id} className={depth === 0 ? "groups" : "heads"}>
@@ -91,13 +111,18 @@ export default function ResultsTable<R extends Record<string, any>>({rows, colum
       <tbody>
         {table.getRowModel().rows.map((row) => (
           <tr key={row.id}>
-            {columns.map((c) => {
+            {columns.map((c, i) => {
               const x = row.original[c.key];
-              const tone = c.tone?.(x ?? null);
+              const b = base?.get(row.id);
+              const change = b && c.diff ? compare(c, x, b[c.key]).change : undefined;
+              // with a baseline, a metric is coloured by its change, not by its value
+              const color = base && c.diff ? (change === "better" || change === "worse" ? change : undefined) : c.tone?.(x ?? null);
               return (
-                <td key={c.key} className={cls(c.align === "left" ? "left" : "num", tone, x == null && "null", groupStart.has(c.key) && "gs")}>
+                <td key={c.key} className={cls(c.align === "left" ? "left" : "num", color, x == null && "null", groupStart.has(c.key) && "gs")}>
                   {c.link ? <a className="go" href={c.link(row.original)}>{c.linkText}</a>
-                    : <span data-tip={c.tip?.(row.original)}>{cell(c, x)}</span>}
+                    : <span className="now" data-tip={c.tip?.(row.original)}>{cell(c, x)}</span>}
+                  {base && i === 0 && !b && <span className="prev new" data-tip={`Not in ${baseName}`}>new</span>}
+                  {change && <Prev change={change} text={cell(c, b![c.key])} now={cell(c, x)} baseName={baseName} />}
                 </td>
               );
             })}
@@ -113,13 +138,25 @@ export default function ResultsTable<R extends Record<string, any>>({rows, colum
             <tr key={k}>
               {columns.map((c, i) => {
                 const s = stats[c.key];
-                const text = i === 0 ? k : !s ? "" : c.summary === "log" ? logText(s[k]) : cell(c, s[k]);
+                const text = (s: {mean: number; median: number} | null) => {
+                  const t = !s ? "" : c.summary === "log" ? logText(s[k]) : cell(c, s[k]);
+                  return s && c.summary === "abs" ? `|${t.replace(/^[+−]/, "")}|` : t;
+                };
+                const bs = baseStats?.[c.key];
+                // summaries of |x| are compared as they are; of log10 p, a factor of 10 is a change
+                const sc = c.summary === "abs" ? {...c, diff: c.diff && {...c.diff, badness: undefined}}
+                  : c.summary === "log" ? {...c, diff: {eps: 1}} : c;
+                const change = s && bs && c.diff ? compare(sc, s[k], bs[k]).change : undefined;
                 return (
-                  <td key={c.key} className={cls(i === 0 ? "left label" : "num", groupStart.has(c.key) && "gs")}>
-                    <span data-tip={s && c.summary === "abs" ? `${k} of |${c.header.toLowerCase()}|`
+                  <td key={c.key} className={cls(i === 0 ? "left label" : "num", (change === "better" || change === "worse") && change,
+                                                 groupStart.has(c.key) && "gs")}>
+                    <span className="now" data-tip={s && c.summary === "abs" ? `${k} of |${c.header.toLowerCase()}|`
                       : s && c.summary === "log" ? `${k} of the log10 probabilities` : undefined}>
-                      {s && c.summary === "abs" ? `|${text.replace(/^[+−]/, "")}|` : text}
+                      {i === 0 ? k : text(s)}
                     </span>
+                    {change && <Prev baseName={baseName} text={text(bs!)} now={text(s!)} change={change} />}
+                    {i === 0 && missing > 0 && <span className="prev" data-tip={`${missing} of these rows are not in ${baseName}: its summary leaves them out`}>
+                      {missing} new</span>}
                   </td>
                 );
               })}
@@ -129,4 +166,11 @@ export default function ResultsTable<R extends Record<string, any>>({rows, colum
       )}
     </table>
   );
+}
+
+/** Under a value: what it was in the baseline ("=" if the same). */
+function Prev({change, text, now, baseName}: {change: ReturnType<typeof compare>["change"]; text: string; now: string; baseName?: string}) {
+  // a change too small to count that doesn't show in the digits either: as good as the same
+  if (change === "same" || (change === "small" && text === now)) return <span className="prev same" data-tip={`The same in ${baseName}`}>=</span>;
+  return <span className="prev" data-tip={`In ${baseName}`}>{text}</span>;
 }
