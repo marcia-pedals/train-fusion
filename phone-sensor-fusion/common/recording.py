@@ -76,7 +76,10 @@ class Recording:
     # The sensors below exist only in newer recordings (`has` says which).
 
     def has(self, name: str) -> bool:
-        return (self.dir / f"{name}.csv.gz").exists()
+        """The file is there and has samples: `baro.csv.gz` is written but left empty when
+        Motion & Fitness access was refused (meta.json's `motion.baro_samples` is then 0)."""
+        n = self.meta.get("motion", {}).get(f"{name}_samples")
+        return (self.dir / f"{name}.csv.gz").exists() and n != 0
 
     @cached_property
     def mag(self) -> tuple[np.ndarray, np.ndarray]:
@@ -108,28 +111,62 @@ class Recording:
         return np.load(p)
 
     def audio(self, sample_rate: int = 16000) -> tuple[float, np.ndarray]:
-        """(t of sample 0, float32 samples) resampled to `sample_rate`.
+        """(t of sample 0, float32 samples) resampled to `sample_rate`: sample k was captured
+        at recording time t + k / sample_rate.
 
-        Only single-segment recordings so far (both we have are); the buffer timing file
-        is checked for gaps so a dropped buffer can't silently shift everything after it.
+        Every audio segment goes in, each run of buffers at the time its timing rows say.
+        Where capture stopped (a dropped buffer, or between segments) the gap is filled with
+        zeros, so nothing after it shifts.
         """
         segs = self.meta["audio"]["segments"]
-        assert len(segs) == 1, "multi-segment audio not handled yet"
-        timing = _read_csv_gz(self.dir / "audio_timing.csv.gz")
-        native = segs[0]["sample_rate"]
-        # uptime of frame 0 implied by every buffer; they must agree (no gaps, no drift)
-        implied = timing[:, 3] - timing[:, 1] / native
-        assert np.ptp(implied) < 0.05, f"audio timing drifts/gaps by {np.ptp(implied):.3f}s"
-        t_first = float(np.median(implied)) - self.t0_uptime
-        t_first -= self.meta["audio"].get("input_latency_s") or 0.0
+        runs = audio_runs(_read_csv_gz(self.dir / "audio_timing.csv.gz"), segs,
+                          self.t0_uptime + (self.meta["audio"].get("input_latency_s") or 0.0))
+        t_first = min(t for _, _, _, t in runs)
         p = paths.derived("cache", f"{self.id}.audio{sample_rate}.npy")
         if not p.exists():
-            raw = subprocess.run(
-                ["ffmpeg", "-loglevel", "error", "-i", str(self.dir / segs[0]["file"]),
-                 "-ar", str(sample_rate), "-ac", "1", "-f", "f32le", "-"],
-                check=True, capture_output=True).stdout
-            np.save(p, np.frombuffer(raw, dtype=np.float32))
+            decoded = [self._decode(seg["file"], sample_rate) for seg in segs]
+            pieces = []  # (first output sample, samples)
+            for i, f0, f1, t in runs:
+                r = sample_rate / segs[i]["sample_rate"]
+                x = decoded[i][int(round(f0 * r)):None if f1 is None else int(round(f1 * r))]
+                pieces.append((int(round((t - t_first) * sample_rate)), x))
+            out = np.zeros(max(k + len(x) for k, x in pieces), np.float32)
+            for k, x in pieces:
+                out[k:k + len(x)] = x
+            np.save(p, out)
         return t_first, np.load(p, mmap_mode="r")
+
+    def _decode(self, file: str, sample_rate: int) -> np.ndarray:
+        raw = subprocess.run(
+            ["ffmpeg", "-loglevel", "error", "-i", str(self.dir / file),
+             "-ar", str(sample_rate), "-ac", "1", "-f", "f32le", "-"],
+            check=True, capture_output=True).stdout
+        return np.frombuffer(raw, dtype=np.float32)
+
+
+AUDIO_JUMP_S = 0.005  # buffers whose timing disagrees by more than this are a new run
+
+
+def audio_runs(timing: np.ndarray, segments: list[dict], t0: float) -> list[tuple[int, int, int | None, float]]:
+    """Split audio_timing.csv.gz (`segment, frame, frames, uptime_s` rows) into runs of
+    buffers captured back to back: [(segment, first frame, end frame or None for the end
+    of the file, recording time of the first frame)]. `t0` is the uptime that is recording
+    time 0, capture latency included. Within a run every buffer implies the same time for
+    frame 0 of its segment (to well under a ms, drifting slowly); a jump means audio is
+    missing there."""
+    out = []
+    for i, seg in enumerate(segments):
+        rows = timing[timing[:, 0] == i]
+        if not len(rows):
+            continue
+        fs = seg["sample_rate"]
+        implied = rows[:, 3] - rows[:, 1] / fs - t0  # recording time of frame 0
+        starts = np.r_[0, np.where(np.abs(np.diff(implied)) > AUDIO_JUMP_S)[0] + 1]
+        for a, b in zip(starts, np.r_[starts[1:], len(rows)]):
+            f0 = int(rows[a, 1])
+            f1 = int(rows[b, 1]) if b < len(rows) else None
+            out.append((i, f0, f1, float(np.median(implied[a:b])) + f0 / fs))
+    return out
 
 
 def load_all() -> list[Recording]:
