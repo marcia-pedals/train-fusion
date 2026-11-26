@@ -10,7 +10,8 @@ type exactly "delete". Then, for each request:
 
 - its Train Measurements (Firestore `measurements/`), skipping any shared again since;
 - each Full Recording: `raw/<upload id>/` and `labels/<upload id>/` in the bucket, its
-  lines in the bucket's `labels/RIDES.md`, and its upload record (Firestore `uploads/`);
+  lines in the bucket's `labels/RIDES.md` and `labels/HIDDEN`, and its upload record
+  (Firestore `uploads/`);
 - then the request is marked done.
 
 It deletes only what's in the cloud: laptops' copies (`data/`) go when they're cleared and
@@ -41,6 +42,7 @@ DUE_WITHIN = timedelta(days=30)  # what the app promises
 RAW = "raw/"  # raw/<upload id>/: a recording as the phone uploaded it
 LABELS = "labels/"  # labels/<upload id>/, and labels/RIDES.md (phone-sensor-fusion/common/sync.py)
 RIDES = LABELS + "RIDES.md"
+HIDDEN = LABELS + "HIDDEN"  # recordings laptops don't download (phone-sensor-fusion/common/sync.py)
 CONFIRM = "delete"
 
 
@@ -217,23 +219,25 @@ def delete_measurement(d, measurement_id: str) -> None:
         d.delete(f"measurements/{measurement_id}")
 
 
-def strip_rides(bucket: Bucket, upload_id: str) -> None:
-    """Drop the upload's lines from the bucket's RIDES.md (laptops get it at their next sync)."""
-    got = bucket.read(RIDES)
+def strip_lines(bucket: Bucket, name: str, upload_id: str) -> None:
+    """Drop the upload's lines from a list in the bucket, RIDES.md or HIDDEN (laptops get it
+    at their next sync)."""
+    got = bucket.read(name)
     if got is None:
         return
     data, generation = got
     lines = data.decode().splitlines(keepends=True)
     kept = [line for line in lines if upload_id not in line]
     if kept != lines:
-        bucket.write(RIDES, "".join(kept).encode(), generation)
+        bucket.write(name, "".join(kept).encode(), generation)
 
 
 def delete_upload(d, bucket: Bucket, upload_id: str) -> None:
     for prefix in (RAW, LABELS):
         for name in bucket.sizes(f"{prefix}{upload_id}/"):
             bucket.delete(name)
-    strip_rides(bucket, upload_id)
+    for name in (RIDES, HIDDEN):
+        strip_lines(bucket, name, upload_id)
     d.delete(f"uploads/{upload_id}")  # last: until it's gone, the app still shows it as asked to delete
 
 

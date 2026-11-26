@@ -205,3 +205,20 @@ def test_stray_objects_outside_raw_and_labels(env):
     bucket.put("labels/RIDES.md", b"")
     bucket.put("r9/meta.json", b"{}")
     assert sync.stray(bucket) == ["r9/"]
+
+
+def test_hidden_recordings_are_not_downloaded(tmp_path):
+    from common import hide
+    b = Bucket()
+    for r in ("r1", "r2"):
+        b.put(f"raw/{r}/meta.json", b"{}")
+    listed = tmp_path / "HIDDEN"
+    assert sync.hidden(listed) == set()
+    assert hide.edit(["r2"], unhide=False, reason="junk", path=listed) == ["r2"]
+    assert hide.edit(["r2"], unhide=False, reason=None, path=listed) == []  # already hidden
+    listed.write_text(listed.read_text() + "# a comment\n\n")
+    assert sync.hidden(listed) == {"r2"}
+    assert sync.sync_raw(b, tmp_path / "raw", skip=sync.hidden(listed)) == {"r1": 1}
+    assert hide.edit(["r2"], unhide=True, reason=None, path=listed) == ["r2"]
+    assert listed.read_text() == "# a comment\n\n"
+    assert sync.sync_raw(b, tmp_path / "raw", skip=sync.hidden(listed)) == {"r2": 1}

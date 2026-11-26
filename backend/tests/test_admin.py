@@ -54,6 +54,7 @@ def setup():
     bucket.put(f"labels/{UPLOAD}/stops.csv", b"a")
     rides = f"# rides\nA {UPLOAD}\nB other\n".encode()
     bucket.put("labels/RIDES.md", rides)
+    bucket.put("labels/HIDDEN", f"other-hidden\n{UPLOAD}  # junk\n".encode())
     return d, bucket
 
 
@@ -87,6 +88,7 @@ def test_delete_does_everything():
     assert not [n for n in bucket.objects if UPLOAD in n]
     assert d.get(f"uploads/{UPLOAD}") is None
     assert bucket.objects["labels/RIDES.md"][0] == b"# rides\nB other\n"
+    assert bucket.objects["labels/HIDDEN"][0] == b"other-hidden\n"
     assert d.get("deletion_requests/r1")["done_at"] == NOW
     assert d.get("deletion_requests/r2")["done_at"] is None  # waits for its upload URLs to expire
 

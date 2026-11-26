@@ -104,6 +104,19 @@ block-account uid:
 sync-recordings *args:
     cd phone-sensor-fusion && python -m common.sync {{args}}
 
+# keep recordings in the bucket but stop downloading them (labels/HIDDEN; a local copy is
+# left alone): `just hide <upload id>... [--reason "..."]`; `just unhide <upload id>...` undoes it
+hide *args:
+    cd phone-sensor-fusion && python -m common.hide {{args}}
+
+unhide *args:
+    cd phone-sensor-fusion && python -m common.hide --unhide {{args}}
+
+# phone recordings synced locally:unlabelled, then labelled (with RIDES.md notes), newest
+# first, with size, duration and phone (phone-sensor-fusion/common/status.py)
+recordings:
+    cd phone-sensor-fusion && python -m common.status
+
 # phone-sensor-fusion: features -> fit -> infer -> evaluate, leaving each recording out in turn
 # (phone-sensor-fusion/README.md); e.g. `just psf --ablate`, `just psf --final`
 psf *args:
