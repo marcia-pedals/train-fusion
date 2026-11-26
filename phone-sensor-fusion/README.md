@@ -23,9 +23,9 @@ barometer when a recording has them.
   seconds at a time when speech covers the tone at low speed. Smoothing repairs it; a fixed-lag smoother would be the online answer.
 - **The hand-held ride reads long without the wheel lines.** Part of it is the tone constant differing between
   the two trainsets (wheel wear?); the rest is unexplained.
-- **Wheel-rotation lines with the phone in a hand** are applied with tables borrowed from
-  resting phones (there is one hand-held ride, so none can be fitted without testing on
-  it), and in cross-validation that hurts.
+- **Wheel-rotation lines with the phone in a hand** use held tables fitted on the hand-held
+  rides (two so far). Left out of training, one of them leaves too little held data, and its
+  fold borrows tables from resting phones, which hurts it in cross-validation.
 - **Switches and level crossings** show nothing in one-second vibration levels.
 
 ## To come back to when there is more data
@@ -41,9 +41,9 @@ barometer when a recording has them.
   hand-held ride has one. Not built: the door pressure step as a door detector, heading
   for a recording started inside the train, the barometer as a position clue before the
   first stop.
-- **Wheel-rotation lines with the phone in a hand**: currently applied with tables borrowed
-  from resting phones, which hurt the one hand-held ride in cross-validation. Needs a
-  second hand-held ride to fit and test properly.
+- **Wheel-rotation lines with the phone in a hand**: held tables come from two hand-held
+  rides, and a hand adds lines of its own (a steady 4-5 Hz one on one ride). Needs a third
+  to fit and test them properly.
 - **An off-train state**, learnable now that `presence.csv` holds about 25 minutes of
   off-train time.
 
