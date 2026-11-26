@@ -13,7 +13,7 @@ of the recording.
 | `journey.toml` | direction, the stations called at, and the evidence | announcements in the whisper transcript + the number of door chimes + leg durations against the map | certain |
 | `stops.csv` | per station: `t_open`..`t_open_end` and `t_close`..`t_close_end` (the two door chimes), `t_arrive` (wheels stop), `t_depart` (wheels start) | chimes: `propose.py`, each checked on a spectrogram (`exploration/zoom.py`). Wheels: `stop_times_accel.py`, checked on `stop_sheets.py` | chimes ±0.1 s; wheels ±0.5 s |
 | `presence.csv` | intervals of where the rider is: `train`, `platform`, `elsewhere` (both off the train), `unknown` (boards / alights somewhere inside the interval), each with its evidence | `presence_sheets.py`: steps in the accelerometer, the door chimes, and the change of ambience | boarding and alighting to within the `unknown` interval (4–15 s) |
-| `phone.csv` | intervals of `resting` (lying on a surface), `held` (in a hand, fairly still), `handled` (being moved about) | read off the gyro energy and the low-passed accelerometer in the overview plots | ±2 s; `held` / `handled` is a judgement |
+| `phone.csv` | intervals of `resting` (lying on a surface), `held` (in a hand, fairly still), `handled` (being moved about) | read off the gyro energy and the low-passed accelerometer in the overview plots, then checked with `check_phone.py` | ±2 s; `held` / `handled` is a judgement |
 | `tone_trace.csv` | the motor tone's frequency through every leg, 4 per second | `trace_tone.py`, overlays checked by eye | see below |
 | `speed.csv` | speed, 1 per second, with its source and whether it is trustworthy | `build_speed.py` from the files above and the map | see below |
 | `modes.csv` (optional) | the train's mode (`labels/frames.py`: `MODE_KEYS`, or `unknown`) over intervals that `stops.csv` can't describe, e.g. doors reopening during a long hold; overrides what `stops.csv` implies | by hand, from the chimes on a zoom | as the chimes |
@@ -88,6 +88,13 @@ How good:
 
 ## Adding a recording
 
+**Resting or held**: a still hand and a seat look alike if you only look for the moments
+the phone is moved (steps in the low-passed accelerometer). They differ in level: resting
+is flat (a few degrees of tilt) and quiet (gyro jitter around 10^-2.1 rad/s), held is
+tilted and wanders, with more jitter. One ride was first labelled resting throughout while
+it was in a hand. `check_phone` flags labelled intervals whose jitter disagrees (tilt alone
+doesn't count: a phone can rest propped up), so look and decide.
+
 ```sh
 python -m exploration.overview                 # look at it
 python -m exploration.transcribe               # announcements -> journey.toml
@@ -96,6 +103,7 @@ python -m labels.stop_times_accel <id> <t0> <t1> "<opens>" "<closes>"   # restin
 python -m labels.stop_sheets <id> "<opens>" "<closes>"                  # ... to check them
 python -m labels.presence_sheets               # first / last 150 s -> presence.csv
 #   write phone.csv from the overview
+python -m labels.check_phone <id>              # resting / held that the sensors disagree with
 python -m labels.trace_tone <id>               # tone_trace.csv; check data/phone-sensor-fusion/labels/*.trace_*.png
 python -m labels.build_speed <id>              # speed.csv; prints tone-vs-accelerometer agreement
 ```
