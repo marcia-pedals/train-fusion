@@ -1,4 +1,4 @@
-// What model/ride_view.py writes per ride (data/phone-sensor-fusion/rides/<id>/meta.json).
+// What model/ride_view.py writes per ride and run (eval/runs/<run>/rides/<id>/meta.json).
 
 export interface Raster { file: string; fps: number; bins: number; frames: number; fmax: number }
 
@@ -37,6 +37,7 @@ export interface Ride {
   accel: Uint8Array;
   speedFilt: Uint8Array;
   speedSmooth: Uint8Array;
+  run: string;  // the evaluation run whose inference this is
 }
 
 /** The visible stretch of recording time, in seconds. */

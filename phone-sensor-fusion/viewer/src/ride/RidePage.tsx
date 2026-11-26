@@ -7,6 +7,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from "react";
 import {loadJson, useLoad} from "../lib/data";
 import {readHash, replaceHash} from "../lib/hash";
+import {loadRuns, runBase} from "../lib/runs";
 import {rideStart, TIME_ZONE} from "../lib/rides";
 import {stationCode} from "../lib/stations";
 import Canvas, {type Draw} from "./Canvas";
@@ -20,21 +21,29 @@ const GUTTER = 168;  // px: the track names and their values at the cursor
 const RATES = [1, 2, 4, 8];
 const HIDE_KEY = "psf-ride-hide-identifying";
 
-async function loadRide(id: string): Promise<Ride> {
-  const base = `/data/rides/${encodeURIComponent(id)}`;
+/** A ride as one run's inference saw it (by default the newest run's): what the model says
+ * is in the run's folder, the spectrograms in a folder shared by every run (model/ride_view.py). */
+async function loadRide(id: string, run: string | null): Promise<Ride> {
+  if (!run) {
+    const runs = await loadRuns();
+    if (!runs.length) throw new Error("no evaluation runs yet");
+    run = runs[0].name;
+  }
+  const base = `${runBase(run)}/rides/${encodeURIComponent(id)}`;
+  const shared = `/data/rides/${encodeURIComponent(id)}`;
   const meta = await loadJson<RideMeta>(`${base}/meta.json`);
-  const bin = async (file: string) => {
-    const res = await fetch(`${base}/${file}`);
-    if (!res.ok) throw new Error(`${file}: ${res.status}`);
+  const bin = async (url: string) => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`${url}: ${res.status}`);
     return new Uint8Array(await res.arrayBuffer());
   };
   const [spec, accel, speedFilt, speedSmooth] = await Promise.all(
-    [meta.spec.file, meta.accel.file, meta.speed_post.filt, meta.speed_post.smooth].map(bin));
-  return {meta, spec, accel, speedFilt, speedSmooth};
+    [`${shared}/${meta.spec.file}`, `${shared}/${meta.accel.file}`, `${base}/${meta.speed_post.filt}`, `${base}/${meta.speed_post.smooth}`].map(bin));
+  return {meta, spec, accel, speedFilt, speedSmooth, run};
 }
 
 export default function RidePage({id}: {id: string}) {
-  const ride = useLoad(() => loadRide(id), [id]);
+  const ride = useLoad(() => loadRide(id, readHash().params.get("run")), [id]);
   if (ride.status === "loading") return <p className="status">Loading the ride…</p>;
   if (ride.status === "error") {
     return <div className="status error"><p>Couldn't load this ride.</p><pre>{ride.error}</pre>
@@ -89,9 +98,9 @@ function RideView({ride}: {ride: Ride}) {
   // keep the address in step (no history entries)
   useEffect(() => {
     const id = setTimeout(() => replaceHash(["ride", meta.id],
-      {t0: view.t0.toFixed(1), t1: view.t1.toFixed(1), ...(cursor != null ? {t: cursor.toFixed(1)} : {})}), 300);
+      {run: ride.run, t0: view.t0.toFixed(1), t1: view.t1.toFixed(1), ...(cursor != null ? {t: cursor.toFixed(1)} : {})}), 300);
     return () => clearTimeout(id);
-  }, [view, cursor, meta.id]);
+  }, [view, cursor, meta.id, ride.run]);
 
   // the spectrograms and beliefs over speed as coloured tiles, once
   const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -235,7 +244,7 @@ function RideView({ride}: {ride: Ride}) {
       {/* three columns: the controls, the ride (centred), the privacy toggle */}
       <div className="toolbar ride-bar">
         <div className="side">
-          <a className="back" href="#/results">← Results</a>
+          <a className="back" href={`#/results?run=${encodeURIComponent(ride.run)}`}>← Results</a>
           <div className="transport" role="group">
             <button onClick={toggle} aria-label={playing ? "Pause" : "Play"}>
               {playing

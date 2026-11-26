@@ -117,12 +117,12 @@ unhide *args:
 recordings:
     cd phone-sensor-fusion && python -m common.status
 
-# phone-sensor-fusion: features -> fit -> infer -> evaluate, leaving each recording out in turn
-# (phone-sensor-fusion/README.md); e.g. `just psf --ablate`, `just psf --final`
+# phone-sensor-fusion: features -> fit -> infer -> evaluate, leaving each recording out in turn, kept as a run
+# (phone-sensor-fusion/README.md); e.g. `just psf --name NAME`, `just psf --ablate`, `just psf --final`
 psf *args:
     cd phone-sensor-fusion && python -m pipeline {{args}}
 
-# phone-sensor-fusion results viewer at http://127.0.0.1:3040: per-ride and per-leg metrics of the last `just psf`
+# phone-sensor-fusion results viewer at http://127.0.0.1:3040: per-ride and per-leg metrics of each `just psf` run, and diffs between runs
 psf-view:
     cd phone-sensor-fusion && python -m model.schemas
     cd phone-sensor-fusion/viewer && npm install --no-audit --no-fund && npm run dev

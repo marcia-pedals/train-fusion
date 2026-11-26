@@ -1,5 +1,5 @@
 """The evaluation's output tables (model/evaluate.py, written by pipeline.py to
-data/phone-sensor-fusion/eval/<table>.parquet; the viewer reads them).
+a run's folder, data/phone-sensor-fusion/eval/runs/<run>/<table>.parquet; the viewer reads them).
 
 Declared with the repo's schema language (train_fusion/common/schema_dsl.py), which also
 gives the viewer its TypeScript types:
@@ -12,6 +12,7 @@ metric is computed on a ride the model was not fitted on (leave one ride out).
 """
 
 import sys
+from pathlib import Path
 
 from common import paths
 
@@ -116,8 +117,9 @@ rides = Table("rides", "One row per test ride.", _RIDE_KEY + [
 TABLES = [legs, rides]
 
 
-def path(table: Table):
-    return paths.derived("eval", f"{table.name}.parquet")
+def path(table: Table, run: Path) -> Path:
+    """Where a run (pipeline.py: a folder under paths.RUNS) keeps the table."""
+    return run / f"{table.name}.parquet"
 
 
 def _ts_columns(tables) -> str:
