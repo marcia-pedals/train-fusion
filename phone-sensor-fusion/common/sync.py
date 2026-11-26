@@ -5,6 +5,7 @@ The bucket and data/recordings/ have the same layout:
     raw/<id>/...       a recording, as the phone uploaded it
     labels/<id>/...    its labels (labels/README.md), made by hand on a laptop
     labels/RIDES.md    which ride is which
+    labels/HIDDEN      recordings kept in the bucket but not downloaded (below)
 
 <id> is the upload's directory name, which the recorder API chooses: the recording id (its
 start time) and 8 random hex digits, <recording id>-3f9a0c1d (recordings uploaded before
@@ -27,6 +28,14 @@ Deletions are never propagated, in either direction: a file missing on one side 
 from the other. So clearing data/ (or a fresh checkout) gets everything back. To really
 delete a label file, delete it here and `gcloud storage rm` it from the bucket.
 
+Hidden recordings: labels/HIDDEN lists upload ids, one per line (`# ...` is a comment), of
+recordings to keep in the bucket but not download: junk, tests, false starts. It syncs like
+any label file, and labels/ is synced before raw/, so an id hidden on one laptop isn't
+downloaded on the next. `just hide <id>...` adds ids and deletes the local copies; `just
+unhide <id>...` takes them off again (the next sync downloads them). A hidden recording is
+still in raw/, so a deletion request deletes it as usual (backend/admin.py), and drops its
+line from HIDDEN.
+
 With read-only access to the bucket (`recordings_readers` in infra/recordings.tf), the sync
 downloads as usual; label files changed here are reported as not uploaded and kept as they are.
 
@@ -44,6 +53,7 @@ from pathlib import Path
 from common import paths
 
 STATE = paths.RECORDINGS_DATA / ".labels-sync.json"
+HIDDEN = paths.LABELS / "HIDDEN"
 SKIP = {".DS_Store"}
 
 
@@ -69,11 +79,19 @@ def download(blob, dest: Path) -> None:
     tmp.replace(dest)
 
 
+def hidden(path: Path = HIDDEN) -> set[str]:
+    """The upload ids listed in labels/HIDDEN."""
+    if not path.exists():
+        return set()
+    return {line.split("#", 1)[0].strip() for line in path.read_text().splitlines()} - {""}
+
+
 # ------------------------------------------------------------------ raw: bucket -> laptop
 
-def sync_raw(bucket, dest: Path = paths.RECORDINGS, dry_run: bool = False) -> dict[str, int]:
-    """Download every file of every complete recording in raw/ that isn't here yet.
-    Returns {id: number of files downloaded}."""
+def sync_raw(bucket, dest: Path = paths.RECORDINGS, dry_run: bool = False,
+             skip: set[str] = frozenset()) -> dict[str, int]:
+    """Download every file of every complete recording in raw/ that isn't here yet, except
+    the ids in `skip` (hidden). Returns {id: number of files downloaded}."""
     by_id: dict[str, list] = {}
     for b in bucket.list_blobs(prefix=paths.RAW_PREFIX):
         rel = b.name[len(paths.RAW_PREFIX):]
@@ -81,6 +99,8 @@ def sync_raw(bucket, dest: Path = paths.RECORDINGS, dry_run: bool = False) -> di
             by_id.setdefault(rel.split("/", 1)[0], []).append(b)
     got = {}
     for rid, blobs in sorted(by_id.items()):
+        if rid in skip:
+            continue
         if not any(b.name.endswith("/meta.json") for b in blobs):
             print(f"raw/{rid}: still uploading (no meta.json yet), skipped")
             continue
@@ -191,6 +211,11 @@ def stray(bucket) -> list[str]:
     return sorted(n for n in names if n not in (paths.RAW_PREFIX, paths.LABELS_PREFIX))
 
 
+def open_bucket(name: str = paths.BUCKET):
+    from google.cloud import storage
+    return storage.Client().bucket(name)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(prog="just sync-recordings", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -199,33 +224,45 @@ def main() -> None:
                     help="resolve label files changed on both sides by keeping this side's")
     ap.add_argument("--dry-run", action="store_true", help="only say what would be done")
     a = ap.parse_args()
+    run(open_bucket(a.bucket), conflicts=a.conflicts, dry_run=a.dry_run)
 
-    from google.cloud import storage
-    bucket = storage.Client().bucket(a.bucket)
+
+def run(bucket, conflicts: str | None = None, dry_run: bool = False) -> None:
     t0 = time.time()
-    would = "would be " if a.dry_run else ""
+    would = "would be " if dry_run else ""
 
-    got = sync_raw(bucket, dry_run=a.dry_run)
-    for rid, n in got.items():
-        print(f"raw/{rid}: {n} file(s) {would}downloaded")
-    labels = sync_labels(bucket, conflicts=a.conflicts, dry_run=a.dry_run)
+    # labels first: HIDDEN may have changed elsewhere, and says what not to download
+    labels = sync_labels(bucket, conflicts=conflicts, dry_run=dry_run)
     for what in ("uploaded", "downloaded"):
         for rel in labels[what]:
             print(f"labels/{rel}: {would}{what}")
+    skip = hidden()
+    got = sync_raw(bucket, dry_run=dry_run, skip=skip)
+    for rid, n in got.items():
+        print(f"raw/{rid}: {n} file(s) {would}downloaded")
+    for rid in sorted(skip & set(paths.recording_ids())):
+        print(f"raw/{rid}: hidden, but still here (`just hide {rid}` deletes the local copy)")
     for rel in labels["conflict"]:
         print(f"labels/{rel}: CONFLICT, changed here and in the bucket since the last sync; "
               "left alone (rerun with --conflicts local|remote)")
     for rel in labels["forbidden"]:
         print(f"labels/{rel}: changed here, NOT uploaded (no write access to the bucket)")
     for name in stray(bucket):
-        print(f"warning: gs://{a.bucket}/{name} is outside raw/ and labels/; an old app build? "
-              f"(move it: gcloud storage mv gs://{a.bucket}/{name} gs://{a.bucket}/{paths.RAW_PREFIX})")
+        print(f"warning: gs://{bucket.name}/{name} is outside raw/ and labels/; an old app build? "
+              f"(move it: gcloud storage mv gs://{bucket.name}/{name} gs://{bucket.name}/{paths.RAW_PREFIX})")
 
-    print(f"sync with gs://{a.bucket}: {len(got)} recording(s), {len(labels['uploaded'])} label file(s) up, "
+    print(f"sync with gs://{bucket.name}: {len(got)} recording(s), {len(labels['uploaded'])} label file(s) up, "
           f"{len(labels['downloaded'])} down, {len(labels['conflict'])} conflict(s)"
           + (f", {len(labels['forbidden'])} not uploaded (read-only)" if labels["forbidden"] else "")
           + f" in {time.time() - t0:.1f}s"
-          + (" (dry run)" if a.dry_run else ""))
+          + (" (dry run)" if dry_run else ""))
+
+    # what came down this time: new recordings, and recordings whose labels changed
+    fresh = (set(got) | {rel.split("/", 1)[0] for rel in labels["downloaded"] if "/" in rel}) - skip
+    if fresh and not dry_run:
+        from common import status
+        print()
+        status.show(only=fresh)
 
 
 if __name__ == "__main__":
