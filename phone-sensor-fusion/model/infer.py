@@ -22,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+from scipy import sparse
 
 from features import motion, phone_state
 from model import emissions, hmm, states
@@ -38,6 +39,7 @@ class Result:
     mode_p: np.ndarray  # [T, 6] smoothed mode probabilities (labels.frames order)
     path_mode: np.ndarray  # [T] Viterbi mode
     path_v: np.ndarray  # [T] Viterbi speed
+    path_regime: np.ndarray  # [T] Viterbi regime (states.REGIMES), -1 standing
     phone: np.ndarray  # [T, 3] P(phone resting / held / handled), filtered
     loglik: float
     gamma: np.ndarray = None  # [T, N] smoothed state posteriors (states.py order)
@@ -103,7 +105,9 @@ def infer(p: dict, f: dict, use=emissions.ALL) -> Result:
     p_rest = phone[:, phone_state.RESTING]
     mo = motion.extract(f, p_rest)
     log_b = emissions.log_emissions(p, f, phone, use)
-    A = emissions.transition(p)
+    # sparse, by column (model/hmm.py); the acceleration factor only touches its nonzeros
+    A = sparse.csc_array(emissions.transition(p))
+    dv_nz = states.V[np.repeat(np.arange(A.shape[1]), np.diff(A.indptr))] - states.V[A.indices]  # to - from
     prior = emissions.prior()
     T = len(p_rest)
     n_stretch = mo["stretch"].max() + 1
@@ -114,7 +118,8 @@ def infer(p: dict, f: dict, use=emissions.ALL) -> Result:
         s = mo["stretch"][t]
         if s < 0 or sign[s] == 0 or not np.isfinite(mo["a_long"][t]) or mo["stretch"][min(t + 1, T - 1)] != s:
             return A
-        return A * emissions.accel_factor(mo["a_long"][t], sign[s], offset[s], p["accel"]["sd"])
+        f = emissions.accel_factor(mo["a_long"][t], sign[s], offset[s], p["accel"]["sd"], dv_nz)
+        return sparse.csc_array((A.data * f, A.indices, A.indptr), shape=A.shape)
 
     gamma, alpha, loglik = hmm.forward_backward(log_b, trans, prior)
     if "accel" in use:
@@ -142,6 +147,6 @@ def infer(p: dict, f: dict, use=emissions.ALL) -> Result:
     path = hmm.viterbi(log_b, trans, prior)
     v = gamma @ states.V
     return Result(v=v, v_sd=np.sqrt(np.maximum(gamma @ states.V**2 - v**2, 0)), v_filt=alpha @ states.V,
-                  mode_p=states.mode_probs(gamma), path_mode=states.MODE[path], path_v=states.V[path],
+                  mode_p=states.mode_probs(gamma), path_mode=states.MODE[path], path_v=states.V[path], path_regime=states.REGIME[path],
                   phone=phone, loglik=loglik, gamma=gamma, alpha=alpha, stretches=info, travel_heading=travel,
                   msgs=msgs, log_b=log_b, trans=trans)

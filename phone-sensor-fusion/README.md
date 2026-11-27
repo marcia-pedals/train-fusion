@@ -59,7 +59,8 @@ The pipeline is five folders, each with its own README, used in this order:
 | [`features/`](features/README.md) | measurements per second, from deterministic signal processing to small learned classifiers | cached in `data/phone-sensor-fusion/features/` |
 | [`model/`](model/README.md) | the HMM over (mode, speed), the station layer on top, fitting, evaluation | `params/all.json` (fitted on every ride) checked in; the cross-validation fits go to `data/` |
 
-`app/` exports the fitted model for the phone app's online inference and checks the app's
+`app/` exports the fitted model for the phone app's online inference (not yet ported to the
+regime dynamics: the app still expects the 157-state model) and checks the app's
 port against this pipeline ([docs/recorder.md](../docs/recorder.md)). [`viewer/`](viewer/README.md) is a web app with the evaluation's per-ride and per-leg
 tables, and each ride in detail: spectrograms, the model's beliefs and the audio on one time axis. `common/` has the recording loader (the only code that reads the raw files) and paths;
 `pipeline.py` runs features → fit → infer → evaluate; `tests/` checks the inference code
@@ -108,8 +109,8 @@ Rebuilding the map (only if OpenStreetMap changed): `python -m maps.fetch_osm &&
   (`features/motion.py` uses whole resting stretches), and anything for curves with the
   phone in a hand.
 - **Online, on the phone.** All per-second features need at most a few seconds of signal;
-  the phone-state classifier is a forward filter; the HMM has 157 states and its forward
-  step is one 157 × 157 matrix product per second; the station layer updates once per stop.
+  the phone-state classifier is a forward filter; the HMM has 613 states and its forward
+  step is one 613 × 613 matrix product per second (sparse: a state can reach about 50 others); the station layer updates once per stop.
   `v_filt` in the results is exactly what a live filter would have reported. Not causal
   yet: the orientation in `features/motion.py`, and the two-pass estimate of the
   accelerometer's sign and offset in `model/infer.py` (both become running estimates).

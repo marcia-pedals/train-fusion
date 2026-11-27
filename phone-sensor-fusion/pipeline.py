@@ -15,6 +15,7 @@ own folder data/phone-sensor-fusion/eval/runs/<run>/:
 
   legs.parquet, rides.parquet   the evaluation (model/evaluate.py, model/schemas.py)
   rides/<id>/                   what the viewer's ride page shows (model/ride_view.py)
+  dynamics.json                 what the viewer's dynamics page shows (model/dynamics_view.py)
   meta.json                     the run: its name, the arguments, the evaluation's thresholds,
                                 when it was written. Written last: a folder without it is
                                 unfinished.
@@ -40,7 +41,7 @@ from common.recording import Recording
 from features import frames
 from labels import load as label_load
 from labels.frames import frame_labels
-from model import emissions, evaluate, fit, infer, ride_view, schemas
+from model import dynamics_view, emissions, evaluate, fit, infer, ride_view, schemas
 
 
 class _Enc(json.JSONEncoder):
@@ -119,6 +120,7 @@ def main():
 
     run_name, run = start_run(args.name, args.ablate)
     print(f"run {run_name}: {run}")
+    dynamics_view.export([L[i] for i in ids], run)
     names = label_load.ride_names()
     leg_rows, ride_rows = [], []
     for test in ids:

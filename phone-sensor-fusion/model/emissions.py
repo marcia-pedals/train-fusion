@@ -1,10 +1,10 @@
 """Turn a recording's measurements into the HMM's ingredients, using learned parameters:
 
   log_emissions   log p(frame's measurements | state), [T, N]
-  transition      the [N, N] matrix P(next state | state): train dynamics and the
-                  station-stop cycle
+  transition      the [N, N] matrix P(next state | state): train dynamics (regime and
+                  speed) and the station-stop cycle
   accel_factor    p(along-track acceleration measured during a step | the step's speed
-                  change), which multiplies the transition matrix for that step
+                  change), which multiplies the transition matrix's nonzeros for that step
 
 Each measurement can be switched off (`use`), which is how the ablations are run.
 """
@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 
 from features import comb, frames, phone_state
-from labels.frames import CLOSE_CHIME, OPEN, OPEN_CHIME, POST, PRE
+from labels.frames import CLOSE_CHIME, MOVING, OPEN, OPEN_CHIME, POST, PRE
 from model import states
 from model.fit import CHIME_EDGES
 
@@ -36,7 +36,7 @@ N_ST = states.N_STOPPED
 def _level_ll(q: dict, x: np.ndarray) -> np.ndarray:
     """[T, N] weighted Gaussian log-likelihood of a level measurement per state."""
     knots, mean = np.asarray(q["knots"]), np.asarray(q["mean"])
-    mu = np.r_[np.full(N_ST, mean[0]), np.interp(states.V_MOVING, knots[1:], mean[1:])]
+    mu = np.where(states.MODE == MOVING, np.interp(states.V, knots[1:], mean[1:]), mean[0])
     z2 = ((x[:, None] - mu[None, :]) / q["sd"]) ** 2
     # a Gaussian plus a flat floor: a level that fits no speed (a voice, a passing train,
     # the phone being handled) then says nothing, instead of forcing the least bad speed
@@ -86,9 +86,9 @@ def log_emissions(p: dict, f: dict, phone: np.ndarray, use=ALL) -> np.ndarray:
     state = phone.argmax(axis=1)
     resting, held = state == phone_state.RESTING, state == phone_state.HELD
     if "tone" in use:
-        lb[:, N_ST:] += tone_ll(p, f)
+        lb[:, N_ST:] += states.over_regimes(tone_ll(p, f))
     if "wheel" in use:
-        lb[:, N_ST:] += wheel_ll(p, f, state)
+        lb[:, N_ST:] += states.over_regimes(wheel_ll(p, f, state))
     if "rumble" in use and p["level"]["rumble"]:
         lb += _level_ll(p["level"]["rumble"], f["rumble_db"])
     if "vib" in use:
@@ -110,18 +110,27 @@ def log_emissions(p: dict, f: dict, phone: np.ndarray, use=ALL) -> np.ndarray:
 def transition(p: dict) -> np.ndarray:
     d = p["dynamics"]
     M = d["max_step"]
-    p_step = np.asarray(d["p_step"])
+    p_step = np.asarray(d["p_step"])  # [regime, speed (0, then the grid), step]
+    p_regime = np.asarray(d["p_regime"])  # [regime, speed, next regime]
     A = np.zeros((states.N, states.N))
-    # moving: speed changes by a step of DV; reaching 0 = stopping
-    band = np.digitize(states.V_MOVING, d["v_edges"])
-    for j in range(states.N_V):  # speed (j + 1) * DV
-        for s in range(-M, M + 1):
-            k = j + s
-            to = states.idx(PRE) if k < 0 else N_ST + min(k, states.N_V - 1)
-            A[N_ST + j, to] += p_step[band[j], s + M]
-    # pulling away from a stand: the positive steps of the slowest band
+    # moving: the next second's regime, then a step of DV drawn for that regime; reaching
+    # 0 = stopping
+    j = np.arange(states.N_V)  # speed (j + 1) * DV
+    for r in range(states.N_R):
+        for r2 in range(states.N_R):
+            for s in range(-M, M + 1):
+                pr = p_regime[r, j + 1, r2] * p_step[r2, j + 1, s + M]
+                k = j + s
+                to = np.where(k < 0, states.idx(PRE), states.moving(r2, np.minimum(k, states.N_V - 1)))
+                np.add.at(A, (states.moving(r, j), to), pr)
+    # pulling away from a stand: in the regime trains were seen to pull away in, by the
+    # positive steps of that regime at speed 0
     launch = np.zeros(states.N)
-    launch[N_ST:N_ST + M] = p_step[0, M + 1:] / p_step[0, M + 1:].sum()
+    for r, pr in enumerate(d["p_launch"]):
+        up = p_step[r, 0, M + 1:]
+        if pr > 0 and up.sum() > 0:
+            launch[states.moving(r, np.arange(M))] = pr * up / up.sum()
+    launch /= launch.sum()
     dwell = {m: 1.0 / max(v, 1.01) for m, v in ((int(k), v) for k, v in p["dwell"].items())}
     order = [PRE, OPEN_CHIME, OPEN, CLOSE_CHIME, POST]
     for a, b in zip(order[:-1], order[1:]):
@@ -138,18 +147,18 @@ def transition(p: dict) -> np.ndarray:
 
 
 # speed change of every (from, to) pair of states
-_DV = states.V[None, :] - states.V[:, None]
-
-
-def accel_factor(a_meas: float, sign: float, offset: float, sd: float) -> np.ndarray:
-    """[N, N] likelihood of the measured along-track acceleration for each transition."""
+def accel_factor(a_meas: float, sign: float, offset: float, sd: float, dv: np.ndarray) -> np.ndarray:
+    """Likelihood of the measured along-track acceleration for transitions whose speed
+    change is `dv` (any shape: model/infer.py passes one per nonzero of the transition
+    matrix)."""
     eps, sd_out = ACCEL_OUTLIER
-    r = (a_meas - offset) - sign * _DV / states.DT
+    r = (a_meas - offset) - sign * dv / states.DT
     good = np.exp(-0.5 * (r / sd) ** 2) / sd
     out = np.exp(-0.5 * ((a_meas - offset) / sd_out) ** 2) / sd_out
     return (1 - eps) * good + eps * out
 
 
 def prior() -> np.ndarray:
-    """Before any measurement: equally likely moving (any speed) or standing (any mode)."""
-    return np.r_[np.full(N_ST, 0.5 / N_ST), np.full(states.N_V, 0.5 / states.N_V)]
+    """Before any measurement: equally likely moving (any regime and speed) or standing (any mode)."""
+    n = states.N - N_ST
+    return np.r_[np.full(N_ST, 0.5 / N_ST), np.full(n, 0.5 / n)]

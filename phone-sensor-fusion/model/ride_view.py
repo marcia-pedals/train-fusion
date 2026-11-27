@@ -4,7 +4,8 @@ run's folder, <run>/rides/<id>/; the spectrograms, the same whatever the model, 
 shared by every run, in data/phone-sensor-fusion/rides/<id>/:
 
   <run>/rides/<id>/
-  meta.json        per-second series (speed, modes, the most likely (Viterbi) path's mode and
+  meta.json        per-second series (speed, modes, regimes (standing first, then
+                   states.REGIMES), the most likely (Viterbi) path's mode, regime and
                    speed, the causal localiser's
                    belief about the truth), the labelled door events and stops, where the
                    audio is, and how to read the binary files (spec and accel: in the shared folder)
@@ -61,9 +62,12 @@ def _peak_scaled(p: np.ndarray) -> np.ndarray:
     return np.round(255 * np.sqrt(p / np.maximum(m, 1e-300))).astype(np.uint8)
 
 
-def _over_speed(post: np.ndarray) -> np.ndarray:
-    """[T, N] state probabilities -> [T, 1 + N_V]: standing (all stopped modes), then speeds."""
-    return np.c_[post[:, :states.N_STOPPED].sum(axis=1), post[:, states.N_STOPPED:]]
+_SPEEDS = np.r_[0.0, states.V_MOVING]  # the columns of states.speed_probs()
+
+
+def _over_regimes(post: np.ndarray) -> np.ndarray:
+    """[T, N] state probabilities -> [T, 1 + N_R]: standing, then each regime."""
+    return np.c_[post[:, :states.N_STOPPED].sum(axis=1), states.regime_probs(post)]
 
 
 def _comb_u8(ll: np.ndarray) -> np.ndarray:
@@ -87,11 +91,10 @@ def _levels(p: dict, f: dict) -> dict:
 
 
 def _interval(post: np.ndarray, p: float = 0.95) -> tuple[np.ndarray, np.ndarray]:
-    """Per second, the central `p` interval of the belief over speed (states.V is sorted:
-    the standing modes at 0, then the grid)."""
-    cdf = np.cumsum(post, axis=1)
-    lo = states.V[np.argmax(cdf >= (1 - p) / 2, axis=1)]
-    hi = states.V[np.argmax(cdf >= 1 - (1 - p) / 2, axis=1)]
+    """Per second, the central `p` interval of the belief over speed."""
+    cdf = np.cumsum(states.speed_probs(post), axis=1)
+    lo = _SPEEDS[np.argmax(cdf >= (1 - p) / 2, axis=1)]
+    hi = _SPEEDS[np.argmax(cdf >= 1 - (1 - p) / 2, axis=1)]
     return lo, hi
 
 
@@ -127,8 +130,8 @@ def export(rid: str, p: dict, res: Result, f: dict, lab: FrameLabels, stops: lis
     spec.tofile(shared / "spec.bin")
     acc = np.round(255 * np.clip(f["accel_spec"].astype(float) / ACC_DB_MAX, 0, 1)).astype(np.uint8)
     acc.tofile(shared / "accel.bin")
-    _peak_scaled(_over_speed(res.alpha)).tofile(out / "speed_filt.bin")
-    _peak_scaled(_over_speed(res.gamma)).tofile(out / "speed_smooth.bin")
+    _peak_scaled(states.speed_probs(res.alpha)).tofile(out / "speed_filt.bin")
+    _peak_scaled(states.speed_probs(res.gamma)).tofile(out / "speed_smooth.bin")
     phone_now = res.phone.argmax(axis=1)
     _comb_u8(emissions.tone_ll(p, f)).tofile(out / "comb_tone.bin")
     _comb_u8(emissions.wheel_ll(p, f, phone_now)).tofile(out / "comb_wheel.bin")
@@ -150,6 +153,7 @@ def export(rid: str, p: dict, res: Result, f: dict, lab: FrameLabels, stops: lis
         "levels": _levels(p, f),
         "phone_states": list(phone_state.STATES),
         "mode_names": MODE_NAMES,
+        "regime_names": list(states.REGIMES),
         "stops": [{"station": s.station, **{k: (float(v) if np.isfinite(v) else None) for k, v in
                    (("t_arrive", s.t_arrive), ("t_open", s.t_open), ("t_close", s.t_close), ("t_depart", s.t_depart))}}
                   for s in stops],
@@ -163,6 +167,8 @@ def export(rid: str, p: dict, res: Result, f: dict, lab: FrameLabels, stops: lis
             "mode_filt": _r(res.mode_p_filt, 3), "mode_smooth": _r(res.mode_p, 3),
             "mode_label": [int(m) for m in lab.mode],
             "mode_path": [int(m) for m in res.path_mode], "v_path": _r(res.path_v, 2),
+            "regime_filt": _r(_over_regimes(res.alpha), 3), "regime_smooth": _r(_over_regimes(res.gamma), 3),
+            "regime_path": [int(r) + 1 for r in res.path_regime],
             "loc_p_true": _r(trace["p_true"], 3), "loc_p_best": _r(trace["p_best"], 3),
             "loc_wrong": [int(w) for w in trace["wrong"]],
             "phone": [int(k) for k in phone_now],
