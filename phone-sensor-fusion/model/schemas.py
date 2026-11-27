@@ -81,15 +81,14 @@ rides = Table("rides", "One row per test ride.", _RIDE_KEY + [
         "station and direction is above fix_p (meta.json) and wrong: what the app would show as a confident wrong "
         "place", "s"),
     col("loc_filt_openings", "i64", "door openings the causal localiser was given (onsets in the filtered modes)"),
-    # the localiser over the whole ride (stations.localise())
-    col("loc_smooth_stops_missing", "i64",
-        "labelled stops where the localiser, given the whole ride, has no door opening within the stop's window that "
-        "it believes more likely than not was a stop"),
-    col("loc_smooth_stops_spurious", "i64",
-        "door openings the localiser, given the whole ride, believes more likely than not were stops, where there "
-        "was no labelled stop: outside every labelled stop's window (between the first and the last), or a second "
-        "inferred stop within a labelled stop's window"),
-    col("loc_smooth_openings", "i64", "door openings the localiser was given (onsets in the Viterbi path)"),
+    # the localiser's most likely path over the whole ride (stations.localise(), Localisation.path):
+    # one explanation of every door opening at once
+    col("loc_ml_stops_missing", "i64",
+        "labelled stops where the localiser's most likely path has no stop within the stop's window"),
+    col("loc_ml_stops_spurious", "i64",
+        "stops in the localiser's most likely path where there was no labelled stop: outside every labelled stop's "
+        "window (between the first and the last), or a second stop within a labelled stop's window"),
+    col("loc_ml_openings", "i64", "door openings the localiser was given (onsets in the first layer's Viterbi path)"),
     # summaries of the ride's legs
     col("filt_dist_err_mean_abs", "f64?",
         "mean over the ride's legs of the relative error of each leg's distance from the filtered speeds (each second's "
