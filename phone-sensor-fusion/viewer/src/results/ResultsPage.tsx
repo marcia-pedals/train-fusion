@@ -8,7 +8,7 @@ import {readHash, replaceHash} from "../lib/hash";
 import {rideInfo} from "../lib/rides";
 import {loadRuns, runBase, runLabel, type RunMeta} from "../lib/runs";
 import {stationCode} from "../lib/stations";
-import {EXTRA_DESCRIPTIONS, LEG_COLUMNS, RIDE_COLUMNS, type Column, type LegRow, type RideRow} from "./columns";
+import {EXTRA_DESCRIPTIONS, LEG_COLUMNS, RIDE_COLUMNS, legRowHref, rideRowHref, type Column, type LegRow, type RideRow} from "./columns";
 import ResultsTable from "./ResultsTable";
 import {changed} from "./diff";
 
@@ -143,10 +143,10 @@ function Results({runs}: {runs: RunMeta[]}) {
       {data.status === "loading" && <p className="status">Loading…</p>}
       {data.status === "error" && <div className="status error"><p>Couldn't load the run.</p><pre>{data.error}</pre></div>}
       {tables && (view === "rides" ? (
-        <ResultsTable rows={rides.shown} columns={RIDE_COLUMNS} describe={describe("rides")} rowKey={rideKey}
+        <ResultsTable rows={rides.shown} columns={RIDE_COLUMNS} describe={describe("rides")} rowKey={rideKey} rowHref={rideRowHref}
                       base={base?.rides} baseName={baseMeta && runLabel(baseMeta)} byChange={!!baseline && byChange} />
       ) : (
-        <ResultsTable rows={legs.shown} columns={LEG_COLUMNS} describe={describe("legs")} rowKey={legKey}
+        <ResultsTable rows={legs.shown} columns={LEG_COLUMNS} describe={describe("legs")} rowKey={legKey} rowHref={legRowHref}
                       base={base?.legs} baseName={baseMeta && runLabel(baseMeta)} byChange={!!baseline && byChange} />
       ))}
     </div>

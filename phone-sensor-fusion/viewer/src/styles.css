@@ -175,9 +175,8 @@ tfoot td.label { text-transform: uppercase; font-size: 10px; letter-spacing: .06
 .c-smooth { color: var(--accent); } .c-filt { color: var(--filt); } .c-label { color: var(--muted); } .c-good { color: var(--good); }
 .value b { font-weight: 600; }
 
-/* the tables' link to a ride */
-a.go { color: var(--accent); text-decoration: none; font-weight: 550; }
-a.go:hover { text-decoration: underline; }
+/* a table row that links to its ride */
+tbody tr.link { cursor: pointer; }
 
 /* comparing runs (results page) */
 .toolbar .field { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }

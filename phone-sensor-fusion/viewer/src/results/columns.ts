@@ -37,9 +37,6 @@ export interface Column<R> {
   summary?: "value" | "abs" | "log";
   /** sort by this instead of the value */
   sortBy?: (row: R) => string | number | null | undefined;
-  /** the cell is a link here, reading `linkText` */
-  link?: (row: R) => string;
-  linkText?: string;
   noSort?: boolean;
   /** a metric: compared against the baseline run, when there is one */
   diff?: Diff;
@@ -72,14 +69,11 @@ const endpointsColumn = <R extends WithRide<{ride: string}>>(): Column<R> => ({
 });
 
 /** The ride page: the whole ride, or a leg with a margin of a tenth of it (at least 15 s) either side. */
-const VIEW = "View";
-const rideLink = (): Column<RideRow> => ({key: "ride", header: "", group: VIEW, align: "left", noSort: true,
-  link: (r) => rideHref(r.ride, r.run_name), linkText: "Ride →"});
-const legLink = (): Column<LegRow> => ({key: "ride", header: "", group: VIEW, align: "left", noSort: true,
-  link: (r) => {
-    const pad = Math.max(15, 0.1 * (r.t_to_s - r.t_from_s));
-    return rideHref(r.ride, r.run_name, r.t_from_s - pad, r.t_to_s + pad);
-  }, linkText: "Leg →"});
+export const rideRowHref = (r: RideRow) => rideHref(r.ride, r.run_name);
+export const legRowHref = (r: LegRow) => {
+  const pad = Math.max(15, 0.1 * (r.t_to_s - r.t_from_s));
+  return rideHref(r.ride, r.run_name, r.t_from_s - pad, r.t_to_s + pad);
+};
 
 /** Header tooltips for the columns that aren't in the schema. */
 export const EXTRA_DESCRIPTIONS: Record<string, string> = {
@@ -103,7 +97,6 @@ export const LEG_COLUMNS: Column<LegRow>[] = [
     sortBy: abs("smooth_dist_err")},
   {key: "smooth_p_missed_stop", header: "log P(miss)", group: "Smoothed", format: f.logp, tone: pLow, diff: pDiff, summary: "log"},
   {key: "smooth_p_false_stop", header: "log P(false stop)", group: "Smoothed", format: f.logp, tone: pLow, diff: pDiff, summary: "log"},
-  legLink(),
 ];
 
 export const RIDE_COLUMNS: Column<RideRow>[] = [
@@ -128,5 +121,4 @@ export const RIDE_COLUMNS: Column<RideRow>[] = [
   {key: "smooth_dist_err_mean_abs", header: "Mean |dist err|", group: "Legs, smoothed", format: f.pct, tone: errTone, diff: errDiff, summary: "value"},
   {key: "smooth_missed_stops", header: "E[missed]", group: "Legs, smoothed", format: f.expected, tone: above(0.1, 0.5), diff: expDiff, summary: "value"},
   {key: "smooth_false_stops", header: "E[false]", group: "Legs, smoothed", format: f.expected, tone: above(0.1, 0.5), diff: expDiff, summary: "value"},
-  rideLink(),
 ];
