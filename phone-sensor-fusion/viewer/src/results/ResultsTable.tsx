@@ -2,8 +2,11 @@
 // schema's description as each header's tooltip, and mean / median of the shown rows.
 // With a baseline run, each metric also shows what it was there, under it, and its colour
 // says how it changed (green: better, red: worse; none: no change worth counting) instead
-// of how worrying it is; and the columns can sort by the change instead.
-import {useMemo, useState} from "react";
+// of how worrying it is; and the columns can sort by the change instead. Each row links
+// to `rowHref`: every cell's content is a real link stretched over the cell, so the
+// browser's own link handling (new tab, copy link, the address on hover) works anywhere
+// on the row.
+import {useMemo, useState, type MouseEvent, type ReactNode} from "react";
 import {
   createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable,
   type ColumnDef, type SortingState,
@@ -17,6 +20,8 @@ interface Props<R> {
   columns: Column<R>[];
   describe: Record<string, string>;
   rowKey: (r: R) => string;
+  /** where clicking a row goes */
+  rowHref?: (r: R) => string;
   /** the baseline run's rows, by rowKey; and its name */
   base?: Map<string, R>;
   baseName?: string;
@@ -31,7 +36,7 @@ function median(xs: number[]) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-export default function ResultsTable<R extends Record<string, any>>({rows, columns, describe, rowKey, base, baseName, byChange}: Props<R>) {
+export default function ResultsTable<R extends Record<string, any>>({rows, columns, describe, rowKey, rowHref, base, baseName, byChange}: Props<R>) {
   const [sorting, setSorting] = useState<SortingState>([]);
 
   const defs = useMemo(() => {
@@ -97,7 +102,7 @@ export default function ResultsTable<R extends Record<string, any>>({rows, colum
               const dir = h.column.getIsSorted();
               return (
                 <th key={h.id} className={cls(!c.noSort && "sortable", c.align === "left" && "left", groupStart.has(c.key) && "gs")}
-                    data-tip={c.link ? undefined : describe[c.key]}
+                    data-tip={describe[c.key]}
                     onClick={h.column.getToggleSortingHandler()}
                     aria-sort={dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none"}>
                   {flexRender(h.column.columnDef.header, h.getContext())}
@@ -112,17 +117,25 @@ export default function ResultsTable<R extends Record<string, any>>({rows, colum
         {table.getRowModel().rows.map((row) => (
           <tr key={row.id}>
             {columns.map((c, i) => {
+              const href = rowHref?.(row.original);
+              // one tab stop per row: the first cell's link
+              const linked = (content: ReactNode) => (href
+                ? <a className="row-link" href={href} tabIndex={i === 0 ? undefined : -1} draggable={false} onClick={noFollowAfterSelect}>
+                    {content}</a>
+                : content);
               const x = row.original[c.key];
               const b = base?.get(row.id);
               const change = b && c.diff ? compare(c, x, b[c.key]).change : undefined;
               // with a baseline, a metric is coloured by its change, not by its value
               const color = base && c.diff ? (change === "better" || change === "worse" ? change : undefined) : c.tone?.(x ?? null);
               return (
-                <td key={c.key} className={cls(c.align === "left" ? "left" : "num", color, x == null && "null", groupStart.has(c.key) && "gs")}>
-                  {c.link ? <a className="go" href={c.link(row.original)}>{c.linkText}</a>
-                    : <span className="now" data-tip={c.tip?.(row.original)}>{cell(c, x)}</span>}
-                  {base && i === 0 && !b && <span className="prev new" data-tip={`Not in ${baseName}`}>new</span>}
-                  {change && <Prev change={change} text={cell(c, b![c.key])} now={cell(c, x)} baseName={baseName} />}
+                <td key={c.key} className={cls(c.align === "left" ? "left" : "num", color, x == null && "null", groupStart.has(c.key) && "gs",
+                                               href && "linked")}>
+                  {linked(<>
+                    <span className="now" data-tip={c.tip?.(row.original)}>{cell(c, x)}</span>
+                    {base && i === 0 && !b && <span className="prev new" data-tip={`Not in ${baseName}`}>new</span>}
+                    {change && <Prev change={change} text={cell(c, b![c.key])} now={cell(c, x)} baseName={baseName} />}
+                  </>)}
                 </td>
               );
             })}
@@ -166,6 +179,12 @@ export default function ResultsTable<R extends Record<string, any>>({rows, colum
       )}
     </table>
   );
+}
+
+/** A click that ends selecting text (the links aren't draggable, so dragging selects)
+ * doesn't follow the link. */
+function noFollowAfterSelect(e: MouseEvent) {
+  if (window.getSelection()?.toString()) e.preventDefault();
 }
 
 /** Under a value: what it was in the baseline ("=" if the same). */

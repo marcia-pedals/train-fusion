@@ -175,9 +175,14 @@ tfoot td.label { text-transform: uppercase; font-size: 10px; letter-spacing: .06
 .c-smooth { color: var(--accent); } .c-filt { color: var(--filt); } .c-label { color: var(--muted); } .c-good { color: var(--good); }
 .value b { font-weight: 600; }
 
-/* the tables' link to a ride */
-a.go { color: var(--accent); text-decoration: none; font-weight: 550; }
-a.go:hover { text-decoration: underline; }
+/* a table row that links to its ride: each cell's link covers the whole cell (::after),
+   with the cell's text and tooltips above that */
+tbody td.linked { position: relative; }
+a.row-link { color: inherit; text-decoration: none; -webkit-user-drag: none; }
+a.row-link::after { content: ""; position: absolute; inset: 0; }
+a.row-link > span { position: relative; z-index: 1; }
+a.row-link:focus-visible { outline: none; }
+a.row-link:focus-visible::after { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* comparing runs (results page) */
 .toolbar .field { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }

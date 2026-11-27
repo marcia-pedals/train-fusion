@@ -61,7 +61,6 @@ interface Track {
   legend?: ReactNode;  // in the gutter, under the name
   below?: ReactNode;  // a row of its own under the track
   newGroup?: boolean;  // a gap above it, between groups of related tracks
-  tip?: string;
 }
 
 function RideView({ride}: {ride: Ride}) {
@@ -293,7 +292,7 @@ function RideView({ride}: {ride: Ride}) {
         </div>
         {tracks.map((t) => (
           <div className={t.newGroup ? "track new-group" : "track"} key={t.key}>
-            <div className={t.height < 30 ? "gutter compact" : "gutter"} data-tip={t.tip}>
+            <div className={t.height < 30 ? "gutter compact" : "gutter"}>
               <span className="name">{t.name}</span>
               {t.value && at != null && <span className="value">{t.value(at)}</span>}
               {t.legend && <span className="legend-in">{t.legend}</span>}
@@ -342,7 +341,7 @@ function useTracks(meta: RideMeta, tiles: Record<string, Tiles>, view: View): Tr
       drawGrid(ctx, w, vs, y, unitOnTop(vs, "m/s"), colors.grid + "99", colors.text);
     };
     const tracksOut: Track[] = [
-      {key: "audio", name: "Audio", height: 150, tip: "Spectrogram 0–5 kHz (dB over each frequency's median), with the labelled door chimes",
+      {key: "audio", name: "Audio", height: 150,
         legend: <>
           <Key color={DOOR_OPEN}>opening starts</Key><Key color={DOOR_OPEN} dashed>opening ends</Key>
           <Key color={DOOR_CLOSE}>closing starts</Key><Key color={DOOR_CLOSE} dashed>closing ends</Key>
@@ -352,21 +351,19 @@ function useTracks(meta: RideMeta, tiles: Record<string, Tiles>, view: View): Tr
           freqAxis(ctx, w, h, meta.spec.fmax, [0, 1000, 2000, 3000, 4000], unitOnTop([0, 1000, 2000, 3000, 4000], "kHz", 1000));
           drawEvents(ctx, w, h, view, meta.events);
         }},
-      {key: "accel", name: "Accelerometer", height: 110, tip: "Line spectrum of the acceleration, 0–50 Hz, with the labelled door chimes",
+      {key: "accel", name: "Accelerometer", height: 110,
         draw: (ctx, w, h) => {
           drawTiles(ctx, w, h, view, tiles.accel);
           freqAxis(ctx, w, h, meta.accel.fmax, [0, 10, 20, 30, 40], unitOnTop([0, 10, 20, 30, 40], "Hz"));
           drawEvents(ctx, w, h, view, meta.events);
         }},
       {key: "speed-filt", name: "Speed belief, filtered", height: 120, newGroup: true,
-        tip: "The filter's belief over speed each second, in m/s (each second scaled to its peak); bottom row: standing",
         value: (i) => <Interval mean={s.v_filt[i]} lo={s.v_filt_lo[i]} hi={s.v_filt_hi[i]} />,
         draw: (ctx, w, h) => { drawTiles(ctx, w, h, view, tiles.speedFilt, beliefBins); beliefAxis(ctx, w, h); }},
       {key: "speed-smooth", name: "Speed belief, smoothed", height: 120,
-        tip: "The belief over speed each second given the whole ride, in m/s (each second scaled to its peak); bottom row: standing",
         value: (i) => <Interval mean={s.v_smooth[i]} lo={s.v_smooth_lo[i]} hi={s.v_smooth_hi[i]} />,
         draw: (ctx, w, h) => { drawTiles(ctx, w, h, view, tiles.speedSmooth, beliefBins); beliefAxis(ctx, w, h); }},
-      {key: "mode-label", name: "Mode, labelled", height: 36, newGroup: true, tip: meta.mode_names.join(" · "),
+      {key: "mode-label", name: "Mode, labelled", height: 36, newGroup: true,
         value: (i) => (s.mode_label[i] >= 0 ? modeShort[s.mode_label[i]] : "–"),
         draw: (ctx, w, h) => drawStrip(ctx, w, h, view, s.mode_label, MODE_COLORS)},
       {key: "mode-filt", name: "Mode, filtered", height: 44,
@@ -377,7 +374,6 @@ function useTracks(meta: RideMeta, tiles: Record<string, Tiles>, view: View): Tr
         below: <span className="legend-row">{MODE_SHORT.map((name, k) => <Key key={name} color={MODE_COLORS[k]} square>{name}</Key>)}</span>,
         draw: (ctx, w, h) => drawStack(ctx, w, h, view, s.mode_smooth, MODE_COLORS)},
       {key: "loc", name: "Localiser, live", height: 80, newGroup: true,
-        tip: "The causal localiser after each door opening it is given (ticks at the top). Green: its probability for the true last station and direction. Grey: for its own best guess. Red: confidently wrong (best guess above 0.9 and not the truth). Dashed: 0.9",
         value: (i) => <>
           <Key color={colors.good}>P(truth) <span className="v">{s.loc_p_true[i].toFixed(2)}</span></Key>
           <Key color={colors.label}>P(best guess) <span className="v">{s.loc_p_best[i].toFixed(2)}</span></Key>
