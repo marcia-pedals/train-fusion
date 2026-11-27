@@ -4,7 +4,8 @@ run's folder, <run>/rides/<id>/; the spectrograms, the same whatever the model, 
 shared by every run, in data/phone-sensor-fusion/rides/<id>/:
 
   <run>/rides/<id>/
-  meta.json        per-second series (speed, modes, the causal localiser's
+  meta.json        per-second series (speed, modes (the labelled one with before boarding and
+                   after alighting, labels.frames.FrameLabels.rider_mode; the Viterbi path's), the Viterbi path's speed, the causal localiser's
                    belief about the truth), the labelled door events and stops, where the
                    audio is, and how to read the binary files (spec and accel: in the shared folder)
   speed_filt.bin, speed_smooth.bin
@@ -33,7 +34,7 @@ from common.dsp import spectrogram_db
 from common.recording import Recording
 from features import frames
 from labels import load
-from labels.frames import FrameLabels, MODE_NAMES
+from labels.frames import RIDER_MODE_NAMES, FrameLabels
 from model import states
 from model.infer import Result
 
@@ -56,16 +57,17 @@ def _peak_scaled(p: np.ndarray) -> np.ndarray:
 
 
 def _over_speed(post: np.ndarray) -> np.ndarray:
-    """[T, N] state probabilities -> [T, 1 + N_V]: standing (all stopped modes), then speeds."""
-    return np.c_[post[:, :states.N_STOPPED].sum(axis=1), post[:, states.N_STOPPED:]]
+    """[T, N] state probabilities -> [T, 1 + N_V]: standing (all stopped modes), then speeds.
+    Off the train counts in neither (each second is scaled to its peak when written)."""
+    return np.c_[post[:, :states.N_STOPPED].sum(axis=1), post[:, states.MOVING_S]]
 
 
 def _interval(post: np.ndarray, p: float = 0.95) -> tuple[np.ndarray, np.ndarray]:
-    """Per second, the central `p` interval of the belief over speed (states.V is sorted:
-    the standing modes at 0, then the grid)."""
-    cdf = np.cumsum(post, axis=1)
-    lo = states.V[np.argmax(cdf >= (1 - p) / 2, axis=1)]
-    hi = states.V[np.argmax(cdf >= 1 - (1 - p) / 2, axis=1)]
+    """Per second, the central `p` interval of the belief over speed, off the train at 0."""
+    v = np.r_[0.0, states.V_MOVING]
+    cdf = np.cumsum(np.c_[1 - post[:, states.MOVING_S].sum(axis=1), post[:, states.MOVING_S]], axis=1)
+    lo = v[np.argmax(cdf >= (1 - p) / 2, axis=1)]
+    hi = v[np.argmax(cdf >= 1 - (1 - p) / 2, axis=1)]
     return lo, hi
 
 
@@ -116,7 +118,7 @@ def export(rid: str, res: Result, f: dict, lab: FrameLabels, stops: list[load.St
                   "fmax": float(f["accel_f"][-1])},
         "speed_post": {"filt": "speed_filt.bin", "smooth": "speed_smooth.bin", "bins": states.N_V + 1,
                        "dv": states.DV},
-        "mode_names": MODE_NAMES,
+        "mode_names": RIDER_MODE_NAMES,
         "stops": [{"station": s.station, **{k: (float(v) if np.isfinite(v) else None) for k, v in
                    (("t_arrive", s.t_arrive), ("t_open", s.t_open), ("t_close", s.t_close), ("t_depart", s.t_depart))}}
                   for s in stops],
@@ -128,7 +130,8 @@ def export(rid: str, res: Result, f: dict, lab: FrameLabels, stops: list[load.St
             "v_smooth_lo": _r(smooth_lo, 2), "v_smooth_hi": _r(smooth_hi, 2),
             "v_label": _r(lab.v, 2), "v_label_confident": [int(c) for c in lab.confident],
             "mode_filt": _r(res.mode_p_filt, 3), "mode_smooth": _r(res.mode_p, 3),
-            "mode_label": [int(m) for m in lab.mode],
+            "mode_label": [int(m) for m in lab.rider_mode],
+            "mode_path": [int(m) for m in res.path_mode], "v_path": _r(res.path_v, 2),
             "loc_p_true": _r(trace["p_true"], 3), "loc_p_best": _r(trace["p_best"], 3),
             "loc_wrong": [int(w) for w in trace["wrong"]],
         },

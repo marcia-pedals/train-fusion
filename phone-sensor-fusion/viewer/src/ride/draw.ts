@@ -47,7 +47,8 @@ export function drawTiles(ctx: Ctx, w: number, h: number, v: View, r: Tiles, bin
 }
 
 export const DOOR_OPEN = "#3ddc84", DOOR_CLOSE = "#ff5a5f";
-export const MODE_SHORT = ["moving", "stopped, doors not open yet", "door-open chime", "doors open", "door-close chime", "stopped, doors closed"];
+export const MODE_SHORT = ["moving", "stopped, doors not open yet", "door-open chime", "doors open", "door-close chime", "stopped, doors closed",
+  "before boarding", "after alighting"];
 
 /** Labelled door chimes as vertical lines: green opening, red closing; solid where the
  *  chime starts, dashed where it ends. */

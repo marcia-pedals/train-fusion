@@ -5,7 +5,7 @@ what the previous ones produced:
 
 | stage | module | learned? | output per second |
 |---|---|---|---|
-| 1 | `frames.py` | no | door-chime presence (open, close); audio line spectrum; accelerometer line spectrum; rumble level; vibration levels; gyro RMS; mean acceleration and rotation. If the recording has them: pressure altitude, iOS's attitude |
+| 1 | `frames.py` | no | door-chime presence (open, close); audio line spectrum; the car's hum; accelerometer line spectrum; rumble level; vibration levels; gyro RMS; mean acceleration and rotation. If the recording has them: pressure altitude, iOS's attitude |
 | 2 | `phone_state.py` | yes: 3-state HMM on gyro RMS | P(phone resting / held / handled) |
 | 3 | `motion.py` | no | along-track acceleration and yaw rate, where the phone is resting; with an attitude, the compass heading of the along-track axis |
 | – | `comb.py` | yes: which lines are ∝ speed, and likelihood-ratio tables | log-likelihood of each candidate speed, from a line spectrum |
@@ -20,6 +20,14 @@ The measurement is the fraction of the second for which that holds.
 **Line spectra** (`frames.py`). Power spectrum in dB minus its running median over frequency
 (±80 Hz for audio, ±1.5 Hz for the accelerometer): the smooth spectrum shape goes, narrow
 lines stay. Max-pooled over a few bins so that a line that moves within the second isn't lost.
+
+**The car's hum** (`frames.py`, `cabin_db`). Inside a Caltrain car there are steady lines at
+multiples of 120 Hz (the car's 60 Hz power), clearest at 3720–4200 Hz, whether the train is
+moving, standing or has its doors open; off the train they are heard mostly only right next
+to a car. The measurement is the mean prominence of harmonics 31–35, which stay clear of
+both chimes and of the platform tones heard so far. At 6 dB or more (the model's "heard"):
+88 % of the labelled seconds on the train, 4 % of those off it. It is weak on one trainset
+and gone while a train stands with its power off.
 
 **Speed from lines** (`comb.py`). Fitted from speed labels: (1) the ratios frequency ÷ speed
 at which lines appear (the peaks of the ratio spectrum; 26.4, 52.7 and 58.1 Hz per m/s for

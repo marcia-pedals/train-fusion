@@ -16,6 +16,10 @@ MODE_NAMES = ["moving", "stopped, doors not yet open", "door-open chime", "doors
               "door-close chime", "stopped, doors closed"]
 MODE_KEYS = ["moving", "pre", "open_chime", "open", "close_chime", "post"]  # as written in modes.csv
 UNKNOWN = -1
+# where the rider is, off the train: before boarding, after alighting (not train modes;
+# FrameLabels.rider_mode puts them after the train modes)
+BEFORE, AFTER = 6, 7
+RIDER_MODE_NAMES = MODE_NAMES + ["before boarding", "after alighting"]
 PHONE_STATES = ("resting", "held", "handled")
 
 
@@ -28,6 +32,19 @@ class FrameLabels:
     phone: np.ndarray  # 0 resting, 1 held, 2 handled (features/phone_state.py)
     leg: np.ndarray  # str: "A > B" on the way from A to B, "" otherwise
     source: np.ndarray  # str: where v comes from: "dwell", "accel", "tone" (labels/build_speed.py), ""
+
+    @property
+    def rider_mode(self) -> np.ndarray:
+        """`mode`, but off the train BEFORE (before the first second on it) or AFTER: the
+        rider's state rather than the train's (RIDER_MODE_NAMES). Door chimes heard from
+        the platform are then BEFORE / AFTER too."""
+        out = self.mode.copy()
+        off = self.on_train == 0
+        on = np.flatnonzero(self.on_train == 1)
+        first = on[0] if len(on) else len(out)
+        out[off & (np.arange(len(out)) < first)] = BEFORE
+        out[off & (np.arange(len(out)) >= first)] = AFTER
+        return out
 
 
 def frame_labels(rid: str) -> FrameLabels:

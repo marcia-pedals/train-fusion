@@ -11,14 +11,11 @@ barometer when a recording has them.
 
 ## What doesn't work yet
 
-- **The model doesn't know about not being on the train.** Every recording starts before
-  boarding and ends after getting off. Steady platform tones sit exactly where the motor tone is at
-  36 m/s, so until the first door chime the model believes it is on a fast train, and it
-  can find a false stop on a platform. The first door-open chime re-anchors it
-  (`P_REANCHOR`). When the rider is on the train is *labelled*
-  (`presence.csv` in the labels, now about 25 minutes of off-train time), so an off-train
-  state can be learned; a hand-built one was tried and removed (it could only be made to
-  work by reporting every mid-ride start as "off the train").
+- **On and off the train is two hand-set states, before and after** (model/README.md). The
+  first door chime or the car's hum ends "before", so the model leaves it as the train
+  pulls in, before the doors open; and with "stopped, doors not yet open" normally lasting
+  seconds, it can invent a door cycle to fill the wait, a false opening next to the first
+  stop. A long hold with the power off (no hum) makes the filter believe the rider got off.
 - **Online (filter-only) estimates with the phone in a hand** lose the train for tens of
   seconds at a time when speech covers the tone at low speed. Smoothing repairs it; a fixed-lag smoother would be the online answer.
 - **The hand-held ride reads long without the wheel lines.** Part of it is the tone constant differing between
@@ -44,8 +41,6 @@ barometer when a recording has them.
 - **Wheel-rotation lines with the phone in a hand**: held tables come from two hand-held
   rides, and a hand adds lines of its own (a steady 4-5 Hz one on one ride). Needs a third
   to fit and test them properly.
-- **An off-train state**, learnable now that `presence.csv` holds about 25 minutes of
-  off-train time.
 
 ## Layout
 

@@ -16,9 +16,9 @@ import numpy as np
 
 from common import paths
 from labels import load
-from labels.frames import MODE_NAMES, frame_labels
+from labels.frames import RIDER_MODE_NAMES, frame_labels
 
-COLORS = ["#dddddd", "#f4a261", "#2a9d8f", "#8ecae6", "#e76f51", "#e9c46a", "#6d597a"]
+COLORS = ["#dddddd", "#f4a261", "#2a9d8f", "#8ecae6", "#e76f51", "#e9c46a", "#9f86c0", "#5e548e"]
 
 
 def plot(rid: str, name: str = "cv"):
@@ -37,10 +37,10 @@ def plot(rid: str, name: str = "cv"):
         ax[0].text(st.t_open, 39.5, st.station, fontsize=8, rotation=20)
     ax[0].set_ylabel("speed (m/s)"); ax[0].set_ylim(-1, 42); ax[0].legend(loc="upper right", ncol=4)
     bottom = np.zeros(len(t))
-    for m in range(6):
-        ax[1].fill_between(t, bottom, bottom + r["mode_p"][:, m], color=COLORS[m], step="mid", label=MODE_NAMES[m])
+    for m in range(r["mode_p"].shape[1]):
+        ax[1].fill_between(t, bottom, bottom + r["mode_p"][:, m], color=COLORS[m], step="mid", label=RIDER_MODE_NAMES[m])
         bottom += r["mode_p"][:, m]
-    ax[1].set_ylabel("P(mode)"); ax[1].legend(loc="upper right", ncol=6, fontsize=7)
+    ax[1].set_ylabel("P(mode)"); ax[1].legend(loc="upper right", ncol=8, fontsize=7)
     bottom = np.zeros(len(t))
     for k, (nm, col) in enumerate((("resting", "#264653"), ("held", "#e9c46a"), ("handled", "#e76f51"))):
         ax[2].fill_between(t, bottom, bottom + r["phone"][:, k], color=col, step="mid", label=nm)

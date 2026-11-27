@@ -8,7 +8,8 @@ import {readHash, replaceHash} from "../lib/hash";
 import {rideInfo} from "../lib/rides";
 import {loadRuns, runBase, runLabel, type RunMeta} from "../lib/runs";
 import {stationCode} from "../lib/stations";
-import {EXTRA_DESCRIPTIONS, LEG_COLUMNS, RIDE_COLUMNS, type Column, type LegRow, type RideRow} from "./columns";
+import ColumnPicker, {useHiddenColumns} from "./ColumnPicker";
+import {EXTRA_DESCRIPTIONS, LEG_COLUMNS, RIDE_COLUMNS, legRowHref, rideRowHref, type Column, type LegRow, type RideRow} from "./columns";
 import ResultsTable from "./ResultsTable";
 import {changed} from "./diff";
 
@@ -56,8 +57,7 @@ async function loadTables(run: string): Promise<Tables> {
   const info = rideInfo(legs.filter((l) => l.variant === legs[0]?.variant));
   const add = <R extends {ride: string}>(r: R) => {
     const i = info.get(r.ride);
-    return {...r, run_name: run, ride_date: i?.date ?? r.ride, ride_date_detail: i?.dateDetail ?? r.ride,
-      ride_endpoints: i?.endpoints ?? "", ride_endpoints_detail: i?.endpointsDetail ?? ""};
+    return {...r, run_name: run, ride_date: i?.date ?? r.ride, ride_endpoints: i?.endpoints ?? ""};
   };
   return {rides: rides.map(add) as RideRow[], legs: legs.map(add) as LegRow[]};
 }
@@ -86,6 +86,8 @@ function Results({runs}: {runs: RunMeta[]}) {
   const [query, setQuery] = useState("");
   const [changedOnly, setChangedOnly] = useState(false);
   const [byChange, setByChange] = useState(false);
+  const [hidden, setHidden] = useHiddenColumns();
+  const visible = <R,>(cols: Column<R>[]) => cols.filter((c) => !hidden[view]?.includes(c.key));
   const baseline = vs && vs !== run ? vs : null;
   useEffect(() => replaceHash(["results"], {run, ...(baseline ? {vs: baseline} : {}), ...(view === "legs" ? {view} : {})}),
     [run, baseline, view]);
@@ -137,16 +139,20 @@ function Results({runs}: {runs: RunMeta[]}) {
         )}
         <input type="search" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)}
                />
+        <ColumnPicker key={view} columns={view === "rides" ? RIDE_COLUMNS : LEG_COLUMNS}
+                      hidden={hidden[view] ?? []} onChange={(keys) => setHidden(view, keys)} />
         {tables && <span className="count">{counts.shown.length} / {counts.total}</span>}
       </div>
 
       {data.status === "loading" && <p className="status">Loading…</p>}
       {data.status === "error" && <div className="status error"><p>Couldn't load the run.</p><pre>{data.error}</pre></div>}
       {tables && (view === "rides" ? (
-        <ResultsTable rows={rides.shown} columns={RIDE_COLUMNS} describe={describe("rides")} rowKey={rideKey}
+        <ResultsTable rows={rides.shown} columns={visible(RIDE_COLUMNS)} describe={describe("rides")} rowKey={rideKey}
+                      rowHref={rideRowHref}
                       base={base?.rides} baseName={baseMeta && runLabel(baseMeta)} byChange={!!baseline && byChange} />
       ) : (
-        <ResultsTable rows={legs.shown} columns={LEG_COLUMNS} describe={describe("legs")} rowKey={legKey}
+        <ResultsTable rows={legs.shown} columns={visible(LEG_COLUMNS)} describe={describe("legs")} rowKey={legKey}
+                      rowHref={legRowHref}
                       base={base?.legs} baseName={baseMeta && runLabel(baseMeta)} byChange={!!baseline && byChange} />
       ))}
     </div>

@@ -35,7 +35,7 @@ class Result:
     v: np.ndarray  # [T] posterior mean speed (smoothed), m/s
     v_sd: np.ndarray  # [T] posterior sd of speed
     v_filt: np.ndarray  # [T] filtered (causal) mean speed
-    mode_p: np.ndarray  # [T, 6] smoothed mode probabilities (labels.frames order)
+    mode_p: np.ndarray  # [T, 8] smoothed mode probabilities (labels.frames order, then BEFORE, AFTER)
     path_mode: np.ndarray  # [T] Viterbi mode
     path_v: np.ndarray  # [T] Viterbi speed
     phone: np.ndarray  # [T, 3] P(phone resting / held / handled), filtered
@@ -51,8 +51,18 @@ class Result:
 
     @property
     def mode_p_filt(self) -> np.ndarray:
-        """[T, 6] filtered mode probabilities."""
+        """[T, 8] filtered mode probabilities."""
         return states.mode_probs(self.alpha)
+
+    @property
+    def p_on(self) -> np.ndarray:
+        """[T] smoothed P(the rider is on the train): not before, not after."""
+        return self.gamma[:, states.ON].sum(axis=1)
+
+    @property
+    def p_on_filt(self) -> np.ndarray:
+        """[T] filtered P(the rider is on the train)."""
+        return self.alpha[:, states.ON].sum(axis=1)
 
     def v_upto(self, t1: int) -> np.ndarray:
         """[t1 + 1] posterior mean speed of each frame up to t1, given the measurements up to

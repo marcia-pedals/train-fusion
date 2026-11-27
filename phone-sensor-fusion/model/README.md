@@ -4,11 +4,14 @@ Two small HMMs, one on top of the other.
 
 ## Layer 1: mode and speed, once per second (`states.py`, `emissions.py`, `infer.py`)
 
-Hidden state = (mode, speed), 157 states:
+Hidden state = (mode, speed), or before, or after: 159 states:
 
 - **moving** at one of 152 speeds, 0.25 … 38 m/s;
 - or standing, in one of five modes visited in order: **stopped, doors not yet open →
-  door-open chime → doors open → door-close chime → stopped, doors closed** → moving.
+  door-open chime → doors open → door-close chime → stopped, doors closed** → moving;
+- **before**: nothing heard yet from the train the rider is going to take (not even its
+  doors opening). A recording starts here or on the train, half and half;
+- **after**: nothing more will be heard from it; the rider has got off.
 
 Transitions (per second):
 
@@ -17,15 +20,17 @@ Transitions (per second):
 - standing: leave each mode with probability 1 / (its mean duration, learned); from
   "stopped, doors closed" pull away with a positive step;
 - rare escapes: pull away again without the doors having opened (1 %/s), doors re-open
-  (0.2 %/s), and from *any* state straight into the door-open chime (10⁻⁶/s). The last one
-  is what lets a chime override a wrong belief.
+  (0.2 %/s), and from any on-train state straight into the door-open chime (10⁻⁶/s). The last one
+  is what lets a chime override a wrong belief;
+- before → door-open chime (0.2 %/s: the doors are heard opening, then the rider boards),
+  before → stopped, doors not yet open (0.02 %/s: boarding without having heard them);
+  nothing else enters or leaves before, so it is never re-entered;
+- doors open → after and door-close chime → after (0.1 %/s each: getting off, out of
+  earshot of the doors closing or not); after is never left.
 
-There is no "not on the train" state. Whether the rider is aboard is labelled
-(`presence.csv`) but not modelled: the recordings hold under a minute of
-off-train time each, too little to learn what a platform looks like to the sensors, and a
-hand-built state (scored as "the best on-train explanation minus a margin") only worked by
-calling every mid-ride start "off the train" until the next stop. So before a recording's
-first door chime and after its rider steps off, the output means nothing.
+The rates into and out of before and after are set by hand (`emissions.py`). Off the train
+the phone hears what it would standing still, except that neither chime is heard (each
+chime category but "none": 10⁻⁵) and neither is the car's hum (10⁻³).
 
 Measurements, all conditionally independent given the state:
 
@@ -37,6 +42,7 @@ Measurements, all conditionally independent given the state:
 | rumble level | speed (0 = standing) | Gaussian around a learned curve, plus a flat floor for levels that fit nothing | always |
 | vibration levels (2 bands) | speed | same, separate curves for resting and held | phone resting or held |
 | along-track acceleration | the speed *change* over the second | Gaussian around sign × Δv + offset, with an outlier share; multiplies the transition | phone resting |
+| the car's hum (`cabin_db` ≥ 6 dB) | on the train or not | heard / not: P(heard \| on) learned (about 0.88), P(heard \| before, after) = 10⁻³ | always |
 
 The Gaussian level terms are raised to a power < 1 (1 ÷ the autocorrelation time of their
 residuals, learned): an HMM takes successive seconds as independent evidence, and a loud
@@ -161,6 +167,13 @@ Per ride:
 - the station layer **smoothed** (the Viterbi openings and `p_real`): labelled stops with no
   opening it believes was a stop (**missing**), and openings it believes were stops beyond
   one per labelled stop (**spurious**).
+- **on or off the train**, filtered and smoothed: each second labelled on or off the train
+  (`presence.csv`) is classified on where P(on) ≥ 0.5, and the off-train seconds
+  classified on (FP), and the on-train seconds classified off (FN), are summed. Boarding
+  and alighting (labelled unknown) count in neither, nor does anything within 10 s of
+  them: more precision than that isn't wanted. P(on) is P(neither before nor after)
+  (`Result.p_on`). "Before" ends when the train is first heard, which can be before
+  boarding: those seconds count as FP.
 
 `pipeline.py` writes them to `data/phone-sensor-fusion/eval/` as `legs.parquet` and
 `rides.parquet` (columns in `schemas.py`, declared with the repo's schema language) and the
@@ -171,5 +184,6 @@ The layer-1 acceleration's per-stretch sign and offset come from the whole ride 
 the filter (see Layer 1 above), so "filtered" is causal given those.
 
 `ride_view.py` writes, from the same inference, what the viewer's ride page shows
-(`data/phone-sensor-fusion/rides/<id>/`). `model/plot.py` draws speed, mode and phone state
+(`data/phone-sensor-fusion/rides/<id>/`). Its labelled mode is the rider's: the train's modes,
+and off the train before boarding or after alighting (`FrameLabels.rider_mode`). `model/plot.py` draws speed, mode and phone state
 against the labels.

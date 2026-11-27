@@ -50,12 +50,13 @@ from dataclasses import dataclass
 import numpy as np
 
 from features import motion, phone_state
-from labels.frames import OPEN_CHIME
+from labels.frames import BEFORE, MOVING, OPEN_CHIME
 from maps import track as trackmod
 from model.infer import Result
 from model.states import DT
 
 ALL = ("yaw", "heading", "baro")  # the optional measurements; distance is always used
+BOARDING_OPENS = False  # EXPERIMENT: boarding counts as a door opening if none is heard before leaving
 P_SKIP = 0.3  # each station passed without stopping
 DIST_REL, DIST_ABS = 0.04, 60.0  # sd of a leg's distance: 4 % and 60 m (where trains stop along a platform)
 P_UNEXPLAINED = 1e-6  # a leg that fits nothing (a bad distance): any hop ahead is then equally likely
@@ -231,7 +232,16 @@ def openings(res: Result, causal: bool) -> np.ndarray:
     """Frames where the first layer's doors start opening: onsets of the door-open chime in
     the Viterbi path, or (causal) in the filtered most probable mode."""
     mode = np.argmax(res.mode_p_filt, axis=1) if causal else res.path_mode
-    return np.flatnonzero((mode == OPEN_CHIME) & (np.r_[-1, mode[:-1]] != OPEN_CHIME))
+    t = np.flatnonzero((mode == OPEN_CHIME) & (np.r_[-1, mode[:-1]] != OPEN_CHIME))
+    if BOARDING_OPENS:
+        on = np.flatnonzero(mode < BEFORE)
+        if len(on):
+            board = on[0]
+            moving = np.flatnonzero(mode[board:] == MOVING)
+            leave = board + moving[0] if len(moving) else len(mode)
+            if not np.any((t >= board) & (t < leave)):
+                t = np.sort(np.r_[board, t])
+    return t
 
 
 def localise(res: Result, f: dict, use=ALL, causal=False, p_false=P_FALSE) -> Localisation:

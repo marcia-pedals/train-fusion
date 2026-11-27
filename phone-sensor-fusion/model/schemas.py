@@ -89,7 +89,27 @@ rides = Table("rides", "One row per test ride.", _RIDE_KEY + [
         "door openings the localiser, given the whole ride, believes more likely than not were stops, where there "
         "was no labelled stop: outside every labelled stop's window (between the first and the last), or a second "
         "inferred stop within a labelled stop's window"),
+    col("loc_filt_stops_outside", "i64",
+        "door openings the causal localiser, at the time, believed more likely than not were stops, before the "
+        "first labelled stop's window or after the last one's (the rider off the train)"),
+    col("loc_smooth_stops_outside", "i64",
+        "door openings the localiser, given the whole ride, believes more likely than not were stops, before the "
+        "first labelled stop's window or after the last one's (the rider off the train)"),
     col("loc_smooth_openings", "i64", "door openings the localiser was given (onsets in the Viterbi path)"),
+    # on or off the train (presence.csv), each second classified on where P(on) >= on_p (meta.json);
+    # boarding and alighting (labelled unknown) and grace_s either side of them aren't scored
+    col("filt_off_as_on_s", "f64",
+        "false positives (on the train is positive): time labelled off the train, further than grace_s (meta.json) from "
+        "boarding or alighting, that the filter (given the measurements up to each second) classifies as on it", "s"),
+    col("filt_on_as_off_s", "f64",
+        "false negatives (on the train is positive): time labelled on the train, further than grace_s (meta.json) from "
+        "boarding or alighting, that the filter (given the measurements up to each second) classifies as off it", "s"),
+    col("smooth_off_as_on_s", "f64",
+        "false positives (on the train is positive): time labelled off the train, further than grace_s (meta.json) from "
+        "boarding or alighting, classified as on it, given the whole ride", "s"),
+    col("smooth_on_as_off_s", "f64",
+        "false negatives (on the train is positive): time labelled on the train, further than grace_s (meta.json) from "
+        "boarding or alighting, classified as off it, given the whole ride", "s"),
     # summaries of the ride's legs
     col("filt_dist_err_mean_abs", "f64?",
         "mean over the ride's legs of the relative error of each leg's distance from the filtered speeds (each second's "

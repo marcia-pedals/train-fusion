@@ -59,4 +59,5 @@ export const MAGMA = lut([[0, 6, 5, 20], [0.25, 60, 15, 110], [0.5, 150, 40, 120
 export const BLUES = lut([[0, 250, 250, 252], [0.3, 190, 210, 245], [0.7, 70, 120, 220], [1, 20, 40, 120]]);
 export const BLUES_DARK = lut([[0, 24, 24, 26], [0.3, 30, 55, 110], [0.7, 70, 130, 235], [1, 200, 225, 255]]);
 
-export const MODE_COLORS = ["#a7b0ba", "#f4a261", "#2a9d8f", "#8ecae6", "#e76f51", "#e9c46a"];
+// the train's six modes, then the rider's before boarding and after alighting (labelled only, for now)
+export const MODE_COLORS = ["#a7b0ba", "#f4a261", "#2a9d8f", "#8ecae6", "#e76f51", "#e9c46a", "#9f86c0", "#5e548e"];

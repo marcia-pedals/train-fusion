@@ -83,6 +83,21 @@ def test_p_visit_keeps_tiny_probabilities():
 
 
 
+def test_smoothing_recovers_from_a_filter_sure_of_a_dead_end():
+    # state 1 can't be left. The first frames make the filter sure of it, beyond what
+    # scaled probabilities can hold (e^-2000); the rest prove it wrong (by more): smoothed,
+    # the chain never left state 0.
+    eps = 1e-3
+    A = np.array([[1 - eps, eps], [0.0, 1.0]])
+    log_b = np.zeros((6, 2))
+    log_b[1:3, 0] = -1000
+    log_b[3:, 1] = -2000
+    m = hmm.messages(log_b, lambda t: A, np.array([1.0, 0.0]))
+    assert m.alpha[2, 1] > 0.999 and np.isfinite(m.gamma).all()
+    assert np.allclose(m.gamma[:, 0], 1)
+    assert hmm.p_visit(m, log_b, lambda t: A, np.array([False, True]), 0, 6, True)[0] < 1e-300
+
+
 def test_smooth_upto_is_smoothing_the_prefix():
     rng = np.random.default_rng(2)
     T, N = 8, 4
@@ -102,9 +117,15 @@ def test_transition_matrix_is_a_stop_cycle():
     assert np.allclose(A.sum(axis=1), 1)
     PRE, CHIME, OPEN, CLOSE, POST = range(5)
     assert A[PRE, CHIME] > 0.4 and A[CHIME, OPEN] > 0.1 and A[OPEN, CLOSE] > 0.04
-    assert A[OPEN, states.N_STOPPED:].sum() == 0  # doors open: can't pull away
+    assert A[OPEN, states.MOVING_S].sum() == 0  # doors open: can't pull away
     assert A[states.N_STOPPED, PRE] > 0.2  # slowest moving state can stop
     assert A[states.N_STOPPED + 40, :states.N_STOPPED].sum() < 1e-5  # at 10 m/s only via the chime re-anchor
+    # before -> on -> after, once each
+    B, AF = states.BEFORE_S, states.AFTER_S
+    assert A[states.ON, B].sum() == 0 and A[AF, B] == 0  # before is never entered
+    assert A[AF, AF] == 1  # after is never left
+    assert set(np.flatnonzero(A[B])) == {B, CHIME, PRE}
+    assert set(np.flatnonzero(A[:, AF])) == {OPEN, CLOSE, AF}
 
 
 def test_comb_recovers_a_planted_partial():

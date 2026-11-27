@@ -13,6 +13,8 @@ the training recordings. Output: one JSON-able dict (written to params/all.json,
   accel        sd of along-track acceleration around the labelled dv/dt
   dynamics     P(speed change per second | speed band)
   dwell        mean time spent in each stopped mode
+  cabin        P(the car's hum is heard | on the train): cabin_db (features/frames.py) at
+               least HUM_DB, in the seconds labelled on the train
 
 Every block has a prior (a few pseudo-observations of a sensible default), so a training
 set lacking some situation, e.g. no resting phone, still yields a complete model.
@@ -37,6 +39,24 @@ DWELL_PRIOR_S = {PRE: 2.0, OPEN_CHIME: 6.0, OPEN: 20.0, CLOSE_CHIME: 8.0, POST: 
 DWELL_PRIOR_WEIGHT = 2.0
 ACCEL_PRIOR = (0.15, 50.0)  # sd m/s^2, weight in frames
 MIN_LEVEL_FRAMES = 15
+# the car's hum is "heard" at cabin_db >= this. Over the labelled rides, on the train 88 % of
+# seconds reach it, off the train 4 % (mostly right next to a car: 99th percentile 4-19 dB)
+# Walking: the accelerometer's strongest line at a step rate (1.4-2.6 Hz) at least WALK_DB
+# above its neighbours. It is there in about half the seconds off the train and a tenth of
+# those on a stopped one; a moving train shakes the phone at these rates too.
+WALK_BAND = (1.4, 2.6)
+WALK_DB = 14.0
+WALK_PRIOR = (0.2, 20.0)  # P(walking), weight in frames, per group
+
+
+def walking(f: dict) -> np.ndarray:
+    """[T] bool: a step-rate line in the accelerometer (features/frames.py accel_spec)."""
+    fa = f["accel_f"]
+    return f["accel_spec"][:, (fa >= WALK_BAND[0]) & (fa <= WALK_BAND[1])].max(axis=1) >= WALK_DB
+
+
+HUM_DB = 6.0
+HUM_PRIOR = (0.9, 20.0)  # P(hum | on), weight in frames
 
 
 def _autocorr_time(res_runs: list[np.ndarray], max_lag=30) -> float:
@@ -162,6 +182,24 @@ def fit_accel(frames, labels, p_rests) -> dict:
     return {"sd": round(float(np.sqrt(var)), 4), "n_frames": int(len(r))}
 
 
+def fit_cabin(xs: list[np.ndarray], labels: list[FrameLabels]) -> dict:
+    on = np.concatenate([l.on_train == 1 for l in labels])
+    hum = np.concatenate(xs) >= HUM_DB
+    p0, w = HUM_PRIOR
+    return {"hum_db": HUM_DB, "p_hum_on": round(float((hum[on].sum() + w * p0) / (on.sum() + w)), 4),
+            "n_frames": int(on.sum())}
+
+
+def fit_walk(frames: list[dict], labels: list[FrameLabels]) -> dict:
+    """P(walking) off the train, on a stopped train and on a moving one."""
+    walk = np.concatenate([walking(f) for f in frames])
+    on = np.concatenate([l.on_train for l in labels])
+    mode = np.concatenate([l.mode for l in labels])
+    p0, w = WALK_PRIOR
+    groups = {"off": on == 0, "stopped": (on == 1) & (mode != MOVING) & (mode != UNKNOWN), "moving": (on == 1) & (mode == MOVING)}
+    return {k: round(float((walk[m].sum() + w * p0) / (m.sum() + w)), 4) for k, m in groups.items()}
+
+
 def fit(frames: list[dict], labels: list[FrameLabels]) -> dict:
     p = {"phone": phone_state.fit(frames, labels)}
     phones = [phone_state.apply(p["phone"], f) for f in frames]
@@ -188,4 +226,6 @@ def fit(frames: list[dict], labels: list[FrameLabels]) -> dict:
     p["accel"] = fit_accel(frames, labels, p_rests)
     p["dynamics"] = fit_dynamics(labels)
     p["dwell"] = fit_dwell(labels)
+    p["cabin"] = fit_cabin([f["cabin_db"] for f in frames], labels)
+    p["walk"] = fit_walk(frames, labels)
     return p

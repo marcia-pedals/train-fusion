@@ -30,6 +30,13 @@ Per ride:
   as "confident"). The belief only changes at door openings for now.
   the smoothed localiser (stations.localise()): which door openings it believes were stops
   (p_real >= 0.5), against the labelled stops.
+  stops outside the ride: door openings believed to be stops (p_real_filt for the causal
+  localiser, which is what a phone would show live; p_real for the smoothed one) before the
+  first labelled stop's window or after the last one's, i.e. while the rider is off the train.
+  on or off the train, filtered and smoothed: each second labelled on or off the train
+  (presence.csv) is classified on the train where P(on) >= ON_P. The seconds labelled off
+  and classified on (false positives), and the other way round (false negatives). Boarding
+  and alighting (labelled unknown) don't count, nor does anything within GRACE_S of them.
 """
 
 from __future__ import annotations
@@ -37,7 +44,7 @@ from __future__ import annotations
 import numpy as np
 
 from labels import load
-from labels.frames import MOVING, OPEN, OPEN_CHIME, PHONE_STATES, FrameLabels
+from labels.frames import MOVING, OPEN, OPEN_CHIME, PHONE_STATES, UNKNOWN, FrameLabels
 from maps import track as trackmod
 from model import stations
 from model.infer import Result
@@ -46,8 +53,10 @@ PAD_S = 5.0  # a labelled stop's window reaches this far beyond its labelled tim
 FIX_P = 0.9  # the localiser has a fix once it puts this on the true station and direction
 LOST_P = 0.5  # ... and has lost it while that is below this
 REAL_P = 0.5  # the smoothed localiser takes a door opening for a stop above this
+ON_P = 0.5  # a second is classified on the train at or above this P(on)
+GRACE_S = 10  # ... and isn't scored within this of boarding or alighting
 
-CONSTANTS = {"pad_s": PAD_S, "fix_p": FIX_P, "lost_p": LOST_P, "real_p": REAL_P}
+CONSTANTS = {"pad_s": PAD_S, "fix_p": FIX_P, "lost_p": LOST_P, "real_p": REAL_P, "on_p": ON_P, "grace_s": GRACE_S}
 
 
 def _times(st: load.Stop) -> np.ndarray:
@@ -137,6 +146,17 @@ def _p_true(loc: stations.Localisation, stops: list[load.Stop], T: int, wrong: n
     return p
 
 
+def _scored_presence(on_train: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """([T] bool on, [T] bool off): the seconds labelled on / off the train that are scored,
+    those further than GRACE_S from boarding or alighting: from any second labelled unknown,
+    and from a change straight from one to the other."""
+    known = on_train != UNKNOWN
+    flip = known[:-1] & known[1:] & (on_train[:-1] != on_train[1:])  # straight from on to off or back
+    change = (on_train == UNKNOWN) | np.r_[False, flip] | np.r_[flip, False]
+    near = np.convolve(change, np.ones(2 * GRACE_S + 1), mode="same") > 0
+    return (on_train == 1) & ~near, (on_train == 0) & ~near
+
+
 def _departure(first: load.Stop, lab: FrameLabels) -> int:
     """When the train leaves the ride's first stop: its labelled wheel start, else the end of
     what is labelled there (the doors closing), or the first labelled moving second if
@@ -171,6 +191,9 @@ def ride(res: Result, f: dict, lab: FrameLabels, stops: list[load.Stop], leg_row
     else:
         row["loc_filt_time_to_fix_s"] = row["loc_filt_lost_s"] = None
     row["loc_filt_openings"] = len(loc_c.t_stop)
+    first0, last1 = _window(stops[0])[0], _window(stops[-1])[1]
+    outside = lambda t: int(np.sum((t + 0.5 < first0) | (t + 0.5 >= last1)))
+    row["loc_filt_stops_outside"] = outside(loc_c.t_stop[loc_c.p_real_filt >= REAL_P])
 
     loc_s = stations.localise(res, f)
     real = loc_s.t_stop[loc_s.p_real >= REAL_P] + 0.5
@@ -184,6 +207,13 @@ def ride(res: Result, f: dict, lab: FrameLabels, stops: list[load.Stop], leg_row
     row["loc_smooth_stops_missing"] = int(sum(n == 0 for n in inside))
     row["loc_smooth_stops_spurious"] = int(sum(max(n - 1, 0) for n in inside) + np.sum(between & ~in_any))
     row["loc_smooth_openings"] = len(loc_s.t_stop)
+    row["loc_smooth_stops_outside"] = outside(loc_s.t_stop[loc_s.p_real >= REAL_P])
+
+    on, off = _scored_presence(lab.on_train)
+    for name, p_on in (("filt", res.p_on_filt), ("smooth", res.p_on)):
+        said_on = p_on >= ON_P
+        row[f"{name}_off_as_on_s"] = float(np.sum(off & said_on))
+        row[f"{name}_on_as_off_s"] = float(np.sum(on & ~said_on))
 
     for name in ("filt", "live", "smooth"):
         err = [abs(r[f"{name}_dist_err"]) for r in leg_rows]
@@ -205,4 +235,6 @@ def summary_line(r: dict) -> str:
             f"  stops missed {r['filt_missed_stops']:.2f}/{r['smooth_missed_stops']:.2f}"
             f" false {r['filt_false_stops']:.2f}/{r['smooth_false_stops']:.2f} (filt/smooth, expected)"
             f"  localiser: fix after {fix}{lost};"
-            f" stops missing {r['loc_smooth_stops_missing']}/{r['stops']}, spurious {r['loc_smooth_stops_spurious']}")
+            f" stops missing {r['loc_smooth_stops_missing']}/{r['stops']}, spurious {r['loc_smooth_stops_spurious']};"
+            f"  off as on {r['filt_off_as_on_s']:.0f}/{r['smooth_off_as_on_s']:.0f} s,"
+            f" on as off {r['filt_on_as_off_s']:.0f}/{r['smooth_on_as_off_s']:.0f} s (filt/smooth)")

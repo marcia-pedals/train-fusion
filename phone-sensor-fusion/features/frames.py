@@ -11,6 +11,9 @@ Frame n covers recording time [n, n+1) s. Per recording, features/<id>.frames.np
   tone_spec [T, F], tone_f [F] audio line spectrum 0..2.4 kHz: dB above the local
                                spectral floor, pooled over +-6 Hz and the 4 sub-frames
   rumble_db [T]                audio level, 20..70 Hz (rolling noise), dB
+  cabin_db [T]                 the passenger car's own hum: mean line prominence (dB) at
+                               harmonics 31-35 of 120 Hz (3720..4200 Hz), present inside a car
+                               whatever it is doing, and off it only right next to one
   accel_spec [T, Fa], accel_f  line spectrum of |acceleration|, 0..50 Hz
   vib_db [T, 2]                |acceleration| level in 2..10 Hz and 10..45 Hz, dB
   gyro_rms [T]                 log10 of the gyroscope RMS (rad/s)
@@ -51,6 +54,11 @@ ACC_NWIN, ACC_NFFT = 512, 2048  # 5.12 s window, 0.05 Hz bins
 ACC_BG_HZ = 3.0
 ACC_POOL_BINS = 2
 
+# The car's 60 Hz power shows up as lines at multiples of 120 Hz; these five stand clear of
+# both chimes' partials (3520, 4400 Hz) and of the platform tones heard so far (0.9-2.5 kHz).
+CABIN_LINES_HZ = 120.0 * np.arange(31, 36)
+CABIN_BG_HZ = 120.0
+CABIN_TOL_HZ = 2.0
 RUMBLE_BAND = (20.0, 70.0)  # below the pitch of voices
 VIB_BANDS = ((2.0, 10.0), (10.0, 45.0))
 
@@ -99,6 +107,10 @@ def extract(rec: Recording) -> dict:
         out[f"{name}_chime"] = frac.astype(np.float32)
 
     f, db = spectrogram_db(x, FS, TONE_NWIN, TONE_HOP, TONE_NFFT)
+    m = (f >= CABIN_LINES_HZ[0] - 300) & (f <= CABIN_LINES_HZ[-1] + 300)
+    cab = line_prominence(db[m], f[m], CABIN_BG_HZ)
+    cab = np.mean([cab[np.abs(f[m] - fc) <= CABIN_TOL_HZ].max(axis=0) for fc in CABIN_LINES_HZ], axis=0)
+    out["cabin_db"] = per_second(cab, FS // TONE_HOP, T).astype(np.float32)
     keep = f <= TONE_FMAX
     prom = line_prominence(db[keep], f[keep], TONE_BG_HZ)
     prom = ndimage.maximum_filter1d(prom, 2 * TONE_POOL_BINS + 1, axis=0)
