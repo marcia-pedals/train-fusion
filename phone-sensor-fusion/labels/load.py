@@ -26,6 +26,22 @@ class Stop:
     t_close_end: float
     t_depart: float  # wheels start
 
+    # A stop where the train stood but this car's doors stayed shut (only some cars open
+    # at a short platform) has no chimes, only t_arrive and t_depart.
+    @property
+    def doors(self) -> bool:
+        return bool(np.isfinite(self.t_open) or np.isfinite(self.t_close))  # either chime heard
+
+    @property
+    def t_still(self) -> float:
+        """From when the train is known to stand: wheels stop, else the door-open chime."""
+        return self.t_arrive if np.isfinite(self.t_arrive) or not self.doors else self.t_open
+
+    @property
+    def t_leave(self) -> float:
+        """Until when it is known to stand: wheels start, else the end of the door-close chime."""
+        return self.t_depart if np.isfinite(self.t_depart) or not self.doors else self.t_close_end
+
 
 def journey(rid: str) -> dict:
     return tomllib.loads((paths.LABELS / rid / "journey.toml").read_text())

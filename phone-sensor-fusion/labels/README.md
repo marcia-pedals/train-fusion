@@ -11,7 +11,7 @@ of the recording.
 | file | what | how it was made | good to |
 |---|---|---|---|
 | `journey.toml` | direction, the stations called at, and the evidence | announcements in the whisper transcript + the number of door chimes + leg durations against the map | certain |
-| `stops.csv` | per station: `t_open`..`t_open_end` and `t_close`..`t_close_end` (the two door chimes), `t_arrive` (wheels stop), `t_depart` (wheels start) | chimes: `propose.py`, each checked on a spectrogram (`exploration/zoom.py`). Wheels: `stop_times_accel.py`, checked on `stop_sheets.py` | chimes ±0.1 s; wheels ±0.5 s |
+| `stops.csv` | one row per station the train **stops** at, in order: `t_open`..`t_open_end` and `t_close`..`t_close_end` (the two door chimes), `t_arrive` (wheels stop), `t_depart` (wheels start). A stop where this car's doors stayed shut has only the wheel times (see below) | chimes: `propose.py`, each checked on a spectrogram (`exploration/zoom.py`). Wheels: `stop_times_accel.py`, checked on `stop_sheets.py` | chimes ±0.1 s; wheels ±0.5 s |
 | `presence.csv` | intervals of where the rider is: `train`, `platform`, `elsewhere` (both off the train), `unknown` (boards / alights somewhere inside the interval), each with its evidence | `presence_sheets.py`: steps in the accelerometer, the door chimes, and the change of ambience | boarding and alighting to within the `unknown` interval (4–15 s) |
 | `phone.csv` | intervals of `resting` (lying on a surface), `held` (in a hand, fairly still), `handled` (being moved about) | read off the gyro energy and the low-passed accelerometer in the overview plots, then checked with `check_phone.py` | ±2 s; `held` / `handled` is a judgement |
 | `tone_trace.csv` | the motor tone's frequency through every leg, 4 per second | `trace_tone.py`, overlays checked by eye | see below |
@@ -22,6 +22,18 @@ of the recording.
 on the train or not, phone state), which is what `features/` and `model/` train and score against.
 
 ## What is and isn't labelled
+
+- **Every stop is a row in `stops.csv`, whether or not this car's doors opened.** At some
+  short platforms only a few cars open their doors (an announcement says which); in
+  the others nothing chimes, but the train still stands there and the stop is still a stop.
+  Such a row has `t_arrive` and `t_depart` and blank chime columns. Leaving it out turns two
+  legs into one that fits no pair of stations and labels the standstill as moving. Get the
+  wheel times from `stop_times_accel.py` with stand-in open / close times inside the stand
+  (e.g. a few seconds after the brakes release, and a few seconds before the pull-away),
+  and check them on `stop_sheets.py` with the same stand-ins. With the phone in a hand,
+  read them off the sheets (tone stopping and starting, the announcement during the stand)
+  and say so in `evidence`. `frames.py` labels the whole stand `pre` (standing, doors not
+  open), and the model's per-leg door metrics skip such stops (there is no opening to find).
 
 - **Wheel-stop and wheel-start times exist only where the phone was resting** (three of
   the four rides, and not at their first and last stops, when it was in a hand). They come
@@ -109,9 +121,14 @@ python -m labels.build_speed <id>              # speed.csv; prints tone-vs-accel
 ```
 
 **Stations (`journey.toml`)**: the announcements are the evidence to use first. Grep the
-transcript (`data/phone-sensor-fusion/whisper/<id>.csv`) for "next stop", "approaching"
-and "making all stops" (train number and direction); whisper misspells some names, but
-their order settles them. Write down in `evidence` which announcements, at what times, fix
+transcript (`data/phone-sensor-fusion/whisper/<id>.csv`; times in ms) for "next stop",
+"approaching" and "making all stops" (train number and direction); whisper misspells some
+names, but their order settles them. **Every station announced as the next stop is a stop
+unless the train is heard or seen running through it**: list each in `stations` and give
+each a row in `stops.csv`, then count. Fewer door chimes than stations is expected where
+an announcement says only some cars open there; find that stand
+in the accelerometer or the tone instead of dropping the station. A local "making all
+stops" calls at every station on its way. Write down in `evidence` which announcements, at what times, fix
 which stations. Only where none is heard, fall back on the leg durations against the map
 and earlier rides, and on the accelerometer's leg distances; say so in `evidence`.
 

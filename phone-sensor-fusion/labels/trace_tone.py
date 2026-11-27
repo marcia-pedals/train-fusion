@@ -29,6 +29,7 @@ from scipy import ndimage, signal
 
 from common import paths
 from common.recording import load_all
+from labels import load
 
 FS, NWIN, NFFT, HOP = 16000, 4096, 16384, 4000  # 0.26 s window zero-padded to ~1 Hz bins; 4 frames/s
 DF = FS / NFFT
@@ -105,7 +106,7 @@ def main(only=()):
     for rec in load_all():
         if only and rec.id not in only:
             continue
-        stops = list(csv.DictReader((paths.LABELS / rec.id / "stops.csv").open()))
+        stops = load.stops(rec.id)
         t0, x = rec.audio()
         f, t, prom = prominence(np.asarray(x))
         t = t + t0
@@ -122,13 +123,14 @@ def main(only=()):
         rows = []
         for n in range(len(stops) - 1):
             # wheels can't turn before the door-close chime has ended, and are still by the
-            # time the door-open chime starts
-            a, b = float(stops[n]["t_close_end"]), float(stops[n + 1]["t_open"])
+            # time the door-open chime starts (where this car's doors stayed shut: wheel times)
+            p, q = stops[n], stops[n + 1]
+            a, b = (p.t_close_end if p.doors else p.t_depart), (q.t_open if q.doors else q.t_arrive)
             m = (t >= a) & (t <= b)
             path = trace(E_all[:, m].T.copy(), int(F_RAMP / DF))
             fp = f[path]
             pr = fund[path, np.where(m)[0]]
-            leg = f"{stops[n]['station']} > {stops[n+1]['station']}"
+            leg = f"{stops[n].station} > {stops[n + 1].station}"
             rows += [(tt, ff, pp, leg) for tt, ff, pp in zip(t[m], fp, pr)]
             fig, ax = plt.subplots(2, 1, figsize=(22, 11), sharex=True, sharey=True)
             for x_ in ax:

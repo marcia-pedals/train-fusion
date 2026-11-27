@@ -62,8 +62,7 @@ def main(only=()):
         legname = np.full(len(sec), "", dtype=object)
 
         for st in stops:
-            a = st.t_arrive if np.isfinite(st.t_arrive) else st.t_open
-            b = st.t_depart if np.isfinite(st.t_depart) else st.t_close_end
+            a, b = st.t_still, st.t_leave
             if np.isnan(b):
                 b = rec.duration  # last stop: the recording ends at the platform
             m = (sec - 0.5 >= a) & (sec + 0.5 <= b)
@@ -73,7 +72,9 @@ def main(only=()):
         for p, q in zip(stops[:-1], stops[1:]):
             leg = f"{p.station} > {q.station}"
             dist = abs(s_of[p.station] - s_of[q.station])
-            m = (sec > p.t_close_end) & (sec < q.t_open) & (src != "dwell")
+            # door chime to door chime; wheel times at a stop where this car's doors stayed shut
+            m = ((sec > (p.t_close_end if p.doors else p.t_depart)) & (sec < (q.t_open if q.doors else q.t_arrive))
+                 & (src != "dwell"))
             legname[m] = leg
             k = trace["leg"] == leg
             tt, ff, pp = trace["t"][k], trace["f_hz"][k], trace["prominence_db"][k]

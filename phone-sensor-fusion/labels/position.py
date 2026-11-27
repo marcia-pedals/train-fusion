@@ -16,8 +16,8 @@ def position(rid: str) -> tuple[np.ndarray, int]:
     direction = 1 if load.journey(rid)["direction"] == "south" else -1
     pos = np.full(len(lab.v), np.nan)
     for st in stops:  # standing at a platform
-        a = st.t_arrive if np.isfinite(st.t_arrive) else st.t_open
-        b = st.t_depart if np.isfinite(st.t_depart) else (st.t_close_end if np.isfinite(st.t_close_end) else st.t_open_end)
+        a = st.t_still
+        b = st.t_leave if np.isfinite(st.t_leave) else st.t_open_end
         pos[int(a):int(np.ceil(b))] = s_of[st.station]
     for p, q in zip(stops[:-1], stops[1:]):
         m = np.flatnonzero(lab.leg == f"{p.station} > {q.station}")
