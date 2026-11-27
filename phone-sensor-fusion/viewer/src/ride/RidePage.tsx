@@ -551,7 +551,10 @@ function useTracks(ride: Ride, tiles: Record<string, Tiles>, view: View,
         value: (i) => <>
           <Key color={colors.good}>P(truth) <span className="v">{s.loc_p_true[i].toFixed(2)}</span></Key>
           <Key color={colors.label}>P(best guess) <span className="v">{s.loc_p_best[i].toFixed(2)}</span></Key>
-          <Key color={colors.bad + "60"} square>confidently wrong</Key>
+          <Key color={colors.bad + "60"} square>confidently wrong{(() => {
+            const g = meta.loc_wrong_guesses?.find((g) => i >= g.t0 && i < g.t1);
+            return g ? <>: <b>{stationCode(g.station)} {g.dir === "south" ? "SB" : "NB"}</b></> : null;
+          })()}</Key>
         </>,
         draw: (ctx, w, h) => {
           const y = yp(h);
@@ -566,6 +569,20 @@ function useTracks(ride: Ride, tiles: Record<string, Tiles>, view: View,
           for (const t of meta.loc_openings) if (t >= view.t0 && t <= view.t1) ctx.fillRect(xOf(t, view, w) - 0.5, 0, 1.5, 6);
           drawLine(ctx, w, view, s.loc_p_best, y, {color: colors.label, width: 1.25});
           drawLine(ctx, w, view, s.loc_p_true, y, {color: colors.good, width: 1.75});
+          // the wrong best guess, at the start of each stretch it holds (or the view's edge)
+          ctx.save();
+          ctx.font = "600 11px " + cssVar("--sans");
+          ctx.fillStyle = colors.bad; ctx.textBaseline = "bottom";
+          let free = -Infinity;  // where the last label ended: labels don't overlap
+          for (const g of meta.loc_wrong_guesses ?? []) {
+            if (g.t1 <= view.t0 || g.t0 >= view.t1) continue;
+            const x = Math.max(xOf(g.t0, view, w), 0) + 3;
+            if (x < free) continue;
+            const text = `${stationCode(g.station)} ${g.dir === "south" ? "SB" : "NB"}`;
+            ctx.fillText(text, x, h - 3);
+            free = x + ctx.measureText(text).width + 6;
+          }
+          ctx.restore();
         }},
     ];
     return tracksOut;
