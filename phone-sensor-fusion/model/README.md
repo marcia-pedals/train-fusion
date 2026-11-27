@@ -158,9 +158,11 @@ Per ride:
   one it opens both count), **time to fix** is from leaving the first labelled stop until that belief
   first reaches 0.9, and **lost** is the time after that it spends below 0.5. The belief
   only changes at door openings so far.
-- the station layer **smoothed** (the Viterbi openings and `p_real`): labelled stops with no
-  opening it believes was a stop (**missing**), and openings it believes were stops beyond
-  one per labelled stop (**spurious**).
+- the station layer's **most likely path** given the whole ride (`Localisation.path`): its
+  Viterbi decode, which says which openings were stops, and where, all at once (thresholding
+  `p_real` opening by opening need not give one consistent story). Labelled stops with no
+  stop in the path (**missing**), and stops in the path beyond one per labelled stop
+  (**spurious**).
 
 `pipeline.py` writes them to `data/phone-sensor-fusion/eval/` as `legs.parquet` and
 `rides.parquet` (columns in `schemas.py`, declared with the repo's schema language) and the

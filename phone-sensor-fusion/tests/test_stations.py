@@ -54,3 +54,11 @@ def test_trusting_every_opening_is_the_old_layer():
     loc = stations.localise(res, {}, use=(), p_false=0.0)
     assert np.all(loc.p_real == 1.0)
     assert [np.argmax(loc.smooth[j].sum(1)) for j in range(4)] == [3, 4, 5, 6]
+
+
+def test_most_likely_path_calls_the_false_opening_false():
+    stops = [3, 4, 5, 6, 7, 8]
+    tr, res = _ride(stops, {2: 0.4})
+    loc = stations.localise(res, {}, use=())
+    assert list(loc.path) == stops[:3] + [-1] + stops[3:]
+    assert loc.path_dir == 0

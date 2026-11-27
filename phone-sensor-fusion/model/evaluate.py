@@ -28,8 +28,9 @@ Per ride:
   that, the seconds it is below LOST_P. Confidently wrong: the seconds its most probable
   station and direction are above FIX_P and not the truth (the app then shows a wrong place
   as "confident"). The belief only changes at door openings for now.
-  the smoothed localiser (stations.localise()): which door openings it believes were stops
-  (p_real >= 0.5), against the labelled stops.
+  the localiser's most likely path given the whole ride (stations.localise(),
+  Localisation.path): which door openings it takes for stops, all at once, against the
+  labelled stops.
 """
 
 from __future__ import annotations
@@ -45,9 +46,8 @@ from model.infer import Result
 PAD_S = 5.0  # a labelled stop's window reaches this far beyond its labelled times
 FIX_P = 0.9  # the localiser has a fix once it puts this on the true station and direction
 LOST_P = 0.5  # ... and has lost it while that is below this
-REAL_P = 0.5  # the smoothed localiser takes a door opening for a stop above this
 
-CONSTANTS = {"pad_s": PAD_S, "fix_p": FIX_P, "lost_p": LOST_P, "real_p": REAL_P}
+CONSTANTS = {"pad_s": PAD_S, "fix_p": FIX_P, "lost_p": LOST_P}
 
 
 def _times(st: load.Stop) -> np.ndarray:
@@ -172,18 +172,9 @@ def ride(res: Result, f: dict, lab: FrameLabels, stops: list[load.Stop], leg_row
         row["loc_filt_time_to_fix_s"] = row["loc_filt_lost_s"] = None
     row["loc_filt_openings"] = len(loc_c.t_stop)
 
-    loc_s = stations.localise(res, f)
-    real = loc_s.t_stop[loc_s.p_real >= REAL_P] + 0.5
-    windows = [_window(st) for st in stops]
-    inside = [int(np.sum((real >= w0) & (real < w1))) for w0, w1 in windows]
-    in_any = np.zeros(len(real), bool)
-    for w0, w1 in windows:
-        in_any |= (real >= w0) & (real < w1)
-    between = (real >= windows[0][0]) & (real < windows[-1][1])
-    # every labelled stop counts, whether or not the measurements could show it
-    row["loc_smooth_stops_missing"] = int(sum(n == 0 for n in inside))
-    row["loc_smooth_stops_spurious"] = int(sum(max(n - 1, 0) for n in inside) + np.sum(between & ~in_any))
-    row["loc_smooth_openings"] = len(loc_s.t_stop)
+    loc = stations.localise(res, f)
+    row.update(_stop_scores(loc.t_stop[loc.path >= 0], stops))
+    row["loc_ml_openings"] = len(loc.t_stop)
 
     for name in ("filt", "live", "smooth"):
         err = [abs(r[f"{name}_dist_err"]) for r in leg_rows]
@@ -192,6 +183,19 @@ def ride(res: Result, f: dict, lab: FrameLabels, stops: list[load.Stop], leg_row
         row[f"{name}_missed_stops"] = float(sum(r[f"{name}_p_missed_stop"] for r in leg_rows if r[f"{name}_p_missed_stop"] is not None))
         row[f"{name}_false_stops"] = float(sum(r[f"{name}_p_false_stop"] for r in leg_rows if r[f"{name}_p_false_stop"] is not None))
     return row
+
+
+def _stop_scores(t_real: np.ndarray, stops: list[load.Stop]) -> dict:
+    """The localiser's stops (frames of the openings its most likely path takes for stops)
+    against the labelled ones. Every labelled stop counts, whether or not the measurements
+    could show it."""
+    t = t_real + 0.5
+    windows = [_window(st) for st in stops]
+    inside = [(t >= w0) & (t < w1) for w0, w1 in windows]
+    in_any = np.any(inside, axis=0) if len(t) else np.zeros(0, bool)
+    between = (t >= windows[0][0]) & (t < windows[-1][1])
+    return {"loc_ml_stops_missing": int(sum(not w.any() for w in inside)),
+            "loc_ml_stops_spurious": int(sum(max(int(w.sum()) - 1, 0) for w in inside) + np.sum(between & ~in_any))}
 
 
 def _nan_to_none(row: dict) -> dict:
@@ -205,4 +209,4 @@ def summary_line(r: dict) -> str:
             f"  stops missed {r['filt_missed_stops']:.2f}/{r['smooth_missed_stops']:.2f}"
             f" false {r['filt_false_stops']:.2f}/{r['smooth_false_stops']:.2f} (filt/smooth, expected)"
             f"  localiser: fix after {fix}{lost};"
-            f" stops missing {r['loc_smooth_stops_missing']}/{r['stops']}, spurious {r['loc_smooth_stops_spurious']}")
+            f" most likely path: stops missing {r['loc_ml_stops_missing']}/{r['stops']}, spurious {r['loc_ml_stops_spurious']}")

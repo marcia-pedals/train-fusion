@@ -34,7 +34,9 @@ reopened during a hold): each may be false, with prior P_FALSE, and then the leg
 the next opening. Whether openings were stops is decided by the distances, which a false
 one splits into two legs that fit no pair of stations; the other measurements only say
 which stations. filt and smooth are given that the opening was a stop; p_real_filt and
-p_real say how likely that was.
+p_real say how likely that was. `path` is instead the single most likely explanation of all
+the openings together (which were stops, and at which stations): one consistent story,
+where p_real >= 0.5 taken opening by opening need not be.
 
 This two-layer split is exact inference for the joint model only in so far as the map says
 nothing about speed (we ignore speed limits) and the first layer's stop detections are
@@ -104,6 +106,10 @@ class Localisation:
     # among openings 0..j was at station, direction | openings 0..j), not conditioned on j
     # being real; the rest of the mass is "no real stop yet"
     now_filt: np.ndarray  # [J, n_stations, 2]
+    # the most likely explanation of all the openings at once (Viterbi): the station of
+    # each opening it calls a stop, -1 for those it calls false; and the direction travelled
+    path: np.ndarray = None  # [J] int
+    path_dir: int = -1  # 0 south, 1 north, -1 none
 
 
 def _robust(r, outlier, weight):
@@ -270,7 +276,7 @@ def _localise(tr, meas, use, t_stop, dist, v, p_false) -> Localisation:
     if J == 0:
         z = np.zeros((0, n, 2))
         return Localisation(t_stop=t_stop, leg_m=leg_m, filt=z, smooth=z, p_real_filt=np.zeros(0), p_real=np.zeros(0),
-                            now_filt=z)
+                            now_filt=z, path=np.zeros(0, int))
     # spans between two real stops k < j, with the j - k - 1 openings between them false
     # (any number of them: each costs a factor p_false; none at all when that is 0)
     spans = [(k, j) for j in range(J) for k in range(j) if p_false > 0 or k == j - 1]
@@ -321,8 +327,46 @@ def _localise(tr, meas, use, t_stop, dist, v, p_false) -> Localisation:
 
     filt = np.array([norm(la[j]) for j in range(J)]).reshape(J, n, 2)
     smooth = np.array([norm(post[j]) for j in range(J)]).reshape(J, n, 2)
+    path, path_dir = _viterbi(J, n, logw, loge, l_open, l_real)
     return Localisation(t_stop=t_stop, leg_m=leg_m, filt=filt, smooth=smooth,
-                        p_real_filt=p_real_filt, p_real=np.minimum(p_real, 1.0), now_filt=now_filt)
+                        p_real_filt=p_real_filt, p_real=np.minimum(p_real, 1.0), now_filt=now_filt,
+                        path=path, path_dir=path_dir)
+
+
+def _viterbi(J, n, logw, loge, l_open, l_real):
+    """The forward pass of _localise with max for sum, and back again: ([J] station of each
+    opening in the most likely explanation or -1 where it calls it false, its direction)."""
+    path = np.full(J, -1)
+    if J == 0:
+        return path, -1
+    allowed = (np.triu(np.ones((n, n), bool), 1),)
+    allowed += (allowed[0].T,)
+    m = np.zeros((J, n, 2))
+    back = np.full((J, n, 2, 2), -1)  # (k, a) of the real stop before (j, b, d); -1: none
+    for j in range(J):
+        best = np.full((n, 2), l_open(j) + l_real - np.log(2 * n))  # the first real stop
+        for k in range(j):
+            if (k, j) not in logw:
+                continue
+            for d in range(2):
+                x = m[k][:, d, None] + np.where(allowed[d], logw[k, j], -np.inf)  # [a, b]
+                a = np.argmax(x, axis=0)
+                v = x[a, np.arange(n)]
+                better = v > best[:, d]
+                best[better, d] = v[better]
+                back[j, better, d, 0] = k
+                back[j, better, d, 1] = a[better]
+        m[j] = best + loge[j]
+    # the last real stop is j, the openings after it false; or none real at all
+    ends = np.array([np.max(m[j]) + l_open(J - 1 - j) for j in range(J)])
+    j = int(np.argmax(ends))
+    if not ends[j] > l_open(J):
+        return path, -1
+    b, d = (int(x) for x in np.unravel_index(np.argmax(m[j]), m[j].shape))
+    while j >= 0:
+        path[j] = b
+        j, b = (int(x) for x in back[j, b, d])
+    return path, d
 
 
 def describe(loc: Localisation, truth: list[str] | None = None) -> list[str]:
