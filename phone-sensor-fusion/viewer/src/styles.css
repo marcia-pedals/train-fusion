@@ -146,6 +146,7 @@ tfoot td.label { text-transform: uppercase; font-size: 10px; letter-spacing: .06
 .key { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .key .ln { display: inline-block; width: 14px; height: 0; flex: none; }
 .key .sq { display: inline-block; width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.key .ramp { display: inline-block; width: 36px; height: 8px; border-radius: 2px; flex: none; }
 .key b { font-weight: 600; color: var(--text); margin-left: auto; }
 .key .v { color: var(--text); margin-left: auto; }
 .track .gutter .value { display: flex; flex-direction: column; gap: 1px; }
@@ -166,6 +167,9 @@ tfoot td.label { text-transform: uppercase; font-size: 10px; letter-spacing: .06
 .track .gutter.compact .value { color: var(--muted); }
 .track.new-group { border-top: 12px solid var(--surface-2); }
 .track.overview { border-bottom: 1px solid var(--line-strong); cursor: pointer; }
+/* in the ride page's sticky toolbar, its last rows: edge to edge, lined up with the tracks */
+.ride-bar .track.overview { grid-column: 1 / -1; margin: 0 -10px; border-bottom: 0; border-top: 1px solid var(--line); background: var(--surface); }
+.ride-bar .track.axis { grid-column: 1 / -1; margin: 0 -10px -6px; border-bottom: 0; border-top: 1px solid var(--line); background: var(--surface); }
 .track.axis .gutter .name { color: var(--text); font-variant-numeric: tabular-nums; }
 .tracks { position: relative; user-select: none; -webkit-user-select: none; touch-action: none; cursor: crosshair; }
 .tracks .gutter { cursor: default; }
@@ -212,3 +216,18 @@ table.results.vs tfoot tr:first-child td { bottom: 42px; }
 .picker-group input { margin: 0; accent-color: var(--accent); }
 .picker-reset { align-self: flex-start; height: 24px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface-2); cursor: pointer; }
 .picker-reset:disabled { opacity: .5; cursor: default; }
+
+/* the ride page's track switches: the toolbar's last row */
+.track-bar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding-top: 5px; border-top: 1px solid var(--line); }
+.track-group { display: inline-flex; align-items: center; gap: 4px; }
+.track-group .group-name { border: 0; background: none; padding: 0; cursor: pointer; font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); }
+.track-group .group-name:hover { color: var(--text); }
+.track-group .chips { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; }
+.track-group .chips button { height: 22px; padding: 0 6px; border: 0; background: none; color: var(--faint); cursor: pointer; font-size: 12px; }
+.track-group .chips button + button { border-left: 1px solid var(--line-strong); }
+.track-group .chips button:hover { color: var(--text); }
+.track-group .chips button[aria-pressed="true"] { background: var(--accent-soft); color: var(--text); }
+.track-bar .presets { margin-left: auto; height: 24px; }
+.track-bar .presets button { text-transform: none; }
+.legend-in .check { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.legend-in .check input { margin: 0; }

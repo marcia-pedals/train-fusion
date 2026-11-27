@@ -62,6 +62,11 @@ def wheel_tables(p: dict, name: str) -> tuple[dict | None, bool]:
     return p["wheel"]["held" if name == "resting" else "resting"], True
 
 
+def tone_ll(p: dict, f: dict) -> np.ndarray:
+    """[T, N_V] log-likelihood of each speed from the audio's motor-tone lines."""
+    return _relative(comb.apply(p["tone"], f["tone_spec"], f["tone_f"], states.V_MOVING, frames.TONE_POOL_BINS))
+
+
 def wheel_ll(p: dict, f: dict, phone_state_now: np.ndarray) -> np.ndarray:
     """[T, N_V] log-likelihood of each speed from the accelerometer's wheel-rotation
     lines; zero while the phone is being handled."""
@@ -81,7 +86,7 @@ def log_emissions(p: dict, f: dict, phone: np.ndarray, use=ALL) -> np.ndarray:
     state = phone.argmax(axis=1)
     resting, held = state == phone_state.RESTING, state == phone_state.HELD
     if "tone" in use:
-        lb[:, N_ST:] += _relative(comb.apply(p["tone"], f["tone_spec"], f["tone_f"], states.V_MOVING, frames.TONE_POOL_BINS))
+        lb[:, N_ST:] += tone_ll(p, f)
     if "wheel" in use:
         lb[:, N_ST:] += wheel_ll(p, f, state)
     if "rumble" in use and p["level"]["rumble"]:

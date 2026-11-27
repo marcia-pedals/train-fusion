@@ -136,7 +136,7 @@ def main():
             trace = {}
             r = evaluate.ride(res, F[test], L[test], stops, legs, key, trace)
             if name == "all measurements":
-                ride_view.export(test, res, F[test], L[test], stops, trace, run)
+                ride_view.export(test, p, res, F[test], L[test], stops, trace, run)
             leg_rows += legs
             ride_rows.append(r)
             print(evaluate.summary_line(r))

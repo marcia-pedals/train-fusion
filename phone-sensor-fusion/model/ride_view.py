@@ -11,6 +11,10 @@ shared by every run, in data/phone-sensor-fusion/rides/<id>/:
   speed_filt.bin, speed_smooth.bin
                    the belief over speed per second, filtered and smoothed, uint8
                    [second][0 = standing, 1.. = speed grid], each second scaled to its peak (sqrt)
+  comb_tone.bin, comb_wheel.bin
+                   what the audio (motor tone) and accelerometer (wheel) line spectra say
+                   about speed: the log-likelihood terms the HMM gets, same layout as the
+                   speed beliefs (standing gets 0), uint8 128 + 127 x ll / COMB_LL_MAX
 
   rides/<id>/
   spec.bin         audio spectrogram, SPEC_FPS frames/s, 0..SPEC_FMAX Hz, uint8 [frame][bin]
@@ -32,15 +36,16 @@ import numpy as np
 from common import paths
 from common.dsp import spectrogram_db
 from common.recording import Recording
-from features import frames
+from features import frames, phone_state
 from labels import load
 from labels.frames import FrameLabels, MODE_NAMES
-from model import states
+from model import emissions, states
 from model.infer import Result
 
 SPEC_FPS, SPEC_NWIN, SPEC_FMAX = 10, 1024, 5000.0
 SPEC_DB = (-4.0, 30.0)  # dB over each frequency's median, mapped to 0..255
 ACC_DB_MAX = 20.0  # accelerometer line prominence, 0..this dB mapped to 0..255
+COMB_LL_MAX = 5.0  # comb log-likelihoods, nats: -this..this mapped to 1..255
 
 
 def _r(x, nd=3):
@@ -59,6 +64,26 @@ def _peak_scaled(p: np.ndarray) -> np.ndarray:
 def _over_speed(post: np.ndarray) -> np.ndarray:
     """[T, N] state probabilities -> [T, 1 + N_V]: standing (all stopped modes), then speeds."""
     return np.c_[post[:, :states.N_STOPPED].sum(axis=1), post[:, states.N_STOPPED:]]
+
+
+def _comb_u8(ll: np.ndarray) -> np.ndarray:
+    """[T, N_V] log-likelihood over moving speeds -> [T, 1 + N_V] uint8, standing (0) first."""
+    x = np.c_[np.zeros(len(ll)), ll]
+    return np.round(128 + 127 * np.clip(x / COMB_LL_MAX, -1, 1)).astype(np.uint8)
+
+
+def _levels(p: dict, f: dict) -> dict:
+    """The level measurements and the curves the model expects them on (model/emissions.py
+    _level_ll): per curve the speed knots, mean level at each, sd and the weight its
+    log-likelihood gets; None where the training data had too little for one."""
+    curve = lambda q: q and {k: q[k] for k in ("knots", "mean", "sd", "weight")}
+    lv = p["level"]
+    return {
+        "rumble": {"x": _r(f["rumble_db"], 2), "curve": curve(lv["rumble"])},
+        **{band: {"x": _r(f["vib_db"][:, i], 2),
+                  "curves": {name: curve(lv[f"{band}/{name}"]) for name in ("resting", "held")}}
+           for i, band in enumerate(("vib_low", "vib_high"))},
+    }
 
 
 def _interval(post: np.ndarray, p: float = 0.95) -> tuple[np.ndarray, np.ndarray]:
@@ -85,8 +110,9 @@ def _events(rid: str, stops: list[load.Stop]) -> list[dict]:
     return sorted(out, key=lambda e: e["t"])
 
 
-def export(rid: str, res: Result, f: dict, lab: FrameLabels, stops: list[load.Stop], trace: dict, run: Path) -> None:
-    """`trace`: what evaluate.ride() filled in about the causal localiser; `run`: the run's folder."""
+def export(rid: str, p: dict, res: Result, f: dict, lab: FrameLabels, stops: list[load.Stop], trace: dict, run: Path) -> None:
+    """`p`: the parameters `res` was inferred with; `trace`: what evaluate.ride() filled in
+    about the causal localiser; `run`: the run's folder."""
     shared = paths.derived("rides", rid, "meta.json").parent
     out = run / "rides" / rid
     out.mkdir(parents=True, exist_ok=True)
@@ -103,6 +129,9 @@ def export(rid: str, res: Result, f: dict, lab: FrameLabels, stops: list[load.St
     acc.tofile(shared / "accel.bin")
     _peak_scaled(_over_speed(res.alpha)).tofile(out / "speed_filt.bin")
     _peak_scaled(_over_speed(res.gamma)).tofile(out / "speed_smooth.bin")
+    phone_now = res.phone.argmax(axis=1)
+    _comb_u8(emissions.tone_ll(p, f)).tofile(out / "comb_tone.bin")
+    _comb_u8(emissions.wheel_ll(p, f, phone_now)).tofile(out / "comb_wheel.bin")
 
     v_filt_sd = np.sqrt(np.maximum(res.alpha @ states.V**2 - res.v_filt**2, 0))
     filt_lo, filt_hi = _interval(res.alpha)
@@ -117,6 +146,9 @@ def export(rid: str, res: Result, f: dict, lab: FrameLabels, stops: list[load.St
                   "fmax": float(f["accel_f"][-1])},
         "speed_post": {"filt": "speed_filt.bin", "smooth": "speed_smooth.bin", "bins": states.N_V + 1,
                        "dv": states.DV},
+        "comb": {"tone": "comb_tone.bin", "wheel": "comb_wheel.bin", "ll_max": COMB_LL_MAX},
+        "levels": _levels(p, f),
+        "phone_states": list(phone_state.STATES),
         "mode_names": MODE_NAMES,
         "stops": [{"station": s.station, **{k: (float(v) if np.isfinite(v) else None) for k, v in
                    (("t_arrive", s.t_arrive), ("t_open", s.t_open), ("t_close", s.t_close), ("t_depart", s.t_depart))}}
@@ -133,6 +165,7 @@ def export(rid: str, res: Result, f: dict, lab: FrameLabels, stops: list[load.St
             "mode_path": [int(m) for m in res.path_mode], "v_path": _r(res.path_v, 2),
             "loc_p_true": _r(trace["p_true"], 3), "loc_p_best": _r(trace["p_best"], 3),
             "loc_wrong": [int(w) for w in trace["wrong"]],
+            "phone": [int(k) for k in phone_now],
         },
         "loc_openings": [int(t) for t in trace["openings"]],
     }
