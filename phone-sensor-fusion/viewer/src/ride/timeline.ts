@@ -59,4 +59,8 @@ export const MAGMA = lut([[0, 6, 5, 20], [0.25, 60, 15, 110], [0.5, 150, 40, 120
 export const BLUES = lut([[0, 250, 250, 252], [0.3, 190, 210, 245], [0.7, 70, 120, 220], [1, 20, 40, 120]]);
 export const BLUES_DARK = lut([[0, 24, 24, 26], [0.3, 30, 55, 110], [0.7, 70, 130, 235], [1, 200, 225, 255]]);
 
+/** For log-likelihoods centred on 0 (128): blue below (speed unlikely), red above (likely). */
+export const DIVERGING = lut([[0, 40, 90, 190], [0.3, 150, 185, 235], [0.5, 248, 248, 246], [0.7, 240, 160, 130], [1, 180, 30, 40]]);
+export const DIVERGING_DARK = lut([[0, 90, 150, 255], [0.3, 35, 60, 115], [0.5, 22, 22, 24], [0.7, 125, 45, 35], [1, 255, 120, 90]]);
+
 export const MODE_COLORS = ["#a7b0ba", "#f4a261", "#2a9d8f", "#8ecae6", "#e76f51", "#e9c46a"];

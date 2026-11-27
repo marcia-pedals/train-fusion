@@ -27,6 +27,12 @@ stage's tables instead of going back to the source. For example:
 Listing which dates the archive has (`paths.archived_dates()`) is fine: that's choosing what to
 build, not reading data.
 
+## No tooltips unless asked
+
+Never add tooltips (`data-tip`, `title`, hover popups) to any UI (the viewers, the explorer,
+the app) unless explicitly asked for that tooltip. If a control needs explaining, its label or
+the visible text next to it should do it.
+
 ## The phone app's inference is experimental and stands alone
 
 `ios/TrainRecorder/Inference/` re-implements `phone-sensor-fusion`'s features and forward

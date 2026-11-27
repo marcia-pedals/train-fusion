@@ -8,6 +8,10 @@ export interface DoorEvent {
   station: string | null;
 }
 
+/** A level the model expects to follow speed (model/emissions.py _level_ll): mean at each
+ *  speed knot (knots[0] = 0 is standing), sd, and the weight its log-likelihood gets. */
+export interface LevelCurve { knots: number[]; mean: number[]; sd: number; weight: number }
+
 export interface RideMeta {
   id: string;
   T: number;
@@ -15,6 +19,13 @@ export interface RideMeta {
   spec: Raster;
   accel: Raster;
   speed_post: {filt: string; smooth: string; bins: number; dv: number};
+  comb: {tone: string; wheel: string; ll_max: number};  // same layout as speed_post
+  levels: {
+    rumble: {x: (number | null)[]; curve: LevelCurve | null};
+    vib_low: {x: (number | null)[]; curves: {resting: LevelCurve | null; held: LevelCurve | null}};
+    vib_high: {x: (number | null)[]; curves: {resting: LevelCurve | null; held: LevelCurve | null}};
+  };
+  phone_states: string[];  // resting, held, handled
   mode_names: string[];
   stops: {station: string; t_arrive: number | null; t_open: number | null; t_close: number | null; t_depart: number | null}[];
   events: DoorEvent[];
@@ -28,6 +39,7 @@ export interface RideMeta {
     mode_path?: number[];  // the most likely (Viterbi) path's mode; absent in older runs
     v_path?: number[];  // the most likely path's speed, m/s; absent in older runs
     loc_p_true: number[]; loc_p_best: number[]; loc_wrong: number[];
+    phone: number[];  // the most likely phone state (index into phone_states)
   };
   loc_openings: number[];
 }
@@ -39,6 +51,8 @@ export interface Ride {
   accel: Uint8Array;
   speedFilt: Uint8Array;
   speedSmooth: Uint8Array;
+  combTone: Uint8Array;
+  combWheel: Uint8Array;
   run: string;  // the evaluation run whose inference this is
 }
 

@@ -1,6 +1,7 @@
 // One ride in detail: the audio and accelerometer spectrograms with the labelled door
-// chimes, and under them, on the same time axis, the model's filtered and smoothed
-// beliefs. Zoom and pan; click to put the cursor anywhere and play the audio from there.
+// chimes; what the features say about speed (each line spectrum's log-likelihood over
+// speed, and each level against the curve the model expects it on); and under them, on
+// the same time axis, the model's filtered and smoothed beliefs. Zoom and pan; click to put the cursor anywhere and play the audio from there.
 //
 // Zoom: pinch, or ⌘/ctrl + scroll, or + and −. Pan: drag, or scroll sideways. Space plays
 // and pauses; ← → move the cursor 10 s (shift: 1 s); 0 shows the whole ride.
@@ -11,11 +12,11 @@ import {loadRuns, runBase} from "../lib/runs";
 import {rideStart, TIME_ZONE} from "../lib/rides";
 import {stationCode} from "../lib/stations";
 import Canvas, {type Draw} from "./Canvas";
-import {DOOR_CLOSE, DOOR_OPEN, MODE_SHORT, drawEvents, drawGrid, drawLine, drawStack, drawStrip, drawTiles, makeTiles, type Tiles} from "./draw";
+import {DOOR_CLOSE, DOOR_OPEN, MODE_SHORT, drawBand, drawEvents, drawGrid, drawLine, drawStack, drawStrip, drawTiles, makeTiles, type Tiles} from "./draw";
 import {
-  BLUES, BLUES_DARK, MAGMA, MODE_COLORS, clampView, clock, cssVar, tOf, ticks, xOf, zoomView,
+  BLUES, BLUES_DARK, DIVERGING, DIVERGING_DARK, MAGMA, MODE_COLORS, clampView, clock, cssVar, tOf, ticks, xOf, zoomView,
 } from "./timeline";
-import type {Ride, RideMeta, View} from "./types";
+import type {LevelCurve, Ride, RideMeta, View} from "./types";
 
 const GUTTER = 168;  // px: the track names and their values at the cursor
 const RATES = [1, 2, 4, 8];
@@ -37,9 +38,10 @@ async function loadRide(id: string, run: string | null): Promise<Ride> {
     if (!res.ok) throw new Error(`${url}: ${res.status}`);
     return new Uint8Array(await res.arrayBuffer());
   };
-  const [spec, accel, speedFilt, speedSmooth] = await Promise.all(
-    [`${shared}/${meta.spec.file}`, `${shared}/${meta.accel.file}`, `${base}/${meta.speed_post.filt}`, `${base}/${meta.speed_post.smooth}`].map(bin));
-  return {meta, spec, accel, speedFilt, speedSmooth, run};
+  const [spec, accel, speedFilt, speedSmooth, combTone, combWheel] = await Promise.all(
+    [`${shared}/${meta.spec.file}`, `${shared}/${meta.accel.file}`, `${base}/${meta.speed_post.filt}`, `${base}/${meta.speed_post.smooth}`,
+      `${base}/${meta.comb.tone}`, `${base}/${meta.comb.wheel}`].map(bin));
+  return {meta, spec, accel, speedFilt, speedSmooth, combTone, combWheel, run};
 }
 
 export default function RidePage({id}: {id: string}) {
@@ -55,12 +57,44 @@ export default function RidePage({id}: {id: string}) {
 interface Track {
   key: string;
   name: string;
+  short: string;  // on its switch in the track bar
+  group: GroupKey;  // tracks of a group sit together; a gap between groups
   height: number;
   draw: Draw;
   value?: (i: number) => ReactNode;  // at second i
-  legend?: ReactNode;  // in the gutter, under the name
-  below?: ReactNode;  // a row of its own under the track
-  newGroup?: boolean;  // a gap above it, between groups of related tracks
+  // in the gutter, under the name; `sharedLegend`: the group's legend, shown on the first of
+  // its tracks that is on
+  legend?: ReactNode;
+  sharedLegend?: boolean;
+  // a row of its own under the track; `sharedBelow`: under the last of the group's tracks that is on
+  below?: ReactNode;
+  sharedBelow?: boolean;
+}
+
+const GROUPS = {
+  spectra: "Spectra",
+  evidence: "Evidence",
+  levels: "Levels",
+  belief: "Speed",
+  mode: "Mode",
+  loc: "Localiser",
+} as const;
+type GroupKey = keyof typeof GROUPS;
+
+/** Track sets to switch to in one click: the tracks they show (null: all). */
+const PRESETS: {name: string; on: string[] | null}[] = [
+  {name: "All", on: null},
+  {name: "Speed", on: ["comb-tone", "comb-wheel", "rumble", "vib-low", "vib-high", "speed-smooth"]},
+  {name: "Stops", on: ["audio", "mode-label", "mode-filt", "mode-smooth", "mode-path"]},
+];
+const OFF_KEY = "psf-ride-tracks-off";
+const COMB_LABEL_KEY = "psf-ride-comb-label";
+
+/** The tracks switched off: from the address if it says, else as last time. */
+function initialOff(): Set<string> {
+  const p = readHash().params;
+  const raw = p.has("off") ? p.get("off")! : localStorage.getItem(OFF_KEY) ?? "";
+  return new Set(raw.split(",").filter(Boolean));
 }
 
 function RideView({ride}: {ride: Ride}) {
@@ -90,6 +124,11 @@ function RideView({ride}: {ride: Ride}) {
     const r = hide ? t - view.t0 : t;
     return r < 0 ? `−${clock(-r)}` : clock(r);
   };
+  const [off, setOff] = useState(initialOff);
+  useEffect(() => localStorage.setItem(OFF_KEY, [...off].join(",")), [off]);
+  // the labelled speed over the line-spectrum tracks; remembered
+  const [combLabel, setCombLabel] = useState(() => localStorage.getItem(COMB_LABEL_KEY) !== "0");
+  useEffect(() => localStorage.setItem(COMB_LABEL_KEY, combLabel ? "1" : "0"), [combLabel]);
   const [plotW, setPlotW] = useState(800);
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -97,9 +136,10 @@ function RideView({ride}: {ride: Ride}) {
   // keep the address in step (no history entries)
   useEffect(() => {
     const id = setTimeout(() => replaceHash(["ride", meta.id],
-      {run: ride.run, t0: view.t0.toFixed(1), t1: view.t1.toFixed(1), ...(cursor != null ? {t: cursor.toFixed(1)} : {})}), 300);
+      {run: ride.run, t0: view.t0.toFixed(1), t1: view.t1.toFixed(1), ...(cursor != null ? {t: cursor.toFixed(1)} : {}),
+        ...(off.size ? {off: [...off].join(",")} : {})}), 300);
     return () => clearTimeout(id);
-  }, [view, cursor, meta.id, ride.run]);
+  }, [view, cursor, meta.id, ride.run, off]);
 
   // the spectrograms and beliefs over speed as coloured tiles, once
   const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -108,10 +148,13 @@ function RideView({ride}: {ride: Ride}) {
     accel: makeTiles(ride.accel, meta.accel.frames, meta.accel.bins, meta.accel.fps, MAGMA),
     speedFilt: makeTiles(ride.speedFilt, T, meta.speed_post.bins, 1, dark ? BLUES_DARK : BLUES),
     speedSmooth: makeTiles(ride.speedSmooth, T, meta.speed_post.bins, 1, dark ? BLUES_DARK : BLUES),
+    combTone: makeTiles(ride.combTone, T, meta.speed_post.bins, 1, dark ? DIVERGING_DARK : DIVERGING),
+    combWheel: makeTiles(ride.combWheel, T, meta.speed_post.bins, 1, dark ? DIVERGING_DARK : DIVERGING),
   }), [ride, meta, T, dark]);
 
-  const tracks = useTracks(meta, tiles, view);
-  const axis = useAxis(meta, view, hide);
+  const allTracks = useTracks(ride, tiles, view, combLabel, setCombLabel);
+  const tracks = allTracks.filter((t) => !off.has(t.key));
+  const axis = useAxis(meta, view, hide, cursor, hover);
 
   // ---- audio ----
   // The audio element gets its file only when first played: loading it on opening the page
@@ -286,31 +329,38 @@ function RideView({ride}: {ride: Ride}) {
               : <svg viewBox="0 0 16 16" aria-hidden><path d="M2 8s2.2-4.5 6-4.5S14 8 14 8s-2.2 4.5-6 4.5S2 8 2 8z" /><circle cx="8" cy="8" r="2" /></svg>}
           </button>
         </div>
-      </div>
-      <audio ref={audio} preload="none"
-             onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} />
-
-      <Overview meta={meta} view={view} hidden={hide} onMove={(t) => setView(clampView({t0: t - (view.t1 - view.t0) / 2, t1: t + (view.t1 - view.t0) / 2}, T))} />
-
-      <div className="tracks" ref={area} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-           onPointerLeave={() => setHover(null)}>
+        <TrackBar tracks={allTracks} off={off} setOff={setOff} />
+        <Overview meta={meta} view={view} hidden={hide} onMove={(t) => setView(clampView({t0: t - (view.t1 - view.t0) / 2, t1: t + (view.t1 - view.t0) / 2}, T))} />
         <div className="track axis">
           <div className="gutter"><span className="value">
             {hover != null ? fmtT(hover) : cursor != null ? fmtT(cursor) : ""}
           </span></div>
           <Canvas height={30} draw={axis} />
         </div>
-        {tracks.map((t) => (
-          <div className={t.newGroup ? "track new-group" : "track"} key={t.key}>
-            <div className={t.height < 30 ? "gutter compact" : "gutter"}>
-              <span className="name">{t.name}</span>
-              {t.value && at != null && <span className="value">{t.value(at)}</span>}
-              {t.legend && <span className="legend-in">{t.legend}</span>}
+      </div>
+      <audio ref={audio} preload="none"
+             onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} />
+
+
+      <div className="tracks" ref={area} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+           onPointerLeave={() => setHover(null)}>
+        {tracks.map((t, k) => {
+          const prev = tracks[k - 1];
+          const legend = t.legend && (!t.sharedLegend || !tracks.slice(0, k).some((u) => u.group === t.group && u.sharedLegend));
+          const below = t.below && (!t.sharedBelow || !tracks.slice(k + 1).some((u) => u.group === t.group && u.sharedBelow));
+          return (
+            <div className={prev && prev.group !== t.group ? "track new-group" : "track"} key={t.key}>
+              <div className={t.height < 30 ? "gutter compact" : "gutter"}>
+                <span className="name">{t.name}</span>
+                {t.value && at != null && <span className="value">{t.value(at)}</span>}
+                {legend && <span className="legend-in">{t.legend}</span>}
+              </div>
+              <Canvas height={t.height} draw={t.draw} />
+              {below && <><div className="gutter" /><div className="below">{t.below}</div></>}
             </div>
-            <Canvas height={t.height} draw={t.draw} />
-            {t.below && <><div className="gutter" /><div className="below">{t.below}</div></>}
-          </div>
-        ))}
+          );
+        })}
+        {!tracks.length && <p className="status">Every track is switched off: switch some on above.</p>}
         {cursor != null && cursor >= view.t0 && cursor <= view.t1 &&
           <div className="cursor-line" style={{left: GUTTER + xOf(cursor, view, plotW)}} />}
         {hover != null && <div className="hover-line" style={{left: GUTTER + xOf(hover, view, plotW)}} />}
@@ -320,7 +370,9 @@ function RideView({ride}: {ride: Ride}) {
 }
 
 /** The tracks, top to bottom, drawn for the current view. */
-function useTracks(meta: RideMeta, tiles: Record<string, Tiles>, view: View): Track[] {
+function useTracks(ride: Ride, tiles: Record<string, Tiles>, view: View,
+                   combLabel: boolean, setCombLabel: (on: boolean) => void): Track[] {
+  const {meta} = ride;
   const s = meta.series;
   const T = meta.T;
   const vMax = useMemo(() => {
@@ -350,57 +402,136 @@ function useTracks(meta: RideMeta, tiles: Record<string, Tiles>, view: View): Tr
       const vs = Array.from({length: Math.floor(vMax / 10) + 1}, (_, k) => k * 10).filter((v) => y(v) >= 8);
       drawGrid(ctx, w, vs, y, unitOnTop(vs, "m/s"), colors.grid + "99", colors.text);
     };
-    const modeLegend = <span className="legend-row">{MODE_SHORT.map((name, k) => <Key key={name} color={MODE_COLORS[k]} square>{name}</Key>)}</span>;
     // speed lanes drawn as lines: 0 at the bottom, vMax at the top
     const ySpeed = (h: number) => (x: number) => h - 2 - (x / vMax) * (h - 4);
     const speedAxis = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
       const vs = Array.from({length: Math.floor(vMax / 10) + 1}, (_, k) => k * 10).filter((v) => ySpeed(h)(v) >= 8);
       drawGrid(ctx, w, vs, ySpeed(h), unitOnTop(vs, "m/s"), colors.grid + "99", colors.text);
     };
-    const tracksOut: Track[] = [
-      {key: "audio", name: "Audio", height: 150,
+    const vY = (h: number) => (x: number) => h - (x / meta.speed_post.dv + 0.5) * (h / beliefBins);
+
+    // ---- what each line spectrum says about speed: the log-likelihood the HMM gets ----
+    const llMax = meta.comb.ll_max, nb = meta.speed_post.bins;
+    const llAt = (data: Uint8Array, i: number, k: number) => ((data[i * nb + k] - 128) / 127) * llMax;
+    const combTrack = (key: string, name: string, short: string, data: Uint8Array, t: Tiles): Track => ({
+      key, name, short, group: "evidence", height: 120, sharedLegend: true,
+      legend: <>
+        <span className="key"><i className="ramp" style={{background: rampCss()}} />−{llMax} … +{llMax} nats</span>
+        <label className="check">
+          <input type="checkbox" checked={combLabel} onChange={(e) => setCombLabel(e.target.checked)} />
+          <Key color={colors.label}>labelled speed</Key>
+        </label>
+      </>,
+      value: (i) => {
+        if (i >= T) return null;
+        let best = 1;
+        for (let k = 2; k < nb; k++) if (data[i * nb + k] > data[i * nb + best]) best = k;
+        const at = s.v_label[i];
+        const fmt = (x: number) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(1)}`;
+        return <>
+          <span>
+            peak {(best * meta.speed_post.dv).toFixed(1)} m/s {fmt(llAt(data, i, best))}</span>
+          {at != null && at > 0 &&
+            <span className="muted">
+              at label {fmt(llAt(data, i, Math.min(Math.round(at / meta.speed_post.dv), nb - 1)))}</span>}
+        </>;
+      },
+      draw: (ctx, w, h) => {
+        drawTiles(ctx, w, h, view, t, beliefBins);
+        beliefAxis(ctx, w, h);
+        if (combLabel) drawLine(ctx, w, view, s.v_label, vY(h), {color: colors.label, width: 1.25});
+      },
+    });
+
+    // ---- levels against the curve the model expects them on ----
+    const levelTrack = (key: string, name: string, short: string, x: (number | null)[],
+                        curveAt: (i: number) => LevelCurve | null): Track => {
+      const exp = (i: number, v: number | null) => { const c = curveAt(i); return c && v != null ? levelMean(c, v) : null; };
+      const lo = robustRange(x, (i) => exp(i, s.v_label[i]), curveAt, T);
+      const y = (h: number) => (val: number) => h - 3 - ((val - lo[0]) / (lo[1] - lo[0])) * (h - 6);
+      return {
+        key, name, short, group: "levels", height: 90, sharedLegend: true,
         legend: <>
-          <Key color={DOOR_OPEN}>opening starts</Key><Key color={DOOR_OPEN} dashed>opening ends</Key>
-          <Key color={DOOR_CLOSE}>closing starts</Key><Key color={DOOR_CLOSE} dashed>closing ends</Key>
+          <Key color={colors.smooth}>measured</Key>
+          <Key color={colors.label + "55"} square>expected: label ± sd</Key>
+          <Key color={colors.filt} dashed>expected: model</Key>
         </>,
+        value: (i) => {
+          if (x[i] == null) return "–";
+          const c = curveAt(i), e = exp(i, s.v_label[i]);
+          return <>
+            <span>{x[i]!.toFixed(1)} dB</span>
+            {c == null ? <span className="muted">not used</span>
+              : e != null && <span className="muted">
+                z {((x[i]! - e) / c.sd >= 0 ? "+" : "−") + Math.abs((x[i]! - e) / c.sd).toFixed(1)}</span>}
+          </>;
+        },
+        draw: (ctx, w, h) => {
+          const yy = y(h);
+          const step = niceStep(lo[1] - lo[0]);
+          const vals: number[] = [];
+          for (let v = Math.ceil(lo[0] / step) * step; v <= lo[1]; v += step) vals.push(v);
+          drawGrid(ctx, w, vals, yy, (v) => (v === vals[vals.length - 1] ? `${v} dB` : `${v}`), colors.grid, colors.text);
+          drawBand(ctx, w, view, (i) => { const e = exp(i, s.v_label[i]); return e == null ? null : e - curveAt(i)!.sd; },
+            (i) => { const e = exp(i, s.v_label[i]); return e == null ? null : e + curveAt(i)!.sd; }, T, yy, colors.label + "38");
+          drawLine(ctx, w, view, s.v_smooth.map((v, i) => exp(i, v)), yy, {color: colors.filt, width: 1.25, dash: [4, 3]});
+          drawLine(ctx, w, view, x, yy, {color: colors.smooth + "55", width: 1});  // faint where it doesn't count
+          drawLine(ctx, w, view, x, yy, {color: colors.smooth, width: 1.25, where: (i) => curveAt(i) != null});
+        },
+      };
+    };
+    const phoneCurve = (cs: {resting: LevelCurve | null; held: LevelCurve | null}) => (i: number) =>
+      s.phone[i] === 0 ? cs.resting : s.phone[i] === 1 ? cs.held : null;
+
+    const doorLegend = <>
+      <Key color={DOOR_OPEN}>opening starts</Key><Key color={DOOR_OPEN} dashed>opening ends</Key>
+      <Key color={DOOR_CLOSE}>closing starts</Key><Key color={DOOR_CLOSE} dashed>closing ends</Key>
+    </>;
+    const modeLegend = <span className="legend-row">{MODE_SHORT.map((name, k) => <Key key={name} color={MODE_COLORS[k]} square>{name}</Key>)}</span>;
+    const tracksOut: Track[] = [
+      {key: "audio", name: "Audio", short: "Audio", group: "spectra", height: 150, legend: doorLegend, sharedLegend: true,
         draw: (ctx, w, h) => {
           drawTiles(ctx, w, h, view, tiles.spec);
           freqAxis(ctx, w, h, meta.spec.fmax, [0, 1000, 2000, 3000, 4000], unitOnTop([0, 1000, 2000, 3000, 4000], "kHz", 1000));
           drawEvents(ctx, w, h, view, meta.events);
         }},
-      {key: "accel", name: "Accelerometer", height: 110,
+      {key: "accel", name: "Accelerometer", short: "Accel", group: "spectra", height: 110, legend: doorLegend, sharedLegend: true,
         draw: (ctx, w, h) => {
           drawTiles(ctx, w, h, view, tiles.accel);
           freqAxis(ctx, w, h, meta.accel.fmax, [0, 10, 20, 30, 40], unitOnTop([0, 10, 20, 30, 40], "Hz"));
           drawEvents(ctx, w, h, view, meta.events);
         }},
-      {key: "speed-filt", name: "Speed belief, filtered", height: 120, newGroup: true,
+      combTrack("comb-tone", "Motor tone says", "Tone", ride.combTone, tiles.combTone),
+      combTrack("comb-wheel", "Wheel lines say", "Wheel", ride.combWheel, tiles.combWheel),
+      levelTrack("rumble", "Rumble level", "Rumble", meta.levels.rumble.x, () => meta.levels.rumble.curve),
+      levelTrack("vib-low", "Vibration 2–10 Hz", "Vib lo", meta.levels.vib_low.x, phoneCurve(meta.levels.vib_low.curves)),
+      levelTrack("vib-high", "Vibration 10–45 Hz", "Vib hi", meta.levels.vib_high.x, phoneCurve(meta.levels.vib_high.curves)),
+      {key: "speed-filt", name: "Speed belief, filtered", short: "Filt", group: "belief", height: 120,
         value: (i) => <Interval mean={s.v_filt[i]} lo={s.v_filt_lo[i]} hi={s.v_filt_hi[i]} />,
         draw: (ctx, w, h) => { drawTiles(ctx, w, h, view, tiles.speedFilt, beliefBins); beliefAxis(ctx, w, h); }},
-      {key: "speed-smooth", name: "Speed belief, smoothed", height: 120,
+      {key: "speed-smooth", name: "Speed belief, smoothed", short: "Smooth", group: "belief", height: 120,
         value: (i) => <Interval mean={s.v_smooth[i]} lo={s.v_smooth_lo[i]} hi={s.v_smooth_hi[i]} />,
         draw: (ctx, w, h) => { drawTiles(ctx, w, h, view, tiles.speedSmooth, beliefBins); beliefAxis(ctx, w, h); }},
-      ...(s.v_path ? [{key: "speed-path", name: "Speed, most likely path", height: 90,
+      ...(s.v_path ? [{key: "speed-path", name: "Speed, most likely path", short: "Path", group: "belief", height: 90,
         value: (i: number) => <>{s.v_path![i].toFixed(1)} m/s</>,
         draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => {
           speedAxis(ctx, w, h);
           drawLine(ctx, w, view, s.v_path!, ySpeed(h), {color: colors.smooth, width: 1.5});
-        }}] : []),
-      {key: "mode-label", name: "Mode, labelled", height: 36, newGroup: true,
+        }} satisfies Track] : []),
+      {key: "mode-label", name: "Mode, labelled", short: "Label", group: "mode", height: 36, below: modeLegend, sharedBelow: true,
         value: (i) => (s.mode_label[i] >= 0 ? modeShort[s.mode_label[i]] : "–"),
         draw: (ctx, w, h) => drawStrip(ctx, w, h, view, s.mode_label, MODE_COLORS)},
-      {key: "mode-filt", name: "Mode, filtered", height: 44,
+      {key: "mode-filt", name: "Mode, filtered", short: "Filt", group: "mode", height: 44, below: modeLegend, sharedBelow: true,
         value: (i) => { const k = argmax(s.mode_filt[i]); return `${modeShort[k]} ${s.mode_filt[i][k].toFixed(2)}`; },
         draw: (ctx, w, h) => drawStack(ctx, w, h, view, s.mode_filt, MODE_COLORS)},
-      {key: "mode-smooth", name: "Mode, smoothed", height: 44,
+      {key: "mode-smooth", name: "Mode, smoothed", short: "Smooth", group: "mode", height: 44, below: modeLegend, sharedBelow: true,
         value: (i) => { const k = argmax(s.mode_smooth[i]); return `${modeShort[k]} ${s.mode_smooth[i][k].toFixed(2)}`; },
-        below: s.mode_path ? undefined : modeLegend,
         draw: (ctx, w, h) => drawStack(ctx, w, h, view, s.mode_smooth, MODE_COLORS)},
-      ...(s.mode_path ? [{key: "mode-path", name: "Mode, most likely path", height: 36,
+      ...(s.mode_path ? [{key: "mode-path", name: "Mode, most likely path", short: "Path", group: "mode", height: 36,
         value: (i: number) => modeShort[s.mode_path![i]],
-        below: modeLegend,
-        draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => drawStrip(ctx, w, h, view, s.mode_path!, MODE_COLORS)}] : []),
-      {key: "loc", name: "Localiser, live", height: 80, newGroup: true,
+        below: modeLegend, sharedBelow: true,
+        draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => drawStrip(ctx, w, h, view, s.mode_path!, MODE_COLORS)} satisfies Track] : []),
+      {key: "loc", name: "Localiser, live", short: "Localiser", group: "loc", height: 80,
         value: (i) => <>
           <Key color={colors.good}>P(truth) <span className="v">{s.loc_p_true[i].toFixed(2)}</span></Key>
           <Key color={colors.label}>P(best guess) <span className="v">{s.loc_p_best[i].toFixed(2)}</span></Key>
@@ -422,12 +553,49 @@ function useTracks(meta: RideMeta, tiles: Record<string, Tiles>, view: View): Tr
         }},
     ];
     return tracksOut;
-  }, [meta, tiles, view, vMax, speedBins, s, T]);
+  }, [ride, meta, tiles, view, vMax, speedBins, s, T, combLabel, setCombLabel]);
+}
+
+/** A level curve's mean at speed v (0: standing), as model/emissions.py _level_ll has it. */
+function levelMean(c: LevelCurve, v: number): number {
+  if (v <= 0) return c.mean[0];
+  const ks = c.knots, ms = c.mean;
+  if (v <= ks[1]) return ms[1];
+  for (let j = 2; j < ks.length; j++) if (v <= ks[j]) return ms[j - 1] + ((v - ks[j - 1]) / (ks[j] - ks[j - 1])) * (ms[j] - ms[j - 1]);
+  return ms[ms.length - 1];
+}
+
+/** A y range covering the 1st–99th percentile of the measurement and the expected band. */
+function robustRange(x: (number | null)[], exp: (i: number) => number | null, curveAt: (i: number) => LevelCurve | null,
+                     T: number): [number, number] {
+  const vals: number[] = [];
+  for (let i = 0; i < T; i++) {
+    if (x[i] != null) vals.push(x[i]!);
+    const e = exp(i), c = curveAt(i);
+    if (e != null && c) vals.push(e - c.sd, e + c.sd);
+  }
+  if (!vals.length) return [0, 1];
+  vals.sort((a, b) => a - b);
+  const a = vals[Math.floor(0.01 * (vals.length - 1))], b = vals[Math.ceil(0.99 * (vals.length - 1))];
+  const pad = 0.05 * (b - a || 1);
+  return [a - pad, b + pad];
+}
+
+function niceStep(span: number): number {
+  return [1, 2, 5, 10, 20, 50].find((s) => span / s <= 5) ?? 100;
+}
+
+/** The comb tracks' colour scale, for the legend. */
+function rampCss(): string {
+  const lut = window.matchMedia("(prefers-color-scheme: dark)").matches ? DIVERGING_DARK : DIVERGING;
+  const stops = [0, 64, 128, 192, 255].map((k) => `rgb(${lut[4 * k]},${lut[4 * k + 1]},${lut[4 * k + 2]})`);
+  return `linear-gradient(to right, ${stops.join(",")})`;
 }
 
 /** Time ticks, and each labelled stop's station at its door opening. */
-/** `hide`: times counted from the view's left edge rather than the recording's start. */
-function useAxis(meta: RideMeta, view: View, hide: boolean): Draw {
+/** `hide`: times counted from the view's left edge rather than the recording's start.
+ *  It sits in the toolbar, away from the tracks, so it draws the cursor and the mouse's time itself. */
+function useAxis(meta: RideMeta, view: View, hide: boolean, cursor: number | null, hover: number | null): Draw {
   return useCallback((ctx, w, h) => {
     const text = cssVar("--faint"), strong = cssVar("--text"), line = cssVar("--line-strong");
     ctx.font = "11px ui-sans-serif, -apple-system, sans-serif";
@@ -448,7 +616,56 @@ function useAxis(meta: RideMeta, view: View, hide: boolean): Draw {
       if (t == null || t < view.t0 || t > view.t1) continue;
       ctx.fillText(stationCode(st.station), xOf(t, view, w) + 2, 2);
     }
-  }, [meta, view, hide]);
+    if (hover != null && hover >= view.t0 && hover <= view.t1) {
+      const x = Math.round(xOf(hover, view, w)) + 0.5;
+      ctx.save(); ctx.strokeStyle = text; ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); ctx.restore();
+    }
+    if (cursor != null && cursor >= view.t0 && cursor <= view.t1) {
+      ctx.fillStyle = strong;
+      ctx.fillRect(xOf(cursor, view, w) - 1, 0, 2, h);
+    }
+  }, [meta, view, hide, cursor, hover]);
+}
+
+/** Switches for the tracks, by group: click a track to switch it, ⌥-click to show it alone;
+ *  click a group's name to switch the whole group (⌥-click: that group alone); or a preset. */
+function TrackBar({tracks, off, setOff}: {tracks: Track[]; off: Set<string>; setOff: (s: Set<string>) => void}) {
+  const groups = (Object.keys(GROUPS) as GroupKey[]).map((g) => ({g, ts: tracks.filter((t) => t.group === g)})).filter((x) => x.ts.length);
+  const only = (keys: string[]) => new Set(tracks.map((t) => t.key).filter((k) => !keys.includes(k)));
+  const flip = (keys: string[], on: boolean) => {
+    const next = new Set(off);
+    for (const k of keys) if (on) next.delete(k); else next.add(k);
+    setOff(next);
+  };
+  const same = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every((k) => b.has(k));
+  return (
+    <div className="track-bar">
+      {groups.map(({g, ts}) => {
+        const keys = ts.map((t) => t.key), allOn = keys.every((k) => !off.has(k));
+        return (
+          <div className="track-group" key={g}>
+            {ts.length > 1 &&
+              <button className="group-name" onClick={(e) => (e.altKey ? setOff(only(keys)) : flip(keys, !allOn))}>{GROUPS[g]}</button>}
+            <div className="chips" role="group" aria-label={GROUPS[g]}>
+              {ts.map((t) => (
+                <button key={t.key} aria-pressed={!off.has(t.key)} aria-label={t.name}
+                        onClick={(e) => (e.altKey ? setOff(only([t.key])) : flip([t.key], off.has(t.key)))}>
+                  {t.short}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      <div className="segmented presets" role="group" aria-label="Track presets">
+        {PRESETS.map((p) => {
+          const target = p.on ? only(p.on) : new Set<string>();
+          return <button key={p.name} aria-pressed={same(off, target)} onClick={() => setOff(target)}>{p.name}</button>;
+        })}
+      </div>
+    </div>
+  );
 }
 
 /** The whole ride, small, with the part in view: click or drag to move there. */

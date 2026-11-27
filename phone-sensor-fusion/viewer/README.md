@@ -11,16 +11,23 @@ A local web app over what the pipeline writes. Two pages:
   where the change is too small to count (`diff` in `src/results/columns.ts` says how much
   is enough), "=" where it is the same; "Changed only" keeps the rows with a real change,
   and "Sort by change" sorts the metric columns by how much they moved.
-- **Ride** (`#/ride/<id>?run=&t0=&t1=&t=`): one ride in detail, as one run's inference saw
+- **Ride** (`#/ride/<id>?run=&t0=&t1=&t=&off=`): one ride in detail, as one run's inference saw
   it (`../model/ride_view.py` writes it; by default the newest run's), on one time axis: the audio and accelerometer spectrograms with the labelled door
   chimes as lines (green opening, red closing; solid where the chime starts, dashed where
-  it ends); the filtered and smoothed beliefs over speed (m/s) and the most likely path's speed; mode
+  it ends); what the features say about speed: the motor tone's and the wheel lines'
+  log-likelihood over speed, the very term the HMM gets (red: favoured, blue: against; the
+  labelled speed on top, switchable), and the rumble and two vibration levels against the
+  curve the model expects them on (grey: at the labelled speed ± sd; dashed: at the model's
+  speed; the measured line faint where the model doesn't use it); the filtered and smoothed beliefs over speed (m/s) and the most likely path's speed; mode
   (labelled, filtered, smoothed, and the most likely path, whose entries into the door-open
   chime are the localiser's door openings); and the live
   localiser's probability for the truth and for its own best guess, with the confidently
-  wrong stretches in red. The left column gives each track's value at the mouse, or at
+  wrong stretches in red. Each track can be switched off in the toolbar, one by one, by
+  group (click its name), alone (⌥-click), or by preset; which are off is remembered and
+  kept in the address (`off`). The toolbar, with the whole-ride strip and the time axis
+  with the stations, stays at the top as the tracks scroll. The left column gives each track's value at the mouse, or at
   the cursor. Zoom: pinch, ⌘/ctrl + scroll, + and −; pan: drag, scroll sideways, or the
-  whole-ride strip at the top; click to put the cursor, space to play the audio from it
+  whole-ride strip; click to put the cursor, space to play the audio from it
   (1–8×, from the left edge if there is no cursor), ← → to move it, "Clear cursor" to
   remove it, 0 for the whole ride. The speed beliefs' values are the mean and the central 95% interval.
   "Hide identifying info" (remembered) leaves nothing on the page about the ride beyond the
