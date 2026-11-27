@@ -27,6 +27,7 @@ export interface RideMeta {
   };
   phone_states: string[];  // resting, held, handled
   mode_names: string[];
+  regime_names?: string[];  // states.REGIMES; absent in older runs
   stops: {station: string; t_arrive: number | null; t_open: number | null; t_close: number | null; t_depart: number | null}[];
   events: DoorEvent[];
   series: {
@@ -38,6 +39,9 @@ export interface RideMeta {
     mode_filt: number[][]; mode_smooth: number[][]; mode_label: number[];
     mode_path?: number[];  // the most likely (Viterbi) path's mode; absent in older runs
     v_path?: number[];  // the most likely path's speed, m/s; absent in older runs
+    // P(standing, then each regime), filtered and smoothed, and the most likely path's
+    // (0 standing, r + 1 regime r); absent in older runs
+    regime_filt?: number[][]; regime_smooth?: number[][]; regime_path?: number[];
     loc_p_true: number[]; loc_p_best: number[]; loc_wrong: number[];
     phone: number[];  // the most likely phone state (index into phone_states)
   };

@@ -17,6 +17,10 @@
   --filt: #e0782f;
   --good: #2e9e5b;
   --good-bg: #e6f5ec;
+  --reg-0: #ec4647;  /* regimes: braking, coasting, accelerating (full traction), part traction */
+  --reg-1: #257de0;
+  --reg-2: #00b894;
+  --reg-3: #f2a600;
   --radius: 8px;
   --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
@@ -41,6 +45,10 @@
     --filt: #f39a55;
     --good: #4fc27c;
     --good-bg: #183324;
+    --reg-0: #eb6263;
+    --reg-1: #338ced;
+    --reg-2: #00a888;
+    --reg-3: #e5a000;
   }
 }
 
@@ -231,3 +239,31 @@ table.results.vs tfoot tr:first-child td { bottom: 42px; }
 .track-bar .presets button { text-transform: none; }
 .legend-in .check { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .legend-in .check input { margin: 0; }
+
+/* the dynamics page */
+.toolbar a.back { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.toolbar a.back:hover { color: var(--text); }
+.dyn-page { padding-bottom: 40px; }
+.dyn-page .muted { color: var(--muted); }
+.dyn-sticky { position: sticky; top: 39px; z-index: 2; background: var(--surface); border-bottom: 1px solid var(--line); }
+.dyn-readout { display: flex; flex-wrap: wrap; gap: 2px 18px; padding: 6px 20px; min-height: 28px; font-size: 12px;
+  font-variant-numeric: tabular-nums; }
+.dyn-readout b { font-weight: 600; }
+.dyn-section { padding: 14px 20px 4px; }
+.dyn-section h2 { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
+.dyn-sub h3 { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 550; color: var(--muted); margin: 6px 0 0 46px; }
+.dyn-sub h3 .sq, .dyn-readout .sq, .toolbar .key .sq { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.dyn-plot { display: block; cursor: crosshair; }
+.dyn-plot .grid { stroke: var(--line); stroke-width: 1; }
+.dyn-plot .axis0 { stroke: var(--line-strong); stroke-width: 1; }
+.dyn-plot .tick, .dyn-plot .axis-label { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.dyn-plot .end-label { fill: var(--text); font-size: 11px; }
+.dyn-plot .cursor { stroke: var(--text); stroke-width: 1; opacity: .5; pointer-events: none; }
+.dyn-plot .dots circle { opacity: .22; }
+.dyn-plot .band { opacity: .16; }
+.dyn-plot .mean { fill: none; stroke-width: 2; stroke-linejoin: round; }
+.dyn-plot .mean-halo { fill: none; stroke: var(--surface); stroke-width: 5; stroke-linejoin: round; }
+.dyn-legend { display: flex; flex-wrap: wrap; gap: 2px 16px; margin: 2px 0 0 46px; font-size: 11px; color: var(--muted); }
+.dyn-legend .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); opacity: .6; }
+.dyn-legend .ln { width: 16px; height: 2px; background: var(--muted); }
+.dyn-legend .bd { width: 16px; height: 10px; border-radius: 2px; background: var(--muted); opacity: .25; }

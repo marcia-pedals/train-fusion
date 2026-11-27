@@ -2,20 +2,24 @@
 
 Two small HMMs, one on top of the other.
 
-## Layer 1: mode and speed, once per second (`states.py`, `emissions.py`, `infer.py`)
+## Layer 1: mode, regime and speed, once per second (`states.py`, `emissions.py`, `infer.py`)
 
-Hidden state = (mode, speed), 157 states:
+Hidden state = (mode, regime, speed), 613 states:
 
-- **moving** at one of 152 speeds, 0.25 … 38 m/s;
+- **moving** at one of 152 speeds, 0.25 … 38 m/s, in one of four **regimes**: braking,
+  coasting, or accelerating at part or at full traction (how the speed changed over the
+  last second);
 - or standing, in one of five modes visited in order: **stopped, doors not yet open →
   door-open chime → doors open → door-close chime → stopped, doors closed** → moving.
 
 Transitions (per second):
 
-- moving: speed changes by a step drawn from P(step | speed band), learned from the speed
-  labels; a step that reaches 0 means stopping;
+- moving: the next second's regime is drawn from P(regime | regime, speed), then the speed
+  changes by a step drawn from P(step | that regime, speed); a step that reaches 0 means
+  stopping. Both are tables per speed, learned from the speed labels (below);
 - standing: leave each mode with probability 1 / (its mean duration, learned); from
-  "stopped, doors closed" pull away with a positive step;
+  "stopped, doors closed" pull away accelerating (at part or full traction, as often as
+  the labels do), with a positive step;
 - rare escapes: pull away again without the doors having opened (1 %/s), doors re-open
   (0.2 %/s), and from *any* state straight into the door-open chime (10⁻⁶/s). The last one
   is what lets a chime override a wrong belief.
@@ -41,6 +45,22 @@ Measurements, all conditionally independent given the state:
 The Gaussian level terms are raised to a power < 1 (1 ÷ the autocorrelation time of their
 residuals, learned): an HMM takes successive seconds as independent evidence, and a loud
 stretch of track is not thirty independent reports of speed.
+
+The regime is what gives the dynamics a memory. Without it every second's step was drawn
+afresh, so a train braking for a stop could turn into one accelerating at full traction
+for nothing; a single measurement that favoured a higher speed for a while (a tonal sound
+read as the motor tone, with the phone being handled and the other sensors off) could pull
+it there. In the labels a train goes from braking to accelerating, or back, only through
+some seconds of coasting, and below line speed it hardly coasts: switching regime is rare,
+and switching straight from braking to traction never happens. The learned tables say so,
+and such paths now cost what they should.
+
+Accelerating comes in two kinds, so it is two regimes. Full traction is a narrow curve (about
+1 m/s² up to 12 m/s, falling to 0.36 m/s² at line speed); part traction runs below it (about
+0.65 m/s² at low speeds, 0.15 m/s² under the curve higher up). Full traction is very sticky;
+part traction is mostly the build-up to it at low speed and the easing off near line speed,
+and a coast goes into part traction, hardly ever straight into full. The viewer's dynamics
+page draws all of it.
 
 Inference is exact: forward-backward for posteriors (`v`, `mode_p`), the forward pass alone
 for what a live filter would say (`v_filt`), Viterbi for one consistent sequence (stops are
@@ -105,7 +125,28 @@ would lift both conditions at ~10⁵ states; nothing in the data so far asks for
 ## Fitting (`fit.py`)
 
 Everything is counted or averaged from labelled seconds: no gradient descent, no
-hyper-parameter search. Every block has a prior worth a few pseudo-observations, so a
+hyper-parameter search (one small EM, below).
+
+The dynamics: each labelled second gets a regime from the labelled speed change over the
+5 s around it (beyond ±0.15 m/s²: braking or accelerating; within: coasting), and the
+accelerating seconds are split into part and full traction by a two-component Gaussian
+mixture over that acceleration, whose means, sds and shares vary with speed (EM, each step
+kernel-smoothed over speed). Then, per regime and at every speed of the grid, each speed
+borrows from its neighbours through a Gaussian kernel whose width is the narrowest that
+holds 300 labelled seconds (the nearest-neighbour bandwidth rule): about 1 m/s where data
+is plentiful, up to 10 m/s where it is scarce (coasting below line speed, part traction
+above 20 m/s).
+
+- The step tables are centred on a local-linear fit of the mean speed change (a line
+  through the nearby seconds, weighted by the kernel, read off at that speed), held flat
+  past the speeds where the regime's data runs out; only their shape, each second's
+  deviation from the centre, is pooled from the neighbours. Simply counting the nearby
+  steps flattened the curves wherever the kernel was wide (full traction read 0.95 m/s²
+  at low speed instead of 1.03).
+- The switching tables are kernel-weighted counts of the next second's regime.
+
+A Dirichlet prior of 10 pseudo-seconds of the regime's data at any speed fills in what
+the kernel can't. Every block has a prior worth a few pseudo-observations, so a
 training set with no resting phone, or no hand-held one, still gives a complete model.
 `params/all.json` (fitted on every labelled ride) is the whole fitted model, readable, and
 checked in. The leave-one-out fits are named after recordings, so they go to

@@ -6,13 +6,16 @@
     p_visit            how likely the chain was in a set of states at least once in a window
     viterbi            the single most probable state sequence
 
-`trans(t)` returns the [N, N] matrix for the step from frame t to t+1 (rows: from).
-Nothing here knows what the states mean.
+`trans(t)` returns the [N, N] matrix for the step from frame t to t+1 (rows: from), dense
+or a scipy.sparse array: the train's is almost all zeros (a moving state reaches ~50 of
+600), and kept in compressed-column form (csc_array) it makes every step cost what its
+nonzeros do. Nothing here knows what the states mean.
 """
 
 from dataclasses import dataclass
 
 import numpy as np
+from scipy import sparse
 
 
 @dataclass
@@ -97,15 +100,34 @@ def p_visit(m: Messages, log_b: np.ndarray, trans, states: np.ndarray, t0: int, 
     return float((a_yes * w).sum()), float((a_no * w).sum())
 
 
+def _best_into(d: np.ndarray, A) -> tuple[np.ndarray, np.ndarray]:
+    """For every state j: max over i of d[i] + log A[i, j], and the i that gives it."""
+    if not sparse.issparse(A):
+        m = d[:, None] + np.log(A)
+        i = np.argmax(m, axis=0)
+        return m[i, np.arange(len(d))], i
+    A = sparse.csc_array(A)  # column j's predecessors are indices[indptr[j]:indptr[j + 1]]
+    vals = d[A.indices] + np.log(A.data)
+    starts, n = A.indptr[:-1], np.diff(A.indptr)
+    empty = n == 0
+    s = np.minimum(starts, max(len(vals) - 1, 0))
+    best = np.maximum.reduceat(vals, s) if len(vals) else np.full(len(d), -np.inf)
+    best[empty] = -np.inf
+    # the first position in each column holding its maximum
+    pos = np.where(vals == np.repeat(best, n), np.arange(len(vals)), len(vals))
+    first = np.minimum.reduceat(pos, s) if len(vals) else np.zeros(len(d), int)
+    i = np.where(empty, 0, A.indices[np.minimum(first, len(vals) - 1)])
+    return best, i
+
+
 def viterbi(log_b: np.ndarray, trans, prior: np.ndarray) -> np.ndarray:
     T, N = log_b.shape
     with np.errstate(divide="ignore"):
         d = np.log(prior) + log_b[0]
         back = np.zeros((T, N), dtype=np.int32)
         for t in range(1, T):
-            m = d[:, None] + np.log(trans(t - 1))
-            back[t] = np.argmax(m, axis=0)
-            d = m[back[t], np.arange(N)] + log_b[t]
+            best, back[t] = _best_into(d, trans(t - 1))
+            d = best + log_b[t]
     path = np.zeros(T, dtype=int)
     path[-1] = int(np.argmax(d))
     for t in range(T - 1, 0, -1):

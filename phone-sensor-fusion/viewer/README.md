@@ -1,6 +1,6 @@
 # Viewer
 
-A local web app over what the pipeline writes. Two pages:
+A local web app over what the pipeline writes. Three pages:
 
 - **Results** (`#/results?run=&vs=`): the evaluation's tables (`../model/evaluate.py`,
   `../model/schemas.py`), one ride or one leg per row, to search and sort; "Columns" picks
@@ -20,7 +20,8 @@ A local web app over what the pipeline writes. Two pages:
   curve the model expects them on (grey: at the labelled speed ± sd; dashed: at the model's
   speed; the measured line faint where the model doesn't use it); the filtered and smoothed beliefs over speed (m/s) and the most likely path's speed; mode
   (labelled, filtered, smoothed, and the most likely path, whose entries into the door-open
-  chime are the localiser's door openings); and the live
+  chime are the localiser's door openings); regime (braking, coasting, part or full traction: filtered,
+  smoothed, and the most likely path's); and the live
   localiser's probability for the truth and for its own best guess, with the confidently
   wrong stretches in red. Each track can be switched off in the toolbar, one by one, by
   group (click its name), alone (⌥-click), or by preset; which are off is remembered and
@@ -33,6 +34,14 @@ A local web app over what the pipeline writes. Two pages:
   "Hide identifying info" (remembered) leaves nothing on the page about the ride beyond the
   section in view: no date or first and last stations, no whole-ride strip, and times
   counted from the view's left edge (so the view reads 0:00–its length). The address still has the recording id. The address keeps the view and cursor.
+
+- **Train dynamics** (`#/dynamics?run=`, not linked from anywhere yet): the dynamics the run
+  learned (`../model/dynamics_view.py`), fitted on every labelled ride. Acceleration against
+  speed, with every labelled second as a dot in its regime's colour and each regime's learned
+  mean and middle 50% over them; how likely each regime is to switch to each other, per second, on a
+  log scale; and how wide a kernel each speed's tables were smoothed with. Pointing at any
+  plot puts a cursor at that speed on all of them and reads every table there in the row
+  above. Runs from before the current dynamics have none to show.
 
 React + TypeScript, built and served by Vite. Local only: what it shows names recordings,
 so it is never built for or deployed anywhere.
@@ -61,6 +70,7 @@ finishes.
   last stations, from the recording id and the labelled legs).
 - `src/components/Tooltip.tsx`: the app's tooltip; give any element a `data-tip` (not a
   `title`).
+- `src/dynamics/DynamicsPage.tsx`: the dynamics page (SVG).
 - `src/results/`: the page, its table (TanStack Table: sorting), the column list
   (`columns.ts`: header, format, and when a value shows amber or red) and the menu that
   hides columns (`ColumnPicker.tsx`).

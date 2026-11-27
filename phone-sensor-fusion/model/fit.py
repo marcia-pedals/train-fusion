@@ -11,7 +11,9 @@ the training recordings. Output: one JSON-able dict (written to params/all.json,
                state for vib), with a weight < 1 that discounts the frame-to-frame
                correlation of their residuals (an HMM assumes there is none)
   accel        sd of along-track acceleration around the labelled dv/dt
-  dynamics     P(speed change per second | speed band)
+  dynamics     per regime (braking, coasting, accelerating at part or at full traction)
+               and per speed: P(speed change over the next second), P(next second's
+               regime); P(regime | pulling away)
   dwell        mean time spent in each stopped mode
 
 Every block has a prior (a few pseudo-observations of a sensible default), so a training
@@ -31,8 +33,25 @@ CHIME_EDGES = [0.15, 0.7]  # measurement (fraction of the second) -> 3 categorie
 # outside a chime, and we'd rather believe that than the 1/N a count of one would claim
 CHIME_PSEUDO = 0.05
 LEVEL_V_KNOTS = np.array([0.0, 1.5, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0])  # m/s
-DYN_V_EDGES = np.array([3.0, 8.0, 15.0, 25.0, 32.0])
 DYN_MAX_STEP = 6  # speed change per frame in units of DV: +-1.5 m/s^2
+# regimes: the labelled speed change over 2 * REGIME_HALF + 1 s against +-A_COAST. Traction
+# never gives less than ~0.35 m/s^2 and braking rarely less than ~0.2; coasting (line speed,
+# drag) stays within ~0.1
+REGIME_HALF = 2
+A_COAST = 0.15  # m/s^2
+# dynamics tables per speed, smoothed over speed (kernel_weights()). A table over 13 steps
+# whose common entries (p ~ 0.1-0.3) should be known to ~+-0.03 needs ~200-300 independent
+# seconds; neighbouring seconds of one ride aren't independent, so this errs high
+DYN_N_EFF = 300.0  # seconds of data each speed's table should rest on
+DYN_H_MIN, DYN_H_MAX = 0.25, 10.0  # m/s: kernel sd limits (one grid step; most of a speed range)
+DYN_H_GRID = np.geomspace(DYN_H_MIN, DYN_H_MAX, 60)
+DYN_PRIOR = 10.0  # pseudo-seconds of the regime's distribution over all speeds
+CLAMP_N = 20  # seconds: a step table's centre isn't extended past the speeds with fewer than this beyond them
+# the part / full traction mixture (fit_split())
+SPLIT_GRID = np.arange(0.0, 38.01, 0.5)  # m/s: where its parameters are kept
+SPLIT_H = 1.5  # m/s: kernel sd of the M step
+SPLIT_SD_MIN = 0.03  # m/s^2
+SPLIT_ITER = 200
 DWELL_PRIOR_S = {PRE: 2.0, OPEN_CHIME: 6.0, OPEN: 20.0, CLOSE_CHIME: 8.0, POST: 5.0}
 DWELL_PRIOR_WEIGHT = 2.0
 ACCEL_PRIOR = (0.15, 50.0)  # sd m/s^2, weight in frames
@@ -105,21 +124,216 @@ def fit_chime(xs, labels, mode) -> dict:
     return out
 
 
-def fit_dynamics(labels: list[FrameLabels]) -> dict:
-    """P(dv per frame | speed band), as a table over steps of DV. Learned from pairs of
-    consecutive, confidently labelled frames of which at least one is moving."""
-    nb = len(DYN_V_EDGES) + 1
-    counts = np.zeros((nb, 2 * DYN_MAX_STEP + 1))
+def regime_accel(v: np.ndarray) -> np.ndarray:
+    """Per frame t, the speed change over the 2 * REGIME_HALF + 1 s centred on the step
+    t -> t + 1, m/s^2 (nan where it can't be had). One-second differences of the labels are
+    too jittery to classify on their own; this window still resolves a coast of a few seconds."""
+    h = REGIME_HALF
+    a = np.full(len(v), np.nan)
+    i = np.arange(h, len(v) - h - 1)
+    a[i] = (v[i + h + 1] - v[i - h]) / ((2 * h + 1) * states.DT)
+    return a
+
+
+def _coarse_regimes(v: np.ndarray, confident: np.ndarray) -> np.ndarray:
+    """Per frame t, braking (states.BRAKING), coasting (COASTING) or accelerating (ACCEL_PART,
+    before regime_labels() splits it) for the step from t to t + 1: regime_accel() against
+    +-A_COAST. -1 where the labels can't tell."""
+    a = regime_accel(np.where(confident, v, np.nan))
+    out = np.full(len(v), -1)
+    out[a < -A_COAST] = states.BRAKING
+    out[np.abs(a) <= A_COAST] = states.COASTING
+    out[a > A_COAST] = states.ACCEL_PART
+    return out
+
+
+def fit_split(labels: list[FrameLabels]) -> dict:
+    """Accelerating comes in two kinds: full traction, a narrow curve (~1 m/s^2 up to 12 m/s,
+    falling to ~0.36 at line speed), and part traction below it (~0.65 m/s^2 at low speeds,
+    ~0.15 below the curve higher up). A two-component Gaussian mixture over the accelerating
+    seconds' regime_accel(), whose means, sds and shares vary with speed: EM, each M step
+    kernel-smoothed over speed (sd SPLIT_H), started from the 35th and 85th percentiles.
+    Returns its parameters on SPLIT_GRID, per component (part, full)."""
+    vs, as_ = [], []
     for l in labels:
-        ok = l.confident[:-1] & l.confident[1:] & ((l.v[:-1] > 0) | (l.v[1:] > 0))
-        v0, v1 = l.v[:-1][ok], l.v[1:][ok]
-        step = np.clip(np.round((v1 - v0) / states.DV), -DYN_MAX_STEP, DYN_MAX_STEP).astype(int)
-        np.add.at(counts, (np.digitize(v0, DYN_V_EDGES), step + DYN_MAX_STEP), 1)
-    # smooth: neighbouring steps share counts, and every step keeps a little mass
-    k = np.array([0.25, 0.5, 0.25])
-    counts = np.apply_along_axis(lambda r: np.convolve(r, k, mode="same"), 1, counts) + 0.5
-    return {"v_edges": DYN_V_EDGES.tolist(), "max_step": DYN_MAX_STEP,
-            "p_step": (counts / counts.sum(axis=1, keepdims=True)).round(5).tolist()}
+        c = l.confident & np.isfinite(l.v)
+        g, a = _coarse_regimes(l.v, l.confident), regime_accel(l.v)
+        m = (g == states.ACCEL_PART) & np.isfinite(a) & c
+        vs.append(l.v[m]); as_.append(a[m])
+    V, A = np.concatenate(vs), np.concatenate(as_)
+    W = np.exp(-0.5 * ((SPLIT_GRID[:, None] - V[None, :]) / SPLIT_H) ** 2)
+    mu = np.zeros((2, len(SPLIT_GRID)))
+    for k, q in ((0, 35), (1, 85)):
+        for j, u in enumerate(SPLIT_GRID):
+            near = np.abs(V - u) < 2
+            mu[k, j] = np.percentile(A[near], q) if near.sum() > 5 else np.nan
+    mu = np.array([np.interp(SPLIT_GRID, SPLIT_GRID[np.isfinite(m)], m[np.isfinite(m)]) for m in mu])
+    sd, share = np.full_like(mu, 0.1), np.full_like(mu, 0.5)
+    for _ in range(SPLIT_ITER):
+        R = _split_resp(V, A, mu, sd, share)
+        for k in range(2):
+            w = W * R[k][None, :]
+            n = w.sum(axis=1)
+            mu[k] = (w @ A) / n
+            sd[k] = np.sqrt(np.maximum((w @ A**2) / n - mu[k] ** 2, SPLIT_SD_MIN**2))
+            share[k] = n / W.sum(axis=1)
+    return {"speeds": SPLIT_GRID.tolist(), "mean": mu.round(4).tolist(), "sd": sd.round(4).tolist(),
+            "share": share.round(4).tolist()}
+
+
+def _split_resp(V, A, mu, sd, share) -> np.ndarray:
+    """[2, n] P(part, full traction | speed, acceleration)."""
+    at = lambda x: np.array([np.interp(V, SPLIT_GRID, row) for row in x])
+    m, s, p = at(mu), at(sd), at(share)
+    lik = p * np.exp(-0.5 * ((A - m) / s) ** 2) / s
+    return lik / np.maximum(lik.sum(axis=0, keepdims=True), 1e-300)
+
+
+def regime_labels(split: dict):
+    """A function (v, confident) -> per frame t, the regime (states.REGIMES) of the step from
+    t to t + 1, -1 where the labels can't tell: _coarse_regimes(), with accelerating split
+    into part and full traction by the mixture fit_split() returned."""
+    mu, sd, share = (np.asarray(split[k]) for k in ("mean", "sd", "share"))
+
+    def label(v: np.ndarray, confident: np.ndarray) -> np.ndarray:
+        g = _coarse_regimes(v, confident)
+        acc = np.flatnonzero(g == states.ACCEL_PART)
+        if len(acc):
+            R = _split_resp(v[acc], regime_accel(v)[acc], mu, sd, share)
+            g[acc] = np.where(R[1] > 0.5, states.ACCEL_FULL, states.ACCEL_PART)
+        return g
+    return label
+
+
+def kernel_weights(x: np.ndarray, grid: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """([len(grid), len(x)] kernel weight of each observation at each grid speed, [len(grid)]
+    the kernel sd): per speed the narrowest Gaussian (from DYN_H_MIN up, at most DYN_H_MAX)
+    that holds DYN_N_EFF seconds of data, the nearest-neighbour bandwidth rule. Where data
+    is dense, a table describes its own speed; where it is sparse, it pools as widely as it
+    must for its probabilities to be about as well determined everywhere."""
+    d = grid[:, None] - x[None, :]
+    h = np.full(len(grid), DYN_H_MAX)
+    for hh in DYN_H_GRID[::-1]:  # narrowest that still holds enough
+        n = np.exp(-0.5 * (d / hh) ** 2).sum(axis=1)
+        h = np.where(n >= DYN_N_EFF, hh, h)
+    return np.exp(-0.5 * (d / h[:, None]) ** 2), h
+
+
+def _switch_table(x: np.ndarray, y: np.ndarray, grid: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """P(next regime | speed) at every speed of `grid`, from observations (speed x, next
+    regime y): kernel-weighted counts (kernel_weights()), plus a Dirichlet prior of
+    DYN_PRIOR pseudo-seconds distributed like all the observations at any speed, which is
+    what a speed the kernel can't collect enough for falls back on.
+    Returns ([len(grid), N_R] probabilities, [len(grid)] kernel sd)."""
+    pooled = np.bincount(y, minlength=states.N_R) + 0.5
+    pooled = pooled / pooled.sum()
+    w, h = kernel_weights(x, grid)
+    counts = w @ np.eye(states.N_R)[y] if len(y) else np.zeros((len(grid), states.N_R))
+    return (counts + DYN_PRIOR * pooled) / (counts.sum(axis=1, keepdims=True) + DYN_PRIOR), h
+
+
+def centred_steps(obs: np.ndarray, grid: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """P(step | speed) at every speed of `grid` from one regime's observations (speed, step,
+    speed change in m/s per second; dynamics_observations()), as ([len(grid), steps],
+    [len(grid)] kernel sd).
+
+    Simply counting the steps of nearby speeds would flatten a sloping curve wherever the
+    kernel has to be wide (few seconds of the regime there), pulling the table towards the
+    regime's values at other speeds. Instead the kernel (kernel_weights()) is used twice:
+      centre  at each speed, the local-linear fit of the speed change (weighted least squares
+              on a line through the speed, its value there), which follows a sloping curve.
+              Not extended past the data: beyond the speeds with fewer than CLAMP_N of the
+              regime's seconds outside them, held at its value there (a straight line read
+              off where all the data is on one side would just continue the trend);
+      shape   each observation's deviation from the centre at its own speed, pooled with the
+              same weights and placed around the centre at this speed. Each value is shared
+              between the two steps it falls between, in proportion.
+    Plus DYN_PRIOR pseudo-seconds of all the regime's deviations, equally weighted, around
+    the same centre."""
+    M, DV = DYN_MAX_STEP, states.DV
+    x, a = obs[:, 0], obs[:, 2]
+    w, h = kernel_weights(x, grid)
+    d = x[None, :] - grid[:, None]
+    s0, s1, s2 = w.sum(1), (w * d).sum(1), (w * d * d).sum(1)
+    t0, t1 = w @ a, (w * d) @ a
+    det = s0 * s2 - s1**2
+    flat = det <= 1e-9 * np.maximum(s0 * s2, 1e-300)
+    centre = np.where(flat, t0 / np.maximum(s0, 1e-300), (s2 * t0 - s1 * t1) / np.where(flat, 1.0, det))
+    xs = np.sort(x)
+    lo, hi = xs[min(CLAMP_N, len(xs) - 1)], xs[max(len(xs) - 1 - CLAMP_N, 0)]
+    centre = np.interp(np.clip(grid, lo, hi), grid, centre)
+    e = a - np.interp(x, grid, centre)
+
+    def binned(weights: np.ndarray) -> np.ndarray:
+        pos = np.clip((centre[:, None] + e[None, :]) / DV + M, 0, 2 * M)
+        lo = np.minimum(np.floor(pos).astype(int), 2 * M - 1)
+        frac = pos - lo
+        out = np.zeros((len(grid), 2 * M + 1))
+        rows = np.broadcast_to(np.arange(len(grid))[:, None], pos.shape)
+        np.add.at(out, (rows, lo), weights * (1 - frac))
+        np.add.at(out, (rows, lo + 1), weights * frac)
+        return out
+
+    counts = binned(w)
+    prior = binned(np.full(w.shape, 1.0 / len(x))) + 1e-4
+    prior /= prior.sum(axis=1, keepdims=True)
+    return (counts + DYN_PRIOR * prior) / (counts.sum(axis=1, keepdims=True) + DYN_PRIOR), h
+
+
+def fit_dynamics(labels: list[FrameLabels]) -> dict:
+    """Per regime (states.REGIMES) and per speed (the grid, and 0 for pulling away):
+
+      split     the part / full traction mixture the regimes were labelled with (fit_split())
+      p_step    P(speed change over the next second, in steps of DV | regime of that
+                second, speed) (centred_steps())
+      p_regime  P(regime of the next second | regime of the last one, speed) (_switch_table())
+      p_launch  P(regime | pulling away from a stand)
+      bandwidth the kernel sd of each speed's tables; n: seconds behind each regime's tables
+
+    From consecutive, confidently labelled frames of which at least one is moving, each
+    step labelled by regime_labels()."""
+    grid = np.r_[0.0, states.V_MOVING]
+    split = fit_split(labels)
+    step_obs, switch_obs = dynamics_observations(labels, regime_labels(split))
+    p_step, p_regime, h_step, h_regime, n = [], [], [], [], []
+    for r in range(states.N_R):
+        so, wo = step_obs[r], switch_obs[r]
+        ps, hs = centred_steps(so, grid)
+        pr, hr = _switch_table(wo[:, 0], wo[:, 1].astype(int), grid)
+        p_step.append(ps.round(7).tolist()); p_regime.append(pr.round(7).tolist())
+        h_step.append(hs.tolist()); h_regime.append(hr.tolist())
+        n.append({"steps": len(so), "switches": int((wo[:, 1] != r).sum()), "of": len(wo)})
+    launches = np.array([np.sum((so[:, 0] == 0) & (so[:, 1] > 0)) for so in step_obs]) + 0.5
+    return {"max_step": DYN_MAX_STEP, "a_coast": A_COAST, "split": split, "p_step": p_step, "p_regime": p_regime,
+            "p_launch": (launches / launches.sum()).round(5).tolist(),
+            "bandwidth": {"step": h_step, "regime": h_regime}, "n": n}
+
+
+def dynamics_observations(labels: list[FrameLabels], label_regimes):
+    """What fit_dynamics() counts, per regime, with the regimes `label_regimes` gives
+    (regime_labels()):
+      steps     [n, 3]: speed, speed change over the next second in steps of DV (clipped to
+                +-DYN_MAX_STEP), and the same unrounded, in m/s per second
+      switches  [n, 2]: speed, the regime of the next second
+    From consecutive, confidently labelled frames of which at least one is moving."""
+    M = DYN_MAX_STEP
+    step_obs = [[] for _ in range(states.N_R)]
+    switch_obs = [[] for _ in range(states.N_R)]
+    for l in labels:
+        v, c = np.nan_to_num(l.v), l.confident & np.isfinite(l.v)
+        g = label_regimes(l.v, l.confident)
+        ok = c[:-1] & c[1:] & ((v[:-1] > 0) | (v[1:] > 0)) & (g[:-1] >= 0)
+        dv = (v[1:] - v[:-1]) / states.DT
+        step = np.clip(np.round(dv * states.DT / states.DV), -M, M)
+        for r in range(states.N_R):
+            m = ok & (g[:-1] == r)
+            step_obs[r].append(np.c_[v[:-1][m], step[m], dv[m]])
+        # the regime the train was in at t (that of the step into t) and the one it takes next
+        sw = c[1:-1] & (v[1:-1] > 0) & (g[:-2] >= 0) & (g[1:-1] >= 0)
+        for r in range(states.N_R):
+            m = sw & (g[:-2] == r)
+            switch_obs[r].append(np.c_[v[1:-1][m], g[1:-1][m]])
+    return [np.concatenate(x) for x in step_obs], [np.concatenate(x) for x in switch_obs]
 
 
 def fit_dwell(labels: list[FrameLabels]) -> dict:

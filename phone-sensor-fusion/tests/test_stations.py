@@ -29,7 +29,7 @@ def _ride(stops, false_at):
     v, mode = np.array(v), np.array(mode)
     T = len(v)
     return tr, Result(v=v, v_sd=np.zeros(T), v_filt=v, mode_p=np.zeros((T, 6)), path_mode=mode,
-                      path_v=v, phone=np.zeros((T, 3)), loglik=0.0)
+                      path_v=v, path_regime=np.where(mode == MOVING, 1, -1), phone=np.zeros((T, 3)), loglik=0.0)
 
 
 def test_a_false_opening_is_found_and_does_not_lose_the_way():

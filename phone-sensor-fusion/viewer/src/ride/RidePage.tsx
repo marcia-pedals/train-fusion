@@ -77,6 +77,7 @@ const GROUPS = {
   levels: "Levels",
   belief: "Speed",
   mode: "Mode",
+  regime: "Regime",
   loc: "Localiser",
 } as const;
 type GroupKey = keyof typeof GROUPS;
@@ -488,6 +489,14 @@ function useTracks(ride: Ride, tiles: Record<string, Tiles>, view: View,
       <Key color={DOOR_CLOSE}>closing starts</Key><Key color={DOOR_CLOSE} dashed>closing ends</Key>
     </>;
     const modeLegend = <span className="legend-row">{MODE_SHORT.map((name, k) => <Key key={name} color={MODE_COLORS[k]} square>{name}</Key>)}</span>;
+    // standing, then the regimes in model/states.py's order, coloured as on the dynamics page
+    const regimeShort = ["standing", ...(meta.regime_names ?? [])];
+    const regimeColors = [cssVar("--line-strong"), cssVar("--reg-0"), cssVar("--reg-1"), cssVar("--reg-3"), cssVar("--reg-2")];
+    const regimeLegend = <span className="legend-row">{regimeShort.map((name, k) => <Key key={name} color={regimeColors[k]} square>{name}</Key>)}</span>;
+    const regimeStack = (key: string, name: string, short: string, ps: number[][]): Track => ({
+      key, name, short, group: "regime", height: 44, below: regimeLegend, sharedBelow: true,
+      value: (i) => { const k = argmax(ps[i]); return `${regimeShort[k]} ${ps[i][k].toFixed(2)}`; },
+      draw: (ctx, w, h) => drawStack(ctx, w, h, view, ps, regimeColors)});
     const tracksOut: Track[] = [
       {key: "audio", name: "Audio", short: "Audio", group: "spectra", height: 150, legend: doorLegend, sharedLegend: true,
         draw: (ctx, w, h) => {
@@ -531,6 +540,13 @@ function useTracks(ride: Ride, tiles: Record<string, Tiles>, view: View,
         value: (i: number) => modeShort[s.mode_path![i]],
         below: modeLegend, sharedBelow: true,
         draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => drawStrip(ctx, w, h, view, s.mode_path!, MODE_COLORS)} satisfies Track] : []),
+      ...(s.regime_filt && s.regime_smooth && s.regime_path ? [
+        regimeStack("regime-filt", "Regime, filtered", "Filt", s.regime_filt),
+        regimeStack("regime-smooth", "Regime, smoothed", "Smooth", s.regime_smooth),
+        {key: "regime-path", name: "Regime, most likely path", short: "Path", group: "regime", height: 36,
+          value: (i: number) => regimeShort[s.regime_path![i]], below: regimeLegend, sharedBelow: true,
+          draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => drawStrip(ctx, w, h, view, s.regime_path!, regimeColors)} satisfies Track,
+      ] : []),
       {key: "loc", name: "Localiser, live", short: "Localiser", group: "loc", height: 80,
         value: (i) => <>
           <Key color={colors.good}>P(truth) <span className="v">{s.loc_p_true[i].toFixed(2)}</span></Key>
