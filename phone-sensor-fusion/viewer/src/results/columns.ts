@@ -6,7 +6,7 @@ import {rideHref} from "../lib/hash";
 import {stationCode} from "../lib/stations";
 
 /** A row as the page shows it: the table's row plus how to name its ride (lib/rides.ts) and the run it is from. */
-export type WithRide<R> = R & {ride_date: string; ride_date_detail: string; ride_endpoints: string; ride_endpoints_detail: string;
+export type WithRide<R> = R & {ride_date: string; ride_endpoints: string;
   run_name: string};
 export type LegRow = WithRide<Legs>;
 export type RideRow = WithRide<Rides>;
@@ -61,11 +61,10 @@ const LEG = "Leg";
 /** The ride's date, sorted by when it started; and its first and last stations. */
 const dateColumn = <R extends WithRide<{ride: string}>>(): Column<R> => ({
   key: "ride_date" as keyof R & string, header: "Date", group: RIDE, align: "left",
-  tip: (r) => r.ride_date_detail, sortBy: (r) => r.ride,
+  sortBy: (r) => r.ride,
 });
 const endpointsColumn = <R extends WithRide<{ride: string}>>(): Column<R> => ({
   key: "ride_endpoints" as keyof R & string, header: "Endpoints", group: RIDE, align: "left",
-  tip: (r) => r.ride_endpoints_detail,
 });
 
 /** The ride page: the whole ride, or a leg with a margin of a tenth of it (at least 15 s) either side. */

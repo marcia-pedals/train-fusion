@@ -3,8 +3,9 @@
 A local web app over what the pipeline writes. Two pages:
 
 - **Results** (`#/results?run=&vs=`): the evaluation's tables (`../model/evaluate.py`,
-  `../model/schemas.py`), one ride or one leg per row, to search and sort. The last column
-  links to the ride page, for the whole ride or zoomed to the leg. Every pipeline run is
+  `../model/schemas.py`), one ride or one leg per row, to search and sort; "Columns" picks
+  which columns show (remembered per table). A row links to the ride page, for the whole
+  ride or zoomed to the leg. Every pipeline run is
   kept (`../pipeline.py`); the page shows the newest unless "Run" picks another. Pick a baseline under "vs" and each
   metric also shows its value there, green where this run is better, red where worse, grey
   where the change is too small to count (`diff` in `src/results/columns.ts` says how much
@@ -13,7 +14,9 @@ A local web app over what the pipeline writes. Two pages:
 - **Ride** (`#/ride/<id>?run=&t0=&t1=&t=`): one ride in detail, as one run's inference saw
   it (`../model/ride_view.py` writes it; by default the newest run's), on one time axis: the audio and accelerometer spectrograms with the labelled door
   chimes as lines (green opening, red closing; solid where the chime starts, dashed where
-  it ends); the filtered and smoothed beliefs over speed (m/s); mode (labelled, filtered, smoothed); and the live
+  it ends); the filtered and smoothed beliefs over speed (m/s) and the most likely path's speed; mode
+  (labelled, filtered, smoothed, and the most likely path, whose entries into the door-open
+  chime are the localiser's door openings); and the live
   localiser's probability for the truth and for its own best guess, with the confidently
   wrong stretches in red. The left column gives each track's value at the mouse, or at
   the cursor. Zoom: pinch, ⌘/ctrl + scroll, + and −; pan: drag, scroll sideways, or the
@@ -51,6 +54,7 @@ finishes.
   last stations, from the recording id and the labelled legs).
 - `src/components/Tooltip.tsx`: the app's tooltip; give any element a `data-tip` (not a
   `title`).
-- `src/results/`: the page, its table (TanStack Table: sorting) and the column list
-  (`columns.ts`: header, format, and when a value shows amber or red).
+- `src/results/`: the page, its table (TanStack Table: sorting), the column list
+  (`columns.ts`: header, format, and when a value shows amber or red) and the menu that
+  hides columns (`ColumnPicker.tsx`).
 - `src/generated/`: written by `python -m model.schemas`, not checked in.

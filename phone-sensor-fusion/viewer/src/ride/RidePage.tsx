@@ -49,7 +49,7 @@ export default function RidePage({id}: {id: string}) {
     return <div className="status error"><p>Couldn't load this ride.</p><pre>{ride.error}</pre>
       <p>Run <code>python -m pipeline</code> in <code>phone-sensor-fusion/</code> first. <a href="#/results">Back to the results</a></p></div>;
   }
-  return <RideView ride={ride.value} />;
+  return <RideView key={ride.value.meta.id} ride={ride.value} />;  // a fresh view (and audio element) per ride
 }
 
 interface Track {
@@ -114,7 +114,10 @@ function RideView({ride}: {ride: Ride}) {
   const axis = useAxis(meta, view, hide);
 
   // ---- audio ----
+  // The audio element gets its file only when first played: loading it on opening the page
+  // makes the system hand the audio output (headphones) to the page.
   const audio = useRef<HTMLAudioElement>(null);
+  const audioUrl = `/audio/${encodeURIComponent(meta.id)}/${encodeURIComponent(meta.audio.file)}`;
   const seek = useCallback((t: number) => {
     setCursor(t);
     const a = audio.current;
@@ -126,11 +129,18 @@ function RideView({ride}: {ride: Ride}) {
     if (a.paused) {
       const from = cursor ?? Math.max(viewRef.current.t0, 0);
       setCursor(from);
-      a.currentTime = Math.max(from - meta.audio.t0, 0);
-      a.playbackRate = rate;
-      a.play().catch(() => setPlaying(false));
+      const start = () => {
+        a.currentTime = Math.max(from - meta.audio.t0, 0);
+        a.playbackRate = rate;
+        a.play().catch(() => setPlaying(false));
+      };
+      if (a.getAttribute("src")) start();
+      else {
+        a.addEventListener("loadedmetadata", start, {once: true});
+        a.src = audioUrl;
+      }
     } else a.pause();
-  }, [cursor, rate, meta.audio.t0]);
+  }, [cursor, rate, meta.audio.t0, audioUrl]);
   useEffect(() => { if (audio.current) audio.current.playbackRate = rate; }, [rate]);
   const clearCursor = () => { audio.current?.pause(); setCursor(null); };
   useEffect(() => {
@@ -277,7 +287,7 @@ function RideView({ride}: {ride: Ride}) {
           </button>
         </div>
       </div>
-      <audio ref={audio} src={`/audio/${encodeURIComponent(meta.id)}/${encodeURIComponent(meta.audio.file)}`} preload="auto"
+      <audio ref={audio} preload="none"
              onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} />
 
       <Overview meta={meta} view={view} hidden={hide} onMove={(t) => setView(clampView({t0: t - (view.t1 - view.t0) / 2, t1: t + (view.t1 - view.t0) / 2}, T))} />
@@ -340,6 +350,13 @@ function useTracks(meta: RideMeta, tiles: Record<string, Tiles>, view: View): Tr
       const vs = Array.from({length: Math.floor(vMax / 10) + 1}, (_, k) => k * 10).filter((v) => y(v) >= 8);
       drawGrid(ctx, w, vs, y, unitOnTop(vs, "m/s"), colors.grid + "99", colors.text);
     };
+    const modeLegend = <span className="legend-row">{MODE_SHORT.map((name, k) => <Key key={name} color={MODE_COLORS[k]} square>{name}</Key>)}</span>;
+    // speed lanes drawn as lines: 0 at the bottom, vMax at the top
+    const ySpeed = (h: number) => (x: number) => h - 2 - (x / vMax) * (h - 4);
+    const speedAxis = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
+      const vs = Array.from({length: Math.floor(vMax / 10) + 1}, (_, k) => k * 10).filter((v) => ySpeed(h)(v) >= 8);
+      drawGrid(ctx, w, vs, ySpeed(h), unitOnTop(vs, "m/s"), colors.grid + "99", colors.text);
+    };
     const tracksOut: Track[] = [
       {key: "audio", name: "Audio", height: 150,
         legend: <>
@@ -363,6 +380,12 @@ function useTracks(meta: RideMeta, tiles: Record<string, Tiles>, view: View): Tr
       {key: "speed-smooth", name: "Speed belief, smoothed", height: 120,
         value: (i) => <Interval mean={s.v_smooth[i]} lo={s.v_smooth_lo[i]} hi={s.v_smooth_hi[i]} />,
         draw: (ctx, w, h) => { drawTiles(ctx, w, h, view, tiles.speedSmooth, beliefBins); beliefAxis(ctx, w, h); }},
+      ...(s.v_path ? [{key: "speed-path", name: "Speed, most likely path", height: 90,
+        value: (i: number) => <>{s.v_path![i].toFixed(1)} m/s</>,
+        draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => {
+          speedAxis(ctx, w, h);
+          drawLine(ctx, w, view, s.v_path!, ySpeed(h), {color: colors.smooth, width: 1.5});
+        }}] : []),
       {key: "mode-label", name: "Mode, labelled", height: 36, newGroup: true,
         value: (i) => (s.mode_label[i] >= 0 ? modeShort[s.mode_label[i]] : "–"),
         draw: (ctx, w, h) => drawStrip(ctx, w, h, view, s.mode_label, MODE_COLORS)},
@@ -371,8 +394,12 @@ function useTracks(meta: RideMeta, tiles: Record<string, Tiles>, view: View): Tr
         draw: (ctx, w, h) => drawStack(ctx, w, h, view, s.mode_filt, MODE_COLORS)},
       {key: "mode-smooth", name: "Mode, smoothed", height: 44,
         value: (i) => { const k = argmax(s.mode_smooth[i]); return `${modeShort[k]} ${s.mode_smooth[i][k].toFixed(2)}`; },
-        below: <span className="legend-row">{MODE_SHORT.map((name, k) => <Key key={name} color={MODE_COLORS[k]} square>{name}</Key>)}</span>,
+        below: s.mode_path ? undefined : modeLegend,
         draw: (ctx, w, h) => drawStack(ctx, w, h, view, s.mode_smooth, MODE_COLORS)},
+      ...(s.mode_path ? [{key: "mode-path", name: "Mode, most likely path", height: 36,
+        value: (i: number) => modeShort[s.mode_path![i]],
+        below: modeLegend,
+        draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => drawStrip(ctx, w, h, view, s.mode_path!, MODE_COLORS)}] : []),
       {key: "loc", name: "Localiser, live", height: 80, newGroup: true,
         value: (i) => <>
           <Key color={colors.good}>P(truth) <span className="v">{s.loc_p_true[i].toFixed(2)}</span></Key>
