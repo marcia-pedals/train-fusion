@@ -23,7 +23,7 @@ A local web app over what the pipeline writes. Three pages:
   chime, or into doors open from standing, are the localiser's door openings); regime (braking, coasting, part or full traction: filtered,
   smoothed, and the most likely path's); and the live
   localiser's probability for the truth and for its own best guess, with the confidently
-  wrong stretches in red, each labelled with its best guess there (station code, SB or NB). Each track can be switched off in the toolbar, one by one, by
+  wrong stretches in red, and its best guess (station code, SB or NB) written wherever it isn't the truth. Each track can be switched off in the toolbar, one by one, by
   group (click its name), alone (⌥-click), or by preset; which are off is remembered and
   kept in the address (`off`). The toolbar, with the whole-ride strip and the time axis
   with the stations, stays at the top as the tracks scroll. The left column gives each track's value at the mouse, or at

@@ -7,8 +7,8 @@ shared by every run, in data/phone-sensor-fusion/rides/<id>/:
   meta.json        per-second series (speed, modes, regimes (standing first, then
                    states.REGIMES), the most likely (Viterbi) path's mode, regime and
                    speed, the causal localiser's
-                   belief about the truth, and its best guess wherever that is
-                   confidently wrong), the labelled door events and stops, where the
+                   belief about the truth, and its best guess wherever that isn't the
+                   truth), the labelled door events and stops, where the
                    audio is, and how to read the binary files (spec and accel: in the shared folder)
   speed_filt.bin, speed_smooth.bin
                    the belief over speed per second, filtered and smoothed, uint8
@@ -73,8 +73,8 @@ def _over_regimes(post: np.ndarray) -> np.ndarray:
 
 
 def _wrong_guesses(wrong: np.ndarray, place: np.ndarray) -> list[dict]:
-    """The stretches where the causal localiser is confidently wrong, one per (station,
-    direction) it believes there: [t0, t1) and that guess."""
+    """The stretches where the causal localiser's best guess is not the truth (however
+    probable), one per (station, direction) it guesses there: [t0, t1) and that guess."""
     stations = trackmod.load().stations
     out = []
     for t in np.flatnonzero(wrong):
@@ -190,6 +190,6 @@ def export(rid: str, p: dict, res: Result, f: dict, lab: FrameLabels, stops: lis
             "phone": [int(k) for k in phone_now],
         },
         "loc_openings": [int(t) for t in trace["openings"]],
-        "loc_wrong_guesses": _wrong_guesses(trace["wrong"], trace["best_place"]),
+        "loc_wrong_guesses": _wrong_guesses(trace["best_wrong"], trace["best_place"]),
     }
     (out / "meta.json").write_text(json.dumps(meta, separators=(",", ":")))

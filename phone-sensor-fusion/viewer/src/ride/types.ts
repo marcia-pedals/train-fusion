@@ -46,8 +46,8 @@ export interface RideMeta {
     phone: number[];  // the most likely phone state (index into phone_states)
   };
   loc_openings: number[];
-  // where the live localiser is confidently wrong: [t0, t1) and its best guess there;
-  // absent in older runs
+  // where the live localiser's best guess is not the truth (however probable): [t0, t1)
+  // and that guess; absent in older runs
   loc_wrong_guesses?: {t0: number; t1: number; station: string; dir: "south" | "north"}[];
 }
 
