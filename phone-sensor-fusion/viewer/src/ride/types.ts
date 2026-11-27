@@ -25,6 +25,8 @@ export interface RideMeta {
     v_smooth_lo: number[]; v_smooth_hi: number[];
     v_label: (number | null)[]; v_label_confident: number[];
     mode_filt: number[][]; mode_smooth: number[][]; mode_label: number[];
+    mode_path?: number[];  // the most likely (Viterbi) path's mode; absent in older runs
+    v_path?: number[];  // the most likely path's speed, m/s; absent in older runs
     loc_p_true: number[]; loc_p_best: number[]; loc_wrong: number[];
   };
   loc_openings: number[];

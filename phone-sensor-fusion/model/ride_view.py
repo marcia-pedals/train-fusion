@@ -4,7 +4,8 @@ run's folder, <run>/rides/<id>/; the spectrograms, the same whatever the model, 
 shared by every run, in data/phone-sensor-fusion/rides/<id>/:
 
   <run>/rides/<id>/
-  meta.json        per-second series (speed, modes, the causal localiser's
+  meta.json        per-second series (speed, modes, the most likely (Viterbi) path's mode and
+                   speed, the causal localiser's
                    belief about the truth), the labelled door events and stops, where the
                    audio is, and how to read the binary files (spec and accel: in the shared folder)
   speed_filt.bin, speed_smooth.bin
@@ -129,6 +130,7 @@ def export(rid: str, res: Result, f: dict, lab: FrameLabels, stops: list[load.St
             "v_label": _r(lab.v, 2), "v_label_confident": [int(c) for c in lab.confident],
             "mode_filt": _r(res.mode_p_filt, 3), "mode_smooth": _r(res.mode_p, 3),
             "mode_label": [int(m) for m in lab.mode],
+            "mode_path": [int(m) for m in res.path_mode], "v_path": _r(res.path_v, 2),
             "loc_p_true": _r(trace["p_true"], 3), "loc_p_best": _r(trace["p_best"], 3),
             "loc_wrong": [int(w) for w in trace["wrong"]],
         },

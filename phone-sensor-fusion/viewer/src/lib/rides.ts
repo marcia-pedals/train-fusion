@@ -10,13 +10,10 @@ export function rideStart(id: string): Date | null {
 }
 
 const dateFmt = new Intl.DateTimeFormat("en-GB", {timeZone: TIME_ZONE, weekday: "short", day: "numeric", month: "short"});
-const fullFmt = new Intl.DateTimeFormat("en-GB", {timeZone: TIME_ZONE, dateStyle: "full", timeStyle: "short"});
 
 export interface RideInfo {
   date: string;  // "Sat 1 Mar"
-  dateDetail: string;  // "Saturday, 1 March 2025 at 04:00" and the recording id
   endpoints: string;  // "SFC→TAM"
-  endpointsDetail: string;  // "San Francisco 4th & King Street → Tamien"
 }
 
 /** Ride id -> how to show it, its endpoints being its first and last labelled stations. */
@@ -32,9 +29,7 @@ export function rideInfo(legs: {ride: string; from_station: string; to_station: 
     const t = rideStart(id);
     out.set(id, {
       date: t ? dateFmt.format(t).replace(",", "") : id,
-      dateDetail: t ? `${fullFmt.format(t)}\n${id}` : id,
       endpoints: `${stationCode(e.from)}→${stationCode(e.to)}`,
-      endpointsDetail: `${e.from} → ${e.to}`,
     });
   }
   return out;
