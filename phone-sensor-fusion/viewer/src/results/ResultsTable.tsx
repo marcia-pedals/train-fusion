@@ -2,9 +2,11 @@
 // schema's description as each header's tooltip, and mean / median of the shown rows.
 // With a baseline run, each metric also shows what it was there, under it, and its colour
 // says how it changed (green: better, red: worse; none: no change worth counting) instead
-// of how worrying it is; and the columns can sort by the change instead. Each row is a
-// link (`rowHref`): a click opens it, a middle or ⌘/Ctrl click in a new tab.
-import {useMemo, useState, type MouseEvent} from "react";
+// of how worrying it is; and the columns can sort by the change instead. Each row links
+// to `rowHref`: every cell's content is a real link stretched over the cell, so the
+// browser's own link handling (new tab, copy link, the address on hover) works anywhere
+// on the row.
+import {useMemo, useState, type MouseEvent, type ReactNode} from "react";
 import {
   createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable,
   type ColumnDef, type SortingState,
@@ -113,20 +115,27 @@ export default function ResultsTable<R extends Record<string, any>>({rows, colum
       </thead>
       <tbody>
         {table.getRowModel().rows.map((row) => (
-          <tr key={row.id} className={rowHref ? "link" : undefined}
-              onClick={rowHref && ((e) => follow(e, rowHref(row.original)))}
-              onAuxClick={rowHref && ((e) => e.button === 1 && follow(e, rowHref(row.original)))}>
+          <tr key={row.id}>
             {columns.map((c, i) => {
+              const href = rowHref?.(row.original);
+              // one tab stop per row: the first cell's link
+              const linked = (content: ReactNode) => (href
+                ? <a className="row-link" href={href} tabIndex={i === 0 ? undefined : -1} draggable={false} onClick={noFollowAfterSelect}>
+                    {content}</a>
+                : content);
               const x = row.original[c.key];
               const b = base?.get(row.id);
               const change = b && c.diff ? compare(c, x, b[c.key]).change : undefined;
               // with a baseline, a metric is coloured by its change, not by its value
               const color = base && c.diff ? (change === "better" || change === "worse" ? change : undefined) : c.tone?.(x ?? null);
               return (
-                <td key={c.key} className={cls(c.align === "left" ? "left" : "num", color, x == null && "null", groupStart.has(c.key) && "gs")}>
-                  <span className="now" data-tip={c.tip?.(row.original)}>{cell(c, x)}</span>
-                  {base && i === 0 && !b && <span className="prev new" data-tip={`Not in ${baseName}`}>new</span>}
-                  {change && <Prev change={change} text={cell(c, b![c.key])} now={cell(c, x)} baseName={baseName} />}
+                <td key={c.key} className={cls(c.align === "left" ? "left" : "num", color, x == null && "null", groupStart.has(c.key) && "gs",
+                                               href && "linked")}>
+                  {linked(<>
+                    <span className="now" data-tip={c.tip?.(row.original)}>{cell(c, x)}</span>
+                    {base && i === 0 && !b && <span className="prev new" data-tip={`Not in ${baseName}`}>new</span>}
+                    {change && <Prev change={change} text={cell(c, b![c.key])} now={cell(c, x)} baseName={baseName} />}
+                  </>)}
                 </td>
               );
             })}
@@ -172,12 +181,10 @@ export default function ResultsTable<R extends Record<string, any>>({rows, colum
   );
 }
 
-/** Goes to a row's link: here, or in a new tab for a middle or ⌘/Ctrl click; not when
- * the click ended selecting text. */
-function follow(e: MouseEvent, href: string) {
-  if (window.getSelection()?.toString()) return;
-  if (e.button === 1 || e.metaKey || e.ctrlKey) window.open(href, "_blank");
-  else window.location.href = href;
+/** A click that ends selecting text (the links aren't draggable, so dragging selects)
+ * doesn't follow the link. */
+function noFollowAfterSelect(e: MouseEvent) {
+  if (window.getSelection()?.toString()) e.preventDefault();
 }
 
 /** Under a value: what it was in the baseline ("=" if the same). */
