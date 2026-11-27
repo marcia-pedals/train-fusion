@@ -41,9 +41,9 @@ legs = Table("legs", "One row per labelled leg (consecutive labelled stops) of e
     col("filt_dist_err", "f64",
         "relative error of the leg's distance from the filtered speeds (each second's speed given only the "
         "measurements up to it), door opening to door opening, against the map: model / map - 1"),
-    col("filt_p_missed_stop", "f64",
+    col("filt_p_missed_stop", "f64?",
         "P(the doors did not start opening anywhere in the leg's end stop's window), given the measurements up to the "
-        "end of that window"),
+        "end of that window; null where this car's doors stayed shut at that stop"),
     col("filt_p_false_stop", "f64?",
         "P(the doors started opening at least once while moving between the two stops, away from any door opening "
         "labelled there), given the measurements up to the end of that window; null if the window is empty"),
@@ -57,8 +57,9 @@ legs = Table("legs", "One row per labelled leg (consecutive labelled stops) of e
     col("smooth_dist_err", "f64",
         "relative error of the leg's distance from the speeds smoothed over the whole ride, door opening to door "
         "opening, against the map: model / map - 1"),
-    col("smooth_p_missed_stop", "f64",
-        "P(the doors did not start opening anywhere in the leg's end stop's window), given the whole ride"),
+    col("smooth_p_missed_stop", "f64?",
+        "P(the doors did not start opening anywhere in the leg's end stop's window), given the whole ride; null where "
+        "this car's doors stayed shut at that stop"),
     col("smooth_p_false_stop", "f64?",
         "P(the doors started opening at least once while moving between the two stops, away from any door opening "
         "labelled there), given the whole ride; null if the window is empty"),

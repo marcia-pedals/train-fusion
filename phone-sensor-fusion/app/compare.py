@@ -67,7 +67,7 @@ def main(files):
         stops, s_of = load.stops(rid), load.station_s()
         stop_n = [rows[i]["n"] for i in range(1, len(rows)) if rows[i]["stops"] > rows[i - 1]["stops"]]
         legs = rows[-1]["legs"]
-        truth_t = np.array([st.t_open for st in stops])
+        truth_t = np.array([st.t_open if st.doors else np.inf for st in stops])  # the app hears openings only
         matched = [int(np.argmin(np.abs(truth_t - t))) if np.abs(truth_t - t).min() <= 6 else None for t in stop_n]
         print(f"   stops: app heard {len(stop_n)} at {stop_n}; labelled {len(stops)}; false {sum(x is None for x in matched)}")
         errs = []

@@ -90,8 +90,9 @@ def legs(res: Result, lab: FrameLabels, stops: list[load.Stop], key: dict) -> li
             d = float(dist[fb] - dist[fa])
             row[f"{name}_dist_m"] = d
             row[f"{name}_dist_err"] = d / map_m - 1
-            # every labelled stop counts, whether or not its chime is in the recording
-            row[f"{name}_p_missed_stop"] = res.p_mode_visit(OPEN_CHIME, *stop_w, smoothed)[1]
+            # every labelled stop with doors counts, whether or not its chime is in the
+            # recording; one where this car's doors stayed shut has no opening to find
+            row[f"{name}_p_missed_stop"] = res.p_mode_visit(OPEN_CHIME, *stop_w, smoothed)[1] if b.doors else None
             row[f"{name}_p_false_stop"] = (res.p_mode_visit(OPEN_CHIME, *move_w, smoothed, move_frames)[0]
                                            if move_w[1] > move_w[0] else None)
         v = res.v_upto(min(fb, T - 1))

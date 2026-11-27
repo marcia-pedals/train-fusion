@@ -33,8 +33,8 @@ def plot(rid: str, name: str = "cv"):
     ax[0].plot(t, r["v"], "C0", lw=1.2, label="model, smoothed (±2 sd)")
     ax[0].plot(t, r["v_filt"], "C3", lw=0.6, alpha=0.8, label="model, online filter")
     for st in load.stops(rid):
-        ax[0].axvline(st.t_open, color="g", lw=0.5)
-        ax[0].text(st.t_open, 39.5, st.station, fontsize=8, rotation=20)
+        ax[0].axvline(st.t_still, color="g", lw=0.5)
+        ax[0].text(st.t_still, 39.5, st.station, fontsize=8, rotation=20)
     ax[0].set_ylabel("speed (m/s)"); ax[0].set_ylim(-1, 42); ax[0].legend(loc="upper right", ncol=4)
     bottom = np.zeros(len(t))
     for m in range(6):

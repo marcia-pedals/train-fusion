@@ -344,6 +344,10 @@ def fit_dwell(labels: list[FrameLabels]) -> dict:
         for l in labels:
             for a, b in _runs(l.mode == mode):
                 complete = a > 0 and b < len(l.mode) and l.mode[a - 1] != UNKNOWN and l.mode[b] != UNKNOWN
+                # standing with the doors shut and pulling away again (P_RESUME, e.g. a stop
+                # where this car's doors don't open) is not a wait for the doors
+                if mode == PRE and complete and l.mode[b] == MOVING:
+                    complete = False
                 if complete:
                     durs.append(b - a)
         w, m0 = DWELL_PRIOR_WEIGHT, DWELL_PRIOR_S[mode]

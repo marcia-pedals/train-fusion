@@ -49,7 +49,8 @@ def frame_labels(rid: str) -> FrameLabels:
         if closes:
             mode[(c >= st.t_close) & (c < st.t_close_end)] = CLOSE_CHIME
         if np.isfinite(st.t_arrive):
-            mode[(c >= st.t_arrive) & (c < st.t_open)] = PRE
+            # standing with the doors not (yet) open: all of a stop where this car's stayed shut
+            mode[(c >= st.t_arrive) & (c < (st.t_open if st.doors else st.t_depart))] = PRE
         if np.isfinite(st.t_depart):
             mode[(c >= st.t_close_end) & (c < st.t_depart)] = POST
             nxt = stops[i + 1]
