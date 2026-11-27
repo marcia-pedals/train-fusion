@@ -52,7 +52,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from features import motion, phone_state
-from labels.frames import OPEN_CHIME
+from labels.frames import MOVING, OPEN, OPEN_CHIME
 from maps import track as trackmod
 from model.infer import Result
 from model.states import DT
@@ -234,10 +234,17 @@ def _backward(lb, lw):
 
 
 def openings(res: Result, causal: bool) -> np.ndarray:
-    """Frames where the first layer's doors start opening: onsets of the door-open chime in
-    the Viterbi path, or (causal) in the filtered most probable mode."""
+    """Frames where the first layer's doors start opening, in the Viterbi path or (causal) the
+    filtered most probable mode: where it enters the door-open chime, or enters doors open
+    from standing. The second is for stops where no chime is heard (this car's doors
+    shut): the filtered belief passes through the chime state without it ever being the
+    most probable. From moving it doesn't count: doors don't open at speed (it is what a
+    platform before boarding, read as a fast train, looks like)."""
     mode = np.argmax(res.mode_p_filt, axis=1) if causal else res.path_mode
-    return np.flatnonzero((mode == OPEN_CHIME) & (np.r_[-1, mode[:-1]] != OPEN_CHIME))
+    prev = np.r_[MOVING, mode[:-1]]
+    chime = (mode == OPEN_CHIME) & (prev != OPEN_CHIME)
+    doors = (mode == OPEN) & ~np.isin(prev, [OPEN_CHIME, OPEN, MOVING])
+    return np.flatnonzero(chime | doors)
 
 
 def localise(res: Result, f: dict, use=ALL, causal=False, p_false=P_FALSE) -> Localisation:

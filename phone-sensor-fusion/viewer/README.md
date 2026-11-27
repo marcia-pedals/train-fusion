@@ -20,10 +20,10 @@ A local web app over what the pipeline writes. Three pages:
   curve the model expects them on (grey: at the labelled speed ± sd; dashed: at the model's
   speed; the measured line faint where the model doesn't use it); the filtered and smoothed beliefs over speed (m/s) and the most likely path's speed; mode
   (labelled, filtered, smoothed, and the most likely path, whose entries into the door-open
-  chime are the localiser's door openings); regime (braking, coasting, part or full traction: filtered,
+  chime, or into doors open from standing, are the localiser's door openings); regime (braking, coasting, part or full traction: filtered,
   smoothed, and the most likely path's); and the live
   localiser's probability for the truth and for its own best guess, with the confidently
-  wrong stretches in red. Each track can be switched off in the toolbar, one by one, by
+  wrong stretches in red, each labelled with its best guess there (station code, SB or NB). Each track can be switched off in the toolbar, one by one, by
   group (click its name), alone (⌥-click), or by preset; which are off is remembered and
   kept in the address (`off`). The toolbar, with the whole-ride strip and the time axis
   with the stations, stays at the top as the tracks scroll. The left column gives each track's value at the mouse, or at

@@ -7,7 +7,8 @@ shared by every run, in data/phone-sensor-fusion/rides/<id>/:
   meta.json        per-second series (speed, modes, regimes (standing first, then
                    states.REGIMES), the most likely (Viterbi) path's mode, regime and
                    speed, the causal localiser's
-                   belief about the truth), the labelled door events and stops, where the
+                   belief about the truth, and its best guess wherever that is
+                   confidently wrong), the labelled door events and stops, where the
                    audio is, and how to read the binary files (spec and accel: in the shared folder)
   speed_filt.bin, speed_smooth.bin
                    the belief over speed per second, filtered and smoothed, uint8
@@ -40,6 +41,7 @@ from common.recording import Recording
 from features import frames, phone_state
 from labels import load
 from labels.frames import FrameLabels, MODE_NAMES
+from maps import track as trackmod
 from model import emissions, states
 from model.infer import Result
 
@@ -68,6 +70,20 @@ _SPEEDS = np.r_[0.0, states.V_MOVING]  # the columns of states.speed_probs()
 def _over_regimes(post: np.ndarray) -> np.ndarray:
     """[T, N] state probabilities -> [T, 1 + N_R]: standing, then each regime."""
     return np.c_[post[:, :states.N_STOPPED].sum(axis=1), states.regime_probs(post)]
+
+
+def _wrong_guesses(wrong: np.ndarray, place: np.ndarray) -> list[dict]:
+    """The stretches where the causal localiser is confidently wrong, one per (station,
+    direction) it believes there: [t0, t1) and that guess."""
+    stations = trackmod.load().stations
+    out = []
+    for t in np.flatnonzero(wrong):
+        a, d = (int(x) for x in place[t])
+        if out and out[-1]["t1"] == t and (out[-1]["station"], out[-1]["dir"]) == (stations[a], "south" if d == 0 else "north"):
+            out[-1]["t1"] = int(t) + 1
+        else:
+            out.append({"t0": int(t), "t1": int(t) + 1, "station": stations[a], "dir": "south" if d == 0 else "north"})
+    return out
 
 
 def _comb_u8(ll: np.ndarray) -> np.ndarray:
@@ -174,5 +190,6 @@ def export(rid: str, p: dict, res: Result, f: dict, lab: FrameLabels, stops: lis
             "phone": [int(k) for k in phone_now],
         },
         "loc_openings": [int(t) for t in trace["openings"]],
+        "loc_wrong_guesses": _wrong_guesses(trace["wrong"], trace["best_place"]),
     }
     (out / "meta.json").write_text(json.dumps(meta, separators=(",", ":")))
