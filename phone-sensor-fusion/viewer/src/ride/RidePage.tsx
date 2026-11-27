@@ -88,6 +88,7 @@ const PRESETS: {name: string; on: string[] | null}[] = [
   {name: "Speed", on: ["comb-tone", "comb-wheel", "rumble", "vib-low", "vib-high", "speed-smooth"]},
   {name: "Stops", on: ["audio", "mode-label", "mode-filt", "mode-smooth", "mode-path"]},
 ];
+const GUESS_H = 24;  // px: the localiser's best-guess row, under its probabilities
 const OFF_KEY = "psf-ride-tracks-off";
 const COMB_LABEL_KEY = "psf-ride-comb-label";
 
@@ -488,6 +489,13 @@ function useTracks(ride: Ride, tiles: Record<string, Tiles>, view: View,
       <Key color={DOOR_OPEN}>opening starts</Key><Key color={DOOR_OPEN} dashed>opening ends</Key>
       <Key color={DOOR_CLOSE}>closing starts</Key><Key color={DOOR_CLOSE} dashed>closing ends</Key>
     </>;
+    const guessColors = {wrong: cssVar("--loc-wrong"), confident: cssVar("--bad") + "66"};
+    const guessText = (g: {station: string; dir: string}) => `${stationCode(g.station)} ${g.dir === "south" ? "SB" : "NB"}`;
+    const guessLegend = <span className="legend-row">
+      <Key color={cssVar("--surface-2")} square>right</Key>
+      <Key color={guessColors.wrong} square>wrong</Key>
+      <Key color={guessColors.confident} square>confidently wrong</Key>
+    </span>;
     const modeLegend = <span className="legend-row">{MODE_SHORT.map((name, k) => <Key key={name} color={MODE_COLORS[k]} square>{name}</Key>)}</span>;
     // standing, then the regimes in model/states.py's order, coloured as on the dynamics page
     const regimeShort = ["standing", ...(meta.regime_names ?? [])];
@@ -547,44 +555,51 @@ function useTracks(ride: Ride, tiles: Record<string, Tiles>, view: View,
           value: (i: number) => regimeShort[s.regime_path![i]], below: regimeLegend, sharedBelow: true,
           draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => drawStrip(ctx, w, h, view, s.regime_path!, regimeColors)} satisfies Track,
       ] : []),
-      {key: "loc", name: "Localiser, live", short: "Localiser", group: "loc", height: 80,
-        value: (i) => <>
-          <Key color={colors.good}>P(truth) <span className="v">{s.loc_p_true[i].toFixed(2)}</span></Key>
-          <Key color={colors.label}>P(best guess) <span className="v">{s.loc_p_best[i].toFixed(2)}</span></Key>
-          <Key color={colors.bad + "60"} square>confidently wrong</Key>
-          {(() => {
-            const g = meta.loc_wrong_guesses?.find((g) => i >= g.t0 && i < g.t1);
-            return g ? <span className="key">best guess, wrong: <b>{stationCode(g.station)} {g.dir === "south" ? "SB" : "NB"}</b></span> : null;
-          })()}
-        </>,
+      {key: "loc", name: "Localiser, live", short: "Localiser", group: "loc", height: meta.loc_guesses ? 80 + GUESS_H : 80,
+        below: meta.loc_guesses ? guessLegend : undefined,
+        value: (i) => {
+          const g = meta.loc_guesses?.find((g) => i >= g.t0 && i < g.t1);
+          return <>
+            <Key color={colors.good}>P(truth) <span className="v">{s.loc_p_true[i].toFixed(2)}</span></Key>
+            {s.loc_p_wrong
+              ? <Key color={colors.bad}>P(top wrong guess) <span className="v">{s.loc_p_wrong[i].toFixed(2)}</span></Key>
+              : <Key color={colors.label}>P(best guess) <span className="v">{s.loc_p_best[i].toFixed(2)}</span></Key>}
+            {g && <span className="key">best guess: <b>{guessText(g)}</b>&nbsp;{g.status === "confident" ? "confidently wrong" : g.status}</span>}
+          </>;
+        },
         draw: (ctx, w, h) => {
-          const y = yp(h);
-          ctx.fillStyle = colors.bad + "40";
-          for (let i = Math.max(Math.floor(view.t0), 0); i < Math.min(Math.ceil(view.t1), T); i++) {
-            if (s.loc_wrong[i]) ctx.fillRect(xOf(i, view, w), 0, Math.max(xOf(i + 1, view, w) - xOf(i, view, w), 0.5) + 0.3, h);
-          }
+          // the probabilities, and under them (if the run has it) the best guess as a row of
+          // blocks, one per stretch of one guess and status
+          const hp = meta.loc_guesses ? h - GUESS_H : h;
+          const y = yp(hp);
           drawGrid(ctx, w, [0, 0.5, 1], y, (x) => `${x}`, colors.grid, colors.text);
           ctx.save(); ctx.setLineDash([4, 3]); ctx.strokeStyle = colors.text;
           ctx.beginPath(); ctx.moveTo(0, y(0.9)); ctx.lineTo(w, y(0.9)); ctx.stroke(); ctx.restore();
           ctx.fillStyle = colors.text;
           for (const t of meta.loc_openings) if (t >= view.t0 && t <= view.t1) ctx.fillRect(xOf(t, view, w) - 0.5, 0, 1.5, 6);
-          drawLine(ctx, w, view, s.loc_p_best, y, {color: colors.label, width: 1.25});
+          drawLine(ctx, w, view, s.loc_p_wrong ?? s.loc_p_best, y, {color: s.loc_p_wrong ? colors.bad : colors.label, width: 1.25});
           drawLine(ctx, w, view, s.loc_p_true, y, {color: colors.good, width: 1.75});
-          // the best guess wherever it isn't the truth, at the start of each stretch it holds
-          // (or the view's edge)
-          ctx.save();
+          if (!meta.loc_guesses) return;
+          // each block named where it starts (or at the view's edge); a name that doesn't fit
+          // before the next block is left out
+          const fill = {right: cssVar("--surface-2"), wrong: guessColors.wrong, confident: guessColors.confident};
+          ctx.fillStyle = colors.grid;
+          ctx.fillRect(0, hp, w, 1);
           ctx.font = "600 11px " + cssVar("--sans");
-          ctx.fillStyle = colors.bad; ctx.textBaseline = "bottom";
-          let free = -Infinity;  // where the last label ended: labels don't overlap
-          for (const g of meta.loc_wrong_guesses ?? []) {
-            if (g.t1 <= view.t0 || g.t0 >= view.t1) continue;
-            const x = Math.max(xOf(g.t0, view, w), 0) + 3;
-            if (x < free) continue;
-            const text = `${stationCode(g.station)} ${g.dir === "south" ? "SB" : "NB"}`;
-            ctx.fillText(text, x, h - 3);
-            free = x + ctx.measureText(text).width + 6;
+          ctx.textBaseline = "middle";
+          const shown = meta.loc_guesses.filter((g) => g.t1 > view.t0 && g.t0 < view.t1);
+          for (const [k, g] of shown.entries()) {
+            const x0 = Math.max(xOf(g.t0, view, w), 0), x1 = Math.min(xOf(g.t1, view, w), w);
+            ctx.fillStyle = fill[g.status];
+            ctx.fillRect(x0, hp + 1, Math.max(x1 - x0, 0.5), GUESS_H - 1);
+            ctx.fillStyle = colors.grid;
+            ctx.fillRect(x0, hp + 1, 1, GUESS_H - 1);
+            const text = guessText(g), next = k + 1 < shown.length ? Math.max(xOf(shown[k + 1].t0, view, w), 0) : w;
+            if (x0 + 4 + ctx.measureText(text).width <= next - 2) {
+              ctx.fillStyle = g.status === "right" ? colors.text : cssVar("--text");
+              ctx.fillText(text, x0 + 4, hp + 1 + (GUESS_H - 1) / 2);
+            }
           }
-          ctx.restore();
         }},
     ];
     return tracksOut;

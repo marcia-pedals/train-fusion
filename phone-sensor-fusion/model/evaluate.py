@@ -103,14 +103,16 @@ def legs(res: Result, lab: FrameLabels, stops: list[load.Stop], key: dict) -> li
 
 def _p_true(loc: stations.Localisation, stops: list[load.Stop], T: int, wrong: np.ndarray | None = None,
             best: np.ndarray | None = None, best_place: np.ndarray | None = None,
-            best_wrong: np.ndarray | None = None) -> np.ndarray:
+            best_wrong: np.ndarray | None = None, top_wrong: np.ndarray | None = None) -> np.ndarray:
     """[T] the causal localiser's probability for the true (last station, direction).
     `wrong` ([T] bool), if given, is set where its most probable (station, direction) is
     above FIX_P and not the truth: where the app would show a wrong place as confident.
     `best` ([T] float), if given, gets the probability of that most probable one, and
     `best_place` ([T, 2] int) its station index (maps/track.py) and direction (0 south,
     1 north); -1 before the first opening. `best_wrong` ([T] bool), if given, is set where
-    that most probable one is not the truth, however probable."""
+    that most probable one is not the truth, however probable. `top_wrong` ([T] float), if
+    given, gets the probability of the most probable (station, direction) that is not the
+    truth."""
     tr = trackmod.load()
     s_of = load.station_s()
     d_true = 0 if s_of[stops[-1].station] > s_of[stops[0].station] else 1  # 0: station index increasing
@@ -139,6 +141,12 @@ def _p_true(loc: stations.Localisation, stops: list[load.Stop], T: int, wrong: n
         if best_place is not None:
             best_place[tt] = a, d
         is_truth = d == d_true and any(i >= 0 and idx[i] == a for i in right)
+        if top_wrong is not None:
+            others = now.copy()
+            for i in right:
+                if i >= 0:
+                    others[idx[i], d_true] = 0.0
+            top_wrong[tt] = others.max()
         if wrong is not None:
             wrong[tt] = now[a, d] > FIX_P and not is_truth
         if best_wrong is not None:
@@ -168,10 +176,11 @@ def ride(res: Result, f: dict, lab: FrameLabels, stops: list[load.Stop], leg_row
 
     loc_c = stations.localise(res, f, causal=True)
     wrong, best, best_place, best_wrong = np.zeros(T, bool), np.zeros(T), np.full((T, 2), -1), np.zeros(T, bool)
-    p = _p_true(loc_c, stops, T, wrong, best, best_place, best_wrong)
+    top_wrong = np.zeros(T)
+    p = _p_true(loc_c, stops, T, wrong, best, best_place, best_wrong, top_wrong)
     if trace is not None:
-        trace.update(p_true=p, p_best=best, best_place=best_place, best_wrong=best_wrong, wrong=wrong,
-                     openings=loc_c.t_stop)
+        trace.update(p_true=p, p_best=best, p_top_wrong=top_wrong, best_place=best_place, best_wrong=best_wrong,
+                     wrong=wrong, openings=loc_c.t_stop)
     row["loc_filt_confident_wrong_s"] = float(np.sum(wrong[t_move0:t_end]))
     fixed = np.flatnonzero(p[t_move0:t_end] >= FIX_P)
     if len(fixed):

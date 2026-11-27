@@ -7,8 +7,8 @@ shared by every run, in data/phone-sensor-fusion/rides/<id>/:
   meta.json        per-second series (speed, modes, regimes (standing first, then
                    states.REGIMES), the most likely (Viterbi) path's mode, regime and
                    speed, the causal localiser's
-                   belief about the truth, and its best guess wherever that isn't the
-                   truth), the labelled door events and stops, where the
+                   belief about the truth, and its best guess through the ride, right,
+                   wrong or confidently wrong), the labelled door events and stops, where the
                    audio is, and how to read the binary files (spec and accel: in the shared folder)
   speed_filt.bin, speed_smooth.bin
                    the belief over speed per second, filtered and smoothed, uint8
@@ -72,17 +72,20 @@ def _over_regimes(post: np.ndarray) -> np.ndarray:
     return np.c_[post[:, :states.N_STOPPED].sum(axis=1), states.regime_probs(post)]
 
 
-def _wrong_guesses(wrong: np.ndarray, place: np.ndarray) -> list[dict]:
-    """The stretches where the causal localiser's best guess is not the truth (however
-    probable), one per (station, direction) it guesses there: [t0, t1) and that guess."""
+def _guesses(place: np.ndarray, best_wrong: np.ndarray, wrong: np.ndarray) -> list[dict]:
+    """The causal localiser's best guess through the ride, as stretches [t0, t1) of one
+    (station, direction) and one status: "right", "wrong" (not the truth) or "confident"
+    (confidently wrong, evaluate.FIX_P). Nothing before its first door opening."""
     stations = trackmod.load().stations
     out = []
-    for t in np.flatnonzero(wrong):
+    for t in np.flatnonzero(place[:, 0] >= 0):
         a, d = (int(x) for x in place[t])
-        if out and out[-1]["t1"] == t and (out[-1]["station"], out[-1]["dir"]) == (stations[a], "south" if d == 0 else "north"):
+        g = {"station": stations[a], "dir": "south" if d == 0 else "north",
+             "status": "confident" if wrong[t] else "wrong" if best_wrong[t] else "right"}
+        if out and out[-1]["t1"] == t and all(out[-1][k] == g[k] for k in g):
             out[-1]["t1"] = int(t) + 1
         else:
-            out.append({"t0": int(t), "t1": int(t) + 1, "station": stations[a], "dir": "south" if d == 0 else "north"})
+            out.append({"t0": int(t), "t1": int(t) + 1, **g})
     return out
 
 
@@ -186,10 +189,10 @@ def export(rid: str, p: dict, res: Result, f: dict, lab: FrameLabels, stops: lis
             "regime_filt": _r(_over_regimes(res.alpha), 3), "regime_smooth": _r(_over_regimes(res.gamma), 3),
             "regime_path": [int(r) + 1 for r in res.path_regime],
             "loc_p_true": _r(trace["p_true"], 3), "loc_p_best": _r(trace["p_best"], 3),
-            "loc_wrong": [int(w) for w in trace["wrong"]],
+            "loc_p_wrong": _r(trace["p_top_wrong"], 3),
             "phone": [int(k) for k in phone_now],
         },
         "loc_openings": [int(t) for t in trace["openings"]],
-        "loc_wrong_guesses": _wrong_guesses(trace["best_wrong"], trace["best_place"]),
+        "loc_guesses": _guesses(trace["best_place"], trace["best_wrong"], trace["wrong"]),
     }
     (out / "meta.json").write_text(json.dumps(meta, separators=(",", ":")))

@@ -42,13 +42,14 @@ export interface RideMeta {
     // P(standing, then each regime), filtered and smoothed, and the most likely path's
     // (0 standing, r + 1 regime r); absent in older runs
     regime_filt?: number[][]; regime_smooth?: number[][]; regime_path?: number[];
-    loc_p_true: number[]; loc_p_best: number[]; loc_wrong: number[];
+    loc_p_true: number[]; loc_p_best: number[];
+    loc_p_wrong?: number[];  // the most probable (station, direction) that isn't the truth; absent in older runs
     phone: number[];  // the most likely phone state (index into phone_states)
   };
   loc_openings: number[];
-  // where the live localiser's best guess is not the truth (however probable): [t0, t1)
-  // and that guess; absent in older runs
-  loc_wrong_guesses?: {t0: number; t1: number; station: string; dir: "south" | "north"}[];
+  // the live localiser's best guess through the ride: stretches [t0, t1) of one guess and
+  // one status (confident: confidently wrong); absent in older runs
+  loc_guesses?: {t0: number; t1: number; station: string; dir: "south" | "north"; status: "right" | "wrong" | "confident"}[];
 }
 
 /** The ride with its binary files loaded. */
